@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.20-test';
+const APP_VERSION = '0.6.21-test4';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1860,7 +1860,8 @@ function pinPrompt(r) {
     if (!pin) return msg('請輸入 PIN', 'errtxt');
     busy = true; msg(s === 'test' ? '測試緊…' : '檢查 PIN…');
     let o = null, netErr = null;
-    try { o = await gasCall({ action: 'ping' }, 30000, pin); } catch (x) { netErr = x; }
+    const slow = setTimeout(() => msg((s === 'test' ? '測試緊…' : '檢查 PIN…') + '<br>⏳ 公司伺服器醒緊，首次可能要等半分鐘…'), 3000); /* v0.6.21-test3 冷啟動：60 秒 */
+    try { o = await gasCall({ action: 'ping' }, 60000, pin); } catch (x) { netErr = x; } finally { clearTimeout(slow); }
     busy = false;
     if (o && !o.ok) return msg('❌ ' + esc(upErrText(o.error)), 'errtxt');   // PIN 唔啱／錯太多次 → 唔儲存
     if (s === 'test') return msg(o ? '✅ 連線成功，PIN 正確。撳「儲存並上傳」。' : '❌ ' + esc(netErr.message), o ? 'oktxt' : 'errtxt');
@@ -1901,8 +1902,9 @@ function settings() {
     if (s === 'reset') { e.preventDefault(); $('#cfgUrl').value = UPLOAD_URL_BUILTIN; msg('已還原公司網址，撳「儲存」。'); return; }
     if (s === 'save') { if (!save()) return; m.classList.remove('show'); m.onclick = null; toast('已儲存上傳設定 ✓'); render(); setTimeout(() => autoRetry(true), 300); return; }
     if (s === 'test') { if (!save()) return; msg('測試緊…');
-      try { const o = await gasCall({ action: 'ping' }, 30000); if (o.ok) msg('✅ 連線成功，PIN 正確', 'oktxt'); else msg('❌ ' + esc(upErrText(o.error)), 'errtxt'); }
-      catch (x) { msg('❌ ' + esc(x.message), 'errtxt'); } }
+      const slow = setTimeout(() => msg('測試緊…<br>⏳ 公司伺服器醒緊，首次可能要等半分鐘…'), 3000); /* v0.6.21-test3 冷啟動：60 秒 */
+      try { const o = await gasCall({ action: 'ping' }, 60000); if (o.ok) msg('✅ 連線成功，PIN 正確', 'oktxt'); else msg('❌ ' + esc(upErrText(o.error)), 'errtxt'); }
+      catch (x) { msg('❌ ' + esc(x.message), 'errtxt'); } finally { clearTimeout(slow); } }
   };
 }
 
@@ -3066,7 +3068,7 @@ async function ckRegister() { /* 名＋手機登記去公司（師傅名單）�
   const key = n + '|' + ckDev(); if (Store.prefs.ckReg === key) return;
   CK.regBusy = true;
   try {
-    const o = await gasCall({ action: 'register_name', name: n, device_id: ckDev(), device_label: ckLabel(), app_version: APP_VERSION, hkt: ckHkt(), changed_from: Store.prefs.ckPrev || '' }, 20000);
+    const o = await gasCall({ action: 'register_name', name: n, device_id: ckDev(), device_label: ckLabel(), app_version: APP_VERSION, hkt: ckHkt(), changed_from: Store.prefs.ckPrev || '' }, typeof ACC_NET !== 'undefined' ? ACC_NET.ms : 60000); /* v0.6.21-test3：伺服器冷啟動要 15–30 秒 → 60 秒（ACC_NET，app_18acc） */
     if (o && o.ok && Store.prefs.ckName === n) { Store.prefs.ckReg = key; Store.flush(); }
   } catch (e) { /* 冇網／舊伺服器：下次打卡再送 */ }
   CK.regBusy = false;
@@ -3186,6 +3188,12 @@ document.addEventListener('click', e => { const b = e.target.closest && e.target
   if (a === 'bar') { CK.step = 'names'; CK.nq = ''; CK.err = ''; CK.errCode = ''; go('#/clock'); return; }
   if (a === 'barx') { Store.prefs.ckBarHide = 1; Store.flush(); const x = $('#ckbar'); if (x) x.remove(); return; }
   if (a === 'geo') { delete Store.prefs.ckGeoDenied; CKG.perm = CKG.perm === 'denied' ? 'denied' : ''; Store.flush(); ckGpsWarm(true); return; }
+  if (a === 'stat') { cksReset(); CKS.tab = b.dataset.t === 'rec' ? 'rec' : 'stat'; CK.step = 'stat'; CK.err = ''; CK.errCode = ''; if (cur.view === 'clock') render(); else go('#/clock'); setTimeout(() => { const i = $('#ckspin'); if (i) i.focus(); }, 50); return; }
+  if (a === 'stopen') { const i = $('#ckspin'), p = i ? i.value.trim() : ''; if (!p) return toast('請輸入主管密碼'); CKS.pin = p; CKS.date = ''; return CKS.tab === 'rec' ? ckrLoad() : cksLoad(); }
+  if (a === 'sttab') { CKS.tab = b.dataset.t === 'rec' ? 'rec' : 'stat'; CKS.err = ''; CKR.err = ''; render(); if (CKS.pin && CKS.tab === 'rec' && !CKR.data) ckrLoad(); else if (CKS.pin && CKS.tab === 'stat' && !CKS.data) cksLoad(); return; } /* v0.6.21-test4 */
+  if (a === 'rreload') return ckrLoad();
+  if (a === 'rrq') { const n = Number(b.dataset.d) || 7, t = ckDay(); CKR.to = t; CKR.from = ckAddDay(t, 1 - n); return ckrLoad(); }
+  if (a === 'streload') { const i = $('#cksdate'); if (i && /^\d{4}-\d\d-\d\d$/.test(i.value)) CKS.date = i.value; return cksLoad(); }
   if (a === 'nameok') { const i = b.closest('.cknm') && b.closest('.cknm').querySelector('input'); return ckPickName(i ? i.value : CK.nq); } /* v0.6.13.1：任何名都收 */
 });
 async function ckPunch(estate, again, place) {
@@ -3238,7 +3246,7 @@ function ckPlaceDom() { /* v0.6.17 屋邨 → 大廈（各自可以「其他（�
 function ckGoLbl() { const n = $('#ckgon'); if (!n) return; const sl = $('#ckest'), p = ckPlaceDom();
   n.textContent = p.label || (sl && sl.value === PK_OTHER ? '（請輸入地點）' : '（請揀屋邨）'); }
 function ckGo() { const p = ckPlaceDom(); if (p.err) { if (p.focus) p.focus.focus(); return toast(p.err); } return ckPunch(p.label, false, { e: p.e, b: p.b }); }
-function ckReset() { CK.gps = null; CK.step = 'home'; CK.err = ''; CK.errCode = ''; CK.res = null; CK.today = null; CK.hist = null; CK.q = ''; CK.other = false; CK.open = null; CK.blk = null; }
+function ckReset() { cksReset(); CK.gps = null; CK.step = 'home'; CK.err = ''; CK.errCode = ''; CK.res = null; CK.today = null; CK.hist = null; CK.q = ''; CK.other = false; CK.open = null; CK.blk = null; }
 function ckGpsLine(r) { /* v0.6.13 FAN：唔再顯示（見 ckGpsStatus）；保留冇 render */
   const g = CK.gps || {};
   if (r.gps === true) return `<div class="ckgps" id="ckgps">📍 已記錄位置（準確度約 ±${esc(String(r.gps_acc == null ? '?' : r.gps_acc))} 米）</div>`;
@@ -3249,6 +3257,7 @@ function viewClock() {
   const c = upCfg(), name = Store.prefs.ckName || '';
   const top = `<div class="top"><div class="bar"><button data-act="${CK.step === 'home' ? 'home' : 'ckback'}" aria-label="返回">‹ ${CK.step === 'home' ? '主頁' : '返回'}</button><div class="ttl">⏱️ 打卡<small>時間用公司伺服器（香港時間）</small></div></div></div>`;
   if (!c.url || !c.pin) return top + `<main><div class="warnbox">未設定上傳網址／PIN。請喺 ☰ 選單 →「⚙️ 上傳設定」填好先。</div><button class="btn pri" style="width:100%" data-act="settings">⚙️ 上傳設定</button></main>`;
+  if (CK.step === 'stat') return viewCkStat(top); /* v0.6.21 👥 今日打卡情況（主管） */
   const err = CK.err ? `<div class="${CK.errCode === 'bad_action' || CK.errCode === 'clock_no_staff' ? 'warnbox' : 'errbox'}" id="ckerr">${esc(CK.err)}</div>` : '';
   if (CK.step === 'names' || !name) {
     /* v0.6.13.1：唔再列出其他員工名，只有輸入框＋確認 */
@@ -3293,6 +3302,8 @@ function viewClock() {
   return top + `<main><div class="ckhead ckme" id="ckme">👷 <b>${esc(name)}</b></div>${errH}
     <button class="ckbig in" data-act="ckin">🟢 上班</button><button class="ckbig out" data-act="ckout">🔴 落班</button>
     <button class="btn" style="width:100%" data-act="cktoday">📋 我嘅打卡紀錄</button>
+    <button class="btn" style="width:100%;margin-top:8px" id="cksopen" data-cka="stat">👥 今日打卡情況（主管）</button>
+    <button class="btn" style="width:100%;margin-top:8px" id="ckropen" data-cka="stat" data-t="rec">📋 全部打卡紀錄（主管）</button>
     <div class="mut" style="margin-top:10px">時間用公司伺服器（香港時間），唔係手機時間。冇網打唔到卡。</div>
     <div class="mut ckhint">唔係你個名？喺 ☰ →「⚙️ 設定」換名。</div></main>`;
 }
@@ -3309,6 +3320,101 @@ PKH.ck_blk = (v, how) => { if (cur.view !== 'clock' || CK.step !== 'estate') ret
   if (how === 'other') { CK.blk = PK_OTHER; return render(); }
   ckGoLbl(); };
 (function () { try { const st = document.createElement('style'); st.textContent = '.badge.ckno{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-size:12px;padding:1px 6px;border-radius:9px;margin-left:4px}.ckh3{margin:12px 0 4px;font-size:16px}.ckday .ckdh{margin-bottom:4px}.cklbl{font-size:13px;margin:2px 0}'; document.head.appendChild(st); } catch (e) {} })();
+
+/* v0.6.21 👥 今日打卡情況（主管）：FAN 2026-10-05。主管密碼（MANAGER_PIN）只喺記憶體，離開呢頁就清；唔儲存、唔寫 log。
+   伺服器 v1.20 clock_status（已批准手機 ＋ MANAGER_PIN，只讀）；伺服器 v1.19 → bad_action → 提示要更新。 */
+const CKS = { pin: '', data: null, date: '', busy: false, err: '', old: false, tab: 'stat' };
+function cksReset() { CKS.pin = ''; CKS.data = null; CKS.date = ''; CKS.busy = false; CKS.err = ''; CKS.old = false; CKS.tab = 'stat'; ckrReset(); }
+const CKS_ERR = { bad_manager_pin: '主管密碼唔啱', manager_locked: '主管密碼錯太多次，鎖咗 15 分鐘', manager_pin_not_set: '公司未設定 MANAGER_PIN', bad_date: '日期唔啱（唔可以揀未來日子）',
+  bad_action: '要公司伺服器更新到 v1.20 先睇到「今日打卡情況」（打卡照常用得）' };
+async function cksLoad() {
+  if (CKS.busy || !CKS.pin) return; CKS.busy = true; CKS.err = ''; CKS.old = false; render();
+  try {
+    const o = await gasCall(Object.assign({ action: 'clock_status', manager_pin: CKS.pin }, CKS.date ? { date: CKS.date } : {}), 30000);
+    if (o && o.ok && Array.isArray(o.members)) { CKS.data = o; CKS.date = o.date; ckSkewDay(o.today); }
+    else { const c = (o && o.error) || 'bad_reply'; CKS.old = c === 'bad_action';
+      CKS.err = (CKS_ERR[c] || upErrText(c)) + (o && o.remaining != null ? `（仲有 ${Number(o.remaining)} 次機會）` : '');
+      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.pin = ''; CKS.data = null; CKR.data = null; } }
+  } catch (e) { CKS.err = ckErrText(e); }
+  CKS.busy = false; if (cur.view === 'clock' && CK.step === 'stat') render();
+}
+function viewCkStat(top) {
+  const pinBox = `<div class="card" id="ckspinbox"><h3>輸入主管密碼（MANAGER_PIN）</h3><input id="ckspin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼" style="width:100%;font-size:18px">
+    <button class="btn pri" style="width:100%;margin-top:10px;min-height:54px" data-cka="stopen">開啟</button>${CKS.err ? `<div class="errbox" id="ckserr" style="margin-top:8px">${esc(CKS.err)}</div>` : ''}
+    <div class="mut" style="margin-top:6px">密碼只用嚟開呢頁，唔會儲存喺手機；離開呢頁就要再輸入。</div></div>`;
+  if (!CKS.pin) return top + `<main><h2>${CKS.tab === 'rec' ? '📋 全部打卡紀錄' : '👥 今日打卡情況'}</h2>${pinBox}</main>`;
+  if (CKS.tab === 'rec') return viewCkRec(top); /* v0.6.21-test4 */
+  const d = CKS.data, today = (d && d.today) || ckDay(), date = CKS.date || today, hm = t => esc(String(t || '').slice(0, 5));
+  const bar = `<div class="card cksbar" id="cksbar"><label for="cksdate" class="mut">日期</label><input type="date" id="cksdate" value="${esc(date)}" max="${esc(today)}">${date === today ? '<span class="badge done">今日</span>' : ''}
+    <button class="btn" id="cksreload" data-cka="streload" ${CKS.busy ? 'disabled' : ''}>${CKS.busy ? '讀緊…' : '🔄 重新整理'}</button></div>`;
+  const errH = CKS.err ? `<div class="${CKS.old ? 'warnbox' : 'errbox'}" id="ckserr">${esc(CKS.err)}</div>` : '';
+  if (!d) return top + `<main>${ckTabs()}<h2>👥 打卡情況</h2>${bar}${errH}${CKS.busy ? '<div class="card mut">讀緊…</div>' : ''}</main>`;
+  const c = d.counts || {}, miss = m => m.no_out ? CK_NO_OUT : '未打落班';
+  const row = m => `<div class="card cksrow cks-${esc(m.status)}" data-n="${esc(m.name)}"><div class="t"><b>${esc(m.name)}</b> <span class="badge cksb cksb-${esc(m.status)}">${esc(m.status_zh)}</span>${m.shifts > 1 ? ` <span class="badge">${Number(m.shifts)} 更</span>` : ''}${m.extra ? ' <span class="badge">唔喺已批准名單</span>' : ''}</div>
+    <div class="cksl"><span class="ckin">上班</span> ${m.in ? hm(m.in.time) + ' · ' + esc(m.in.estate) : m.no_in ? '<span class="cksmiss">冇打上班</span>' : '<span class="mut">—</span>'}</div>
+    <div class="cksl"><span class="ckout">落班</span> ${m.status === 'open' ? `<span class="cksmiss">⚠️ ${miss(m)}</span>` : m.out ? hm(m.out.time) + ' · ' + esc(m.out.estate) : '<span class="mut">—</span>'}</div>
+    ${(m.items || []).length > 2 ? `<details class="cksdet"><summary>全部 ${m.items.length} 下打卡</summary>${m.items.map(ckRowHtml).join('')}</details>` : ''}</div>`;
+  return top + `<main>${ckTabs()}<h2>👥 ${date === today ? '今日' : esc(date)} 打卡情況</h2>${bar}${errH}
+    <div class="ckscnt" id="ckscnt">共 ${Number(c.total || 0)} 人 · <b class="cksc-none">未打卡 ${Number(c.none || 0)}</b> · <b class="cksc-open">已上班未落班 ${Number(c.open || 0)}</b> · <b class="cksc-done">已落班 ${Number(c.done || 0)}</b></div>
+    ${d.partial ? '<div class="warnbox" id="ckspart">呢日太耐之前，可能唔齊（伺服器只睇最近 3000 下打卡）。</div>' : ''}
+    <div id="ckslist">${d.members.length ? d.members.map(row).join('') : '<div class="card mut">冇已批准嘅成員。</div>'}</div>
+    <div class="mut">成員 =「師傅名單」已批准嘅人。時間係公司伺服器時間（HKT）；讀取：${esc(d.now_hkt || '')}。</div></main>`;
+}
+/* v0.6.21-test4 📋 全部打卡紀錄（主管）：FAN 2026-10-05 15:09。同「今日打卡情況」共用主管密碼（只喺記憶體，離開打卡頁就清）。
+   伺服器 v1.20 clock_records（已批准手機 ＋ MANAGER_PIN，只讀；唔回手機ID）；日期最多 31 日（預設最近 7 日 HKT），揀人；新到舊；之前日子冇落班 → 紅框。 */
+const CKR = { data: null, from: '', to: '', name: '', busy: false, err: '', old: false };
+function ckrReset() { CKR.data = null; CKR.from = ''; CKR.to = ''; CKR.name = ''; CKR.busy = false; CKR.err = ''; CKR.old = false; }
+const CKR_MAX_DAYS = 31;
+const ckAddDay = (d, n) => new Date(Date.parse(d + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+const ckDaysIncl = (a, b) => Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 864e5) + 1;
+const CKR_ERR = { bad_range: '日期範圍唔啱（最多 31 日，唔可以揀未來日子）', bad_action: '要公司伺服器更新到 v1.20 先睇到「全部打卡紀錄」（打卡照常用得）' };
+const ckTabs = () => `<div class="cktabs" id="ckstabs" role="tablist"><button class="${CKS.tab !== 'rec' ? 'on' : ''}" data-cka="sttab" data-t="stat" role="tab">👥 今日情況</button><button class="${CKS.tab === 'rec' ? 'on' : ''}" data-cka="sttab" data-t="rec" role="tab">📋 全部紀錄</button></div>`;
+async function ckrLoad() {
+  if (CKR.busy || !CKS.pin) return;
+  const t = ckDay(); if (!CKR.to) CKR.to = t; if (!CKR.from) CKR.from = ckAddDay(CKR.to, -6);
+  if (CKR.from > CKR.to) { const x = CKR.from; CKR.from = CKR.to; CKR.to = x; }
+  if (CKR.to > t || ckDaysIncl(CKR.from, CKR.to) > CKR_MAX_DAYS) { CKR.err = CKR_ERR.bad_range; CKR.old = false; return render(); } /* 唔使問伺服器 */
+  CKR.busy = true; CKR.err = ''; CKR.old = false; render();
+  try {
+    const o = await gasCall(Object.assign({ action: 'clock_records', manager_pin: CKS.pin, from: CKR.from, to: CKR.to }, CKR.name ? { name: CKR.name } : {}), 60000);
+    if (o && o.ok && Array.isArray(o.items)) { CKR.data = o; CKR.from = o.from; CKR.to = o.to; ckSkewDay(o.today); }
+    else { const c = (o && o.error) || 'bad_reply'; CKR.old = c === 'bad_action';
+      CKR.err = (CKR_ERR[c] || CKS_ERR[c] || upErrText(c)) + (o && o.remaining != null ? `（仲有 ${Number(o.remaining)} 次機會）` : '');
+      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.err = CKR.err; CKS.pin = ''; CKS.data = null; CKR.data = null; } }
+  } catch (e) { CKR.err = ckErrText(e); }
+  CKR.busy = false; if (cur.view === 'clock' && CK.step === 'stat') render();
+}
+function viewCkRec(top) {
+  const d = CKR.data, today = (d && d.today) || ckDay(), from = CKR.from || ckAddDay(today, -6), to = CKR.to || today, hm = x => esc(String(x || '').slice(0, 5));
+  const names = (d && Array.isArray(d.names) ? d.names : []).slice(); if (CKR.name && names.indexOf(CKR.name) < 0) names.push(CKR.name);
+  const nd = ckDaysIncl(from, to), q = n => `<button class="btn sm${nd === n && to === today ? ' pri' : ''}" data-cka="rrq" data-d="${n}" ${CKR.busy ? 'disabled' : ''}>${n === 1 ? '今日' : n + ' 日'}</button>`;
+  const bar = `<div class="card ckrbar" id="ckrbar"><div class="ckrr"><label for="ckrfrom" class="mut">由</label><input type="date" id="ckrfrom" value="${esc(from)}" max="${esc(today)}"><label for="ckrto" class="mut">至</label><input type="date" id="ckrto" value="${esc(to)}" max="${esc(today)}"></div>
+    <div class="ckrr"><label for="ckrname" class="mut">邊個</label><select id="ckrname"><option value="">全部</option>${names.map(n => `<option value="${esc(n)}"${n === CKR.name ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+    <div class="ckrr">${q(1)}${q(7)}${q(31)}<button class="btn" id="ckrreload" data-cka="rreload" ${CKR.busy ? 'disabled' : ''}>${CKR.busy ? '讀緊…' : '🔄 重新整理'}</button></div>
+    <div class="mut">最多 ${CKR_MAX_DAYS} 日；時間係公司伺服器時間（HKT）。</div></div>`;
+  const errH = CKR.err ? `<div class="${CKR.old ? 'warnbox' : 'errbox'}" id="ckrerr">${esc(CKR.err)}</div>` : '';
+  const head = `<main>${ckTabs()}<h2>📋 全部打卡紀錄${CKR.name ? ' · ' + esc(CKR.name) : ''}</h2>${bar}${errH}`;
+  if (!d) return top + head + `${CKR.busy ? '<div class="card mut">讀緊…</div>' : ''}</main>`;
+  const c = d.counts || {}, by = {}, days = [];
+  d.items.forEach(x => { if (!by[x.date]) { by[x.date] = []; days.push(x.date); } by[x.date].push(x); });
+  const wk = x => '日一二三四五六'[new Date(x + 'T12:00:00Z').getUTCDay()];
+  const gps = g => { const la = Number(g && g.lat), lo = Number(g && g.lng); if (!g || !isFinite(la) || !isFinite(lo)) return '<span class="mut">冇 GPS</span>';
+    return `<a class="ckrmap" href="https://maps.google.com/?q=${la},${lo}" target="_blank" rel="noopener">📍 地圖</a>${g.acc != null && isFinite(Number(g.acc)) ? ` <span class="mut">±${Math.round(Number(g.acc))} 米</span>` : ''}`; };
+  const row = x => `<div class="card ckrrow${x.no_out ? ' ckr-noout' : x.open ? ' ckr-open' : ''}" data-n="${esc(x.name)}" data-k="${esc(x.kind)}"><div class="t"><b class="ckrt">${hm(x.time)}</b> <b>${esc(x.name)}</b> <span class="badge ${x.kind === '上班' ? 'ckrin' : 'ckrout'}">${esc(x.kind)}</span>${x.no_out ? ` <span class="cksmiss">⚠️ ${esc(CK_NO_OUT)}</span>` : x.open ? ' <span class="badge cksb-open">返緊工（未落班）</span>' : ''}</div>
+    <div class="cksl">📍 ${esc(x.estate || '—')} · ${gps(x.gps)}</div>${x.flags ? `<div class="mut ckrflag">${esc(x.flags)}</div>` : ''}${x.note && !x.no_out ? `<div class="mut">${esc(x.note)}</div>` : ''}</div>`;
+  return top + head + `<div class="ckscnt" id="ckrcnt">共 ${Number(c.total || 0)} 下 · <b class="ckrin-t">上班 ${Number(c.in || 0)}</b> · <b class="ckrout-t">落班 ${Number(c.out || 0)}</b>${c.no_out ? ` · <b class="cksmiss">⚠️ 冇落班 ${Number(c.no_out)}</b>` : ''}${c.open ? ` · <b class="cksc-open">返緊工 ${Number(c.open)}</b>` : ''}</div>
+    ${d.truncated ? '<div class="warnbox" id="ckrtrunc">太多紀錄，只顯示最新 3000 下；請揀短啲日子或者揀人。</div>' : ''}${d.partial ? '<div class="warnbox" id="ckrpart">日子太耐之前，可能唔齊。</div>' : ''}
+    <div id="ckrlist">${days.length ? days.map(x => `<h3 class="ckh3 ckrday" data-d="${esc(x)}">${esc(x)}（${wk(x)}）${x === today ? ' <span class="badge done">今日</span>' : ''} <span class="mut">${by[x].length} 下</span></h3>${by[x].map(row).join('')}`).join('') : '<div class="card mut" id="ckrnone">呢段日子冇打卡紀錄。</div>'}</div>
+    <div class="mut">讀取：${esc(d.now_hkt || '')} HKT。紀錄來自「員工打卡紀錄 → 紀錄」（只讀）。</div></main>`;
+}
+document.addEventListener('change', e => { const id = e.target && e.target.id; if (!['ckrfrom', 'ckrto', 'ckrname'].includes(id) || cur.view !== 'clock' || CK.step !== 'stat') return;
+  if (id === 'ckrname') CKR.name = e.target.value; else if (/^\d{4}-\d\d-\d\d$/.test(e.target.value)) CKR[id === 'ckrfrom' ? 'from' : 'to'] = e.target.value; else return;
+  ckrLoad(); });
+(function () { try { const st = document.createElement('style'); st.textContent = '.cktabs{display:flex;gap:6px;margin:4px 0 8px}.cktabs button{flex:1;padding:10px 6px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px;font-weight:600}.cktabs button.on{background:#b91c1c;color:#fff;border-color:#b91c1c}.ckrbar .ckrr{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}.ckrbar input[type=date],.ckrbar select{font-size:16px;padding:6px;border:1px solid var(--line);border-radius:8px}.ckrbar select{min-width:150px}.ckrbar #ckrreload{margin-left:auto}.ckrrow{padding:10px 12px;margin:6px 0}.ckrrow .t{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.ckrt{font-variant-numeric:tabular-nums;min-width:44px}.badge.ckrin,.ckrin-t{color:#166534}.badge.ckrin{background:#dcfce7}.badge.ckrout,.ckrout-t{color:#991b1b}.badge.ckrout{background:#fee2e2}.ckrrow.ckr-noout{border:2px solid #dc2626;background:#fef2f2}.ckrrow.ckr-open{border:2px solid #f59e0b;background:#fffbeb}.ckrmap{font-weight:600}.ckrflag{font-size:13px}.ckrday{display:flex;gap:6px;align-items:center}'; document.head.appendChild(st); } catch (e) {} })();
+document.addEventListener('change', e => { if (e.target && e.target.id === 'cksdate' && cur.view === 'clock' && CK.step === 'stat') { const v = e.target.value; if (/^\d{4}-\d\d-\d\d$/.test(v)) { CKS.date = v; cksLoad(); } } });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.id === 'ckspin') { e.preventDefault(); const b = $('[data-cka=stopen]'); if (b) b.click(); } });
+window.addEventListener('hashchange', () => { if (cur.view !== 'clock') { cksReset(); if (CK.step === 'stat') CK.step = 'home'; } });
+(function () { try { const st = document.createElement('style'); st.textContent = '.cksbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.cksbar input[type=date]{font-size:17px;padding:6px;border:1px solid var(--line);border-radius:8px}.cksbar #cksreload{margin-left:auto}.ckscnt{margin:6px 0 10px;font-size:15px}.cksc-none{color:#6b7280}.cksc-open{color:#b45309}.cksc-done{color:#15803d}.cksrow .t{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}.cksl{margin:2px 0}.cksl .ckin,.cksl .ckout{display:inline-block;min-width:38px;font-weight:700}.cksb-none{background:#f3f4f6;color:#374151}.cksb-open{background:#fef3c7;color:#92400e}.cksb-done{background:#dcfce7;color:#166534}.cksrow.cks-open{border:2px solid #f59e0b;background:#fffbeb}.cksmiss{color:#b91c1c;font-weight:700}.cksdet{margin-top:4px;font-size:14px}'; document.head.appendChild(st); } catch (e) {} })();
 
 /* ---------- v0.6.5 📅 消防檢日曆查詢（只讀）----------
    資料：RM Schedule Link (FS) - NT Region xlsx → dev/make_fs_schedule.py → fs_schedule.json（放喺公司 Drive「TNS」資料夾）
@@ -4957,16 +5063,44 @@ function accBoot() { /* start() 入面 Store.load() 之後、第一次 render �
 async function accCheck() { /* 每次開 App／返回 App：問伺服器呢部手機批准咗未 */
   const c = upCfg(), lockedBefore = accLocked();
   if (!c.url || !c.pin || navigator.onLine === false) { ACC.chk = !c.pin ? 'nopin' : 'net'; ACC.chkAt = Date.now(); if (lockedBefore && !accLocked()) accOpen(); else if (accLocked()) render(); return; }
-  ACC.chk = 'pending'; ACC.chkAt = Date.now(); if (accLocked() && cur.view !== 'accmgr') render();
+  ACC.chk = 'pending'; ACC.chkAt = Date.now(); if (accLocked() && cur.view !== 'accmgr') accRender();
   await accRecheck(true);
   if (ACC.chk === 'pending') ACC.chk = 'net';
-  if (lockedBefore && !accLocked() && cur.view !== 'accmgr') accOpen(); else if (accLocked() && cur.view !== 'accmgr') render();
+  if (lockedBefore && !accLocked() && cur.view !== 'accmgr') accOpen(); else if (accLocked() && cur.view !== 'accmgr') accRender();
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Store.prefs && Date.now() - (ACC.chkAt || 0) > 5 * 60e3) accCheck(); });
 const accNeeding = () => !!accGet().need;
+/* v0.6.21-test3 冷啟動（FAN 2026-10-05 14:56：公司 Apps Script 首次 ping 要 15–30 秒，舊 20 秒 timeout 成日「撈唔到」）：
+   登記／批准檢查（access_status、register_name）用 60 秒；等咗 3 秒仲未有回覆 → 顯示「醒緊」；timeout／連唔到 → 停 3 秒自動再試一次，再唔得先叫師傅撳「重新檢查」。
+   （冇網 offline／伺服器答錯 → 唔重試。）ACC_NET 可以喺測試入面改細。 */
+const ACC_NET = { ms: 60000, retryMs: 3000, hintMs: 3000, tries: 2 };
+const ACC_WAKE_TXT = '⏳ 公司伺服器醒緊，首次可能要等半分鐘…', ACC_RETRY_TXT = '🔁 連唔到公司伺服器，幾秒後自動再試一次…';
+function accSlowSet(t) { ACC.slowTxt = t || ''; const e = $('#accslow'); if (e) { e.textContent = ACC.slowTxt; e.hidden = !ACC.slowTxt; } } /* 就地改字，唔 render（唔會洗走師傅打緊嘅名） */
+const accSleep = ms => new Promise(r => setTimeout(r, ms));
+/* v0.6.21-test3：等伺服器期間師傅可能打緊名 → 重畫鎖住頁時保留打咗嘅字同游標 */
+function accRender() { const f = document.activeElement && document.activeElement.id === 'accname'; render();
+  if (f) { const i = $('#accname'); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) {} } } }
+document.addEventListener('input', e => { if (e.target && e.target.id === 'accname') ACC.nameDraft = e.target.value; });
+async function accCallRetry(body) {
+  ACC.tries = 0;
+  try {
+    for (let i = 1; ; i++) {
+      ACC.tries = i; const hint = setTimeout(() => accSlowSet(ACC_WAKE_TXT), i > 1 ? 0 : ACC_NET.hintMs);
+      try { return await gasCall(body, ACC_NET.ms); }
+      catch (e) { clearTimeout(hint); if (i >= ACC_NET.tries || !e || (e.code !== 'timeout' && e.code !== 'network')) throw e; accSlowSet(ACC_RETRY_TXT); await accSleep(ACC_NET.retryMs); }
+      finally { clearTimeout(hint); }
+    }
+  } finally { accSlowSet(''); }
+}
+const accNetMsg = (e, again) => e.code === 'timeout' ? `公司伺服器太耐冇回應（可能啱啱醒緊），等一陣再撳「${again}」。` : e.code === 'offline' || e.code === 'network' ? `冇網／連唔到公司伺服器，有網再撳「${again}」。` : e.message;
 /* 包住 gasCall：自動加 device_id ＋ dtoken；收新 dtoken；處理 need_approval（Bot 動作唔經呢度） */
 const gasCallRaw = gasCall;
-gasCall = async function (body, ms, pinTry) {
+/* v0.6.21 重複登記（FAN 2026-10-05 09:47：同一部手機 3 秒內兩行）：register_name 同一時間只送一個。
+   同名＋同手機再嚟（雙擊、ckRegister 同 accRecheck 撞埋）→ 用返同一個請求；唔同名 → 等上一個完咗先送（會帶住啱啱收到嘅 dtoken → 伺服器更新同一行）。
+   請求一個跟一個，所以手機存低嘅 dtoken 永遠係最後一個回覆（伺服器當係「而家」嗰行）。 */
+let REG_FLY = null;
+const accRegWait = async () => { while (REG_FLY) { try { await REG_FLY.p; } catch (e) {} } };
+const gasCallAcc = async function (body, ms, pinTry) {
   const a = accGet(), b = Object.assign({}, body || {});
   if (!b.device_id) b.device_id = ckDev(); if (a.tok && !b.dtoken) b.dtoken = a.tok;
   const o = await gasCallRaw(b, ms, pinTry);
@@ -4979,6 +5113,13 @@ gasCall = async function (body, ms, pinTry) {
   }
   return o;
 };
+gasCall = async function (body, ms, pinTry) {
+  if (!body || body.action !== 'register_name') return gasCallAcc(body, ms, pinTry);
+  const key = String(body.name || '') + '|' + String(body.device_id || ckDev());
+  while (REG_FLY) { if (REG_FLY.key === key) return REG_FLY.p; try { await REG_FLY.p; } catch (e) {} }
+  const f = { key }; f.p = gasCallAcc(body, ms, pinTry).finally(() => { if (REG_FLY === f) REG_FLY = null; }); REG_FLY = f;
+  return f.p;
+};
 /* ----- 「已登記，等公司批准」 ----- */
 function accHomeBar() { return accNeeding() ? `<button class="card warnbox accbar" data-act="accwait" style="width:100%;text-align:left">⏳ 呢部手機等緊公司批准 · 撳入去睇</button>` : ''; }
 function accQueued() { const up = Store.recs.filter(r => upPending(r)).length, dq = Array.isArray(Store.prefs.doneQ) ? Store.prefs.doneQ.length : 0; return up + dq; }
@@ -4986,12 +5127,13 @@ function viewWait() { return viewLock(); }
 function viewLock() { /* v0.6.14.3 全屏鎖住頁：只有登記／狀態／重新檢查／☰（淨係 ⚙️ 設定） */
   const a = accGet(), c = upCfg(), n = Store.prefs.ckName || (a.need && a.need.name) || '', dev = ckDev(), q = accQueued();
   const top = `<div class="top"><div class="bar"><div class="ttl">🔐 KitShun<small>${esc(APP_VERSION)} · 要主管批准先用得</small></div><button data-act="menu" aria-label="選單">☰</button></div></div>`;
-  const msg = ACC.msg ? `<div class="mut" id="accmsg" style="margin-top:8px;text-align:center">${esc(ACC.msg)}</div>` : '';
+  const slow = `<div id="accslow" class="mut" style="text-align:center;margin-top:10px;font-size:16px;font-weight:600" ${ACC.slowTxt ? '' : 'hidden'}>${esc(ACC.slowTxt || '')}</div>`; /* v0.6.21-test3：「醒緊」就喺掣下面 */
+  const msg = (ACC.msg ? `<div class="mut" id="accmsg" style="margin-top:8px;text-align:center">${esc(ACC.msg)}</div>` : '') + slow;
   let body;
-  if (a.ok && ACC.chk === 'pending') body = `<div class="ckbox" id="acclock" style="text-align:center"><div style="font-size:40px">🔄</div><b style="font-size:20px">檢查緊呢部手機…</b></div>`;
+  if (a.ok && ACC.chk === 'pending') body = `<div class="ckbox" id="acclock" style="text-align:center"><div style="font-size:40px">🔄</div><b style="font-size:20px">檢查緊呢部手機…</b></div>${slow}`;
   else if (!c.url || !c.pin) body = `<div class="card" id="acclock"><h3>第一步：輸入公司畀你嘅師傅 PIN</h3><div class="mut">PIN 由公司話你知。</div>
     <button class="btn pri" style="width:100%;margin-top:10px;min-height:56px" data-act="settings">⚙️ 輸入 PIN</button></div>`;
-  else if (!n || ACC.rename) body = `<div class="card" id="acclock"><h3>${n ? '換名：輸入你個名' : '登記呢部手機：請輸入你個名'}</h3><input id="accname" maxlength="40" placeholder="輸入你個名" autocomplete="name" value="${esc(ACC.rename ? n : '')}" style="width:100%;font-size:18px">
+  else if (!n || ACC.rename) body = `<div class="card" id="acclock"><h3>${n ? '換名：輸入你個名' : '登記呢部手機：請輸入你個名'}</h3><input id="accname" maxlength="40" placeholder="輸入你個名" autocomplete="name" value="${esc(ACC.nameDraft != null ? ACC.nameDraft : (ACC.rename ? n : ''))}" style="width:100%;font-size:18px">
     <button class="btn pri" style="width:100%;margin-top:10px;min-height:56px" data-act="accreg" ${ACC.busy ? 'disabled' : ''}>${ACC.busy ? '登記緊…' : '登記'}</button>${msg}
     <div class="mut" style="margin-top:6px">登記之後要主管批准，先可以用 App。</div></div>`;
   else if (a.need && a.need.removed) body = `<div class="ckbox wait" id="accremoved" style="text-align:center"><div style="font-size:40px">⛔</div><b style="font-size:20px">呢部手機已被主管移除</b>
@@ -5008,30 +5150,39 @@ function viewLock() { /* v0.6.14.3 全屏鎖住頁：只有登記／狀態／重
   return top + `<main id="acclockpage">${body}</main>`;
 }
 async function accRecheck(quiet) {
-  if (ACC.busy) return; ACC.busy = true; if (!quiet) ACC.msg = ''; const rr = () => { if (accLocked() && cur.view !== 'accmgr') render(); }; rr();
+  if (ACC.busy) return; ACC.busy = true; if (!quiet) ACC.msg = ''; const rr = () => { if (accLocked() && cur.view !== 'accmgr') accRender(); }; rr();
   try {
-    let o = await gasCall({ action: 'access_status' }, 20000);
+    let o = await accCallRetry({ action: 'access_status' }); /* v0.6.21-test3：60 秒＋自動再試一次 */
     if (o && o.ok && o.approved === false && !o.registered && Store.prefs.ckName) { Store.prefs.ckReg = ''; Store.flush();
-      o = await gasCall({ action: 'register_name', name: Store.prefs.ckName, device_id: ckDev(), device_label: ckLabel(), app_version: APP_VERSION, hkt: ckHkt(), changed_from: '' }, 20000);
+      o = await accCallRetry({ action: 'register_name', name: Store.prefs.ckName, device_id: ckDev(), device_label: ckLabel(), app_version: APP_VERSION, hkt: ckHkt(), changed_from: '' });
       if (o && o.ok) { Store.prefs.ckReg = Store.prefs.ckName + '|' + ckDev(); Store.flush(); } }
     ACC.chk = 'done';
     if (o && !o.ok && o.error === 'bad_action') accApproved(); /* 伺服器未有批准功能（v1.13 或之前）→ 唔擋 */
     ACC.msg = !o ? '' : o.ok && o.approved !== false ? '' : o.ok ? (quiet ? '' : `仲未批准（${hkTimeNow()} 檢查）。批准咗再撳一次。`) : o.error === 'bad_action' ? '' : upErrText(o.error);
-  } catch (e) { ACC.chk = 'net'; ACC.msg = e.code === 'offline' || e.code === 'network' || e.code === 'timeout' ? '冇網／連唔到公司伺服器，有網再撳「重新檢查」。' : e.message; }
+  } catch (e) { ACC.chk = 'net'; ACC.msg = accNetMsg(e, '🔄 重新檢查'); }
   ACC.busy = false; rr();
 }
 async function accReRegister() { /* v0.6.16：被移除嘅手機 → 師傅自己撳重新登記 → 伺服器開新一行（等批准） */
   const n = Store.prefs.ckName || ((accGet().need || {}).name) || ''; if (!n) { ACC.rename = true; return render(); }
   if (ACC.busy) return; ACC.busy = true; ACC.msg = ''; render();
-  try { const o = await gasCall({ action: 'register_name', name: n, device_id: ckDev(), device_label: ckLabel(), app_version: APP_VERSION, hkt: ckHkt(), changed_from: '' }, 20000);
+  try { const o = await accCallRetry({ action: 'register_name', name: n, device_id: ckDev(), device_label: ckLabel(), app_version: APP_VERSION, hkt: ckHkt(), changed_from: '' });
     if (o && o.ok) { Store.prefs.ckReg = n + '|' + ckDev(); Store.flush(); ACC.msg = '已重新登記，等主管批准。'; } else ACC.msg = o ? upErrText(o.error) : '';
-  } catch (e) { ACC.msg = e.code === 'offline' || e.code === 'network' || e.code === 'timeout' ? '冇網／連唔到公司伺服器，有網再撳。' : e.message; }
+  } catch (e) { ACC.msg = accNetMsg(e, '📝 重新登記'); }
   ACC.busy = false; render();
 }
 const hkTimeNow = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(11, 16);
 async function accRegister() {
-  const i = $('#accname'), n = ckSetName(i ? i.value : ''); if (!n) return;
-  ACC.rename = false; ACC.msg = '登記緊…'; render(); await new Promise(r => setTimeout(r, 50)); await accRecheck();
+  if (ACC.busy) return; /* v0.6.21：登記緊 → 再撳／再按 Enter 都唔理 */
+  const i = $('#accname'), n = ckSetName(i ? i.value : ''); if (!n) return; /* ckSetName 已經喺背景送 register_name */
+  ACC.nameDraft = null;
+  ACC.busy = true; ACC.rename = false; ACC.msg = '登記緊…'; render(); /* 鎖住：之後出現嘅「🔄 重新檢查」都 disabled（雙擊第二下會撳中佢） */
+  /* v0.6.21-test3：同一個 register_name（同名＋同手機 → 同背景嗰個共用一個請求），但經 accCallRetry：等耐咗顯示「醒緊」，timeout／斷線自動再試一次 */
+  let fail = null;
+  try { await accSleep(50); const o = await accCallRetry({ action: 'register_name', name: n, device_id: ckDev(), device_label: ckLabel(), app_version: APP_VERSION, hkt: ckHkt(), changed_from: Store.prefs.ckPrev || '' });
+    if (o && o.ok && Store.prefs.ckName === n) { Store.prefs.ckReg = n + '|' + ckDev(); Store.flush(); } }
+  catch (e) { fail = e; } finally { ACC.busy = false; }
+  if (fail) { ACC.chk = 'net'; ACC.msg = accNetMsg(fail, '🔄 重新檢查'); return accRender(); } /* 兩次都唔得 → 唔再拖，叫師傅撳「重新檢查」 */
+  await accRecheck();
 }
 function accMiniMenu() { /* 鎖住時嘅 ☰：淨係 ⚙️ 設定（PIN／打卡名／管理：批准手機） */
   const m = $('#modal'); m.innerHTML = `<div class="box"><h3>選單</h3><button class="btn" style="width:100%;margin:6px 0" data-act="settings">⚙️ 設定（PIN／打卡名／管理：批准手機）</button>
@@ -5061,29 +5212,35 @@ function viewAccMgr() {
   if (!ACC.mgr) return top + `<main><div class="card"><h3>輸入主管密碼（MANAGER_PIN）</h3><input id="accmpin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼" style="width:100%;font-size:18px">
     <button class="btn pri" style="width:100%;margin-top:10px;min-height:54px" data-act="accmopen" ${ACC.mgrBusy ? 'disabled' : ''}>${ACC.mgrBusy ? '讀緊…' : '開啟'}</button>
     ${ACC.mgrErr ? `<div class="errbox" id="accmerr" style="margin-top:8px">${esc(ACC.mgrErr)}</div>` : ''}<div class="mut" style="margin-top:6px">密碼只用嚟開呢頁，唔會儲存喺手機。</div></div></main>`;
-  const m = ACC.mgr, row = (x, pend) => `<div class="card accrow" data-row="${x.row}"><div class="t"><b>${esc(x.name || '（冇名）')}</b>${pend ? '<span class="badge pend">等批准</span>' : '<span class="badge done">已批准</span>'}</div>
-    <div class="mut">${esc(x.label && x.label !== '?' ? x.label : '（舊機，型號未知）')} · …${esc(x.dev_tail || '')}</div><div class="mut">第一次登記 ${esc(x.first || '—')} · 最後使用 ${esc(x.last_use || '—')}</div>${x.note ? `<div class="mut">${esc(x.note)}</div>` : ''}
-    <div class="accacts" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn ${pend ? 'ok' : 'danger'} sm" data-act="accset" data-row="${x.row}" data-dev="${esc(x.device_id)}" data-v="${pend ? 1 : 0}" ${ACC.mgrBusy ? 'disabled' : ''}>${pend ? '✅ 批准' : '⛔ 取消批准'}</button>
-    ${m.canRm ? `<button class="btn danger sm" data-act="accrm" data-row="${x.row}" data-dev="${esc(x.device_id)}" data-n="${esc(x.name || '（冇名）')}" data-tail="${esc(x.dev_tail || '')}" ${ACC.mgrBusy ? 'disabled' : ''}>🗑 移除</button>` : ''}</div></div>`;
+  const m = ACC.mgr, row = (x, pend) => { const rs = x.rows || [x], n = rs.length, ids = rs.map(y => y.row).join(','), first = n > 1 ? rs.map(y => y.first || '').filter(Boolean).sort()[0] : x.first;
+    return `<div class="card accrow${n > 1 ? ' accdup' : ''}" data-row="${x.row}" data-rows="${ids}"><div class="t"><b>${esc(x.name || '（冇名）')}</b>${pend ? '<span class="badge pend">等批准</span>' : '<span class="badge done">已批准</span>'}${n > 1 ? `<span class="badge accdupn">登記咗 ${n} 次</span>` : ''}</div>
+    <div class="mut">${esc(x.label && x.label !== '?' ? x.label : '（舊機，型號未知）')} · …${esc(x.dev_tail || '')}</div><div class="mut">第一次登記 ${esc(first || '—')} · 最後使用 ${esc(x.last_use || '—')}</div>${x.note ? `<div class="mut">${esc(x.note)}</div>` : ''}
+    ${n > 1 ? `<div class="mut accdupnote">同一部手機同一個名重複登記（${rs.map(y => esc((y.first || '').slice(11) || '—')).join('、')}）；批准會一次過批准晒。</div>` : ''}
+    <div class="accacts" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn ${pend ? 'ok' : 'danger'} sm" data-act="accset" data-row="${x.row}" data-rows="${ids}" data-dev="${esc(x.device_id)}" data-v="${pend ? 1 : 0}" ${ACC.mgrBusy ? 'disabled' : ''}>${pend ? (n > 1 ? `✅ 批准（${n} 行）` : '✅ 批准') : '⛔ 取消批准'}</button>
+    ${m.canRm ? `<button class="btn danger sm" data-act="accrm" data-row="${x.row}" data-rows="${ids}" data-dev="${esc(x.device_id)}" data-n="${esc(x.name || '（冇名）')}" data-tail="${esc(x.dev_tail || '')}" ${ACC.mgrBusy ? 'disabled' : ''}>🗑 移除</button>` : ''}</div></div>`; };
+  /* v0.6.21：等批准入面 同手機＋同名 嘅行合併做一張卡（最新嗰行做代表）；批准／移除 = 全部行 */
+  const pendG = []; { const gm = {}; m.pending.forEach(x => { const k = (x.device_id || '') + '|' + (x.name || ''); if (x.device_id && gm[k]) gm[k].rows.push(x); else { gm[k] = Object.assign({}, x, { rows: [x] }); pendG.push(gm[k]); } }); }
   const rmRow = x => `<div class="card accrow accrmrow" data-row="${x.row}"><div class="t"><b>${esc(x.name || '（冇名）')}</b><span class="badge">已移除</span></div>
     <div class="mut">${esc(x.label && x.label !== '?' ? x.label : '（舊機，型號未知）')} · …${esc(x.dev_tail || '')}</div><div class="mut">移除時間 ${esc(x.removed || '—')} · 最後使用 ${esc(x.last_use || '—')}</div>
     <button class="btn sm" style="margin-top:6px" data-act="accrestore" data-row="${x.row}" data-dev="${esc(x.device_id)}" ${ACC.mgrBusy ? 'disabled' : ''}>↩️ 恢復（返去等批准）</button></div>`;
   const rmSec = !m.canRm ? `<div class="warnbox" id="accnorm" style="margin-top:10px">「🗑 移除成員」要公司伺服器更新到 v1.16 先用得（而家只可以取消批准）。</div>`
     : `<button class="btn" id="accshowrm" style="width:100%;margin-top:10px" data-act="accshowrm">${ACC.showRm ? '收埋已移除' : `顯示已移除（${m.removed.length}）`}</button>${ACC.showRm ? (m.removed.length ? m.removed.map(rmRow).join('') : '<div class="card mut">冇已移除嘅手機。</div>') : ''}`;
   return top + `<main>${ACC.mgrErr ? `<div class="errbox" id="accmerr">${esc(ACC.mgrErr)}</div>` : ''}
-    <h2 class="bdh">等批准（${m.pending.length}）</h2>${m.pending.length ? m.pending.map(x => row(x, true)).join('') : '<div class="card mut" id="accnone">冇手機等緊批准。</div>'}
+    <h2 class="bdh">等批准（${pendG.length}）</h2>${pendG.length ? pendG.map(x => row(x, true)).join('') : '<div class="card mut" id="accnone">冇手機等緊批准。</div>'}
     <h2 class="bdh">已批准（${m.approved.length}）</h2>${m.approved.map(x => row(x, false)).join('')}${rmSec}
     <button class="btn" style="width:100%;margin:10px 0" data-act="accmreload" ${ACC.mgrBusy ? 'disabled' : ''}>🔄 重新載入</button><div class="mut">讀取：${esc(m.now_hkt || '')} HKT · 都可以直接喺「師傅名單」剔「批准」（最多 1 分鐘生效）。</div></main>`;
 }
 async function accMgrCall(body) {
   if (ACC.mgrBusy) return; ACC.mgrBusy = true; ACC.mgrErr = ''; render();
-  try { const o = await gasCall(Object.assign({ manager_pin: ACC.mgrPin }, body), 30000);
-    if (o && o.ok) { ACC.mgr = { pending: o.pending || [], approved: o.approved || [], removed: Array.isArray(o.removed) ? o.removed : [], canRm: o.can_remove === true, now_hkt: o.now_hkt || '' }; ACC.pendN = ACC.mgr.pending.length; } /* v0.6.16：can_remove 只喺 v1.16 */
+  const list = Array.isArray(body) ? body : [body]; body = list[0]; /* v0.6.21：合併咗嘅卡 → 一行一行送（有錯即停） */
+  try { let o; for (const b of list) { o = await gasCall(Object.assign({ manager_pin: ACC.mgrPin }, b), 30000); if (!o || !o.ok) break; }
+    if (o && o.ok) { ACC.mgr = { pending: o.pending || [], approved: o.approved || [], removed: Array.isArray(o.removed) ? o.removed : [], canRm: o.can_remove === true, now_hkt: o.now_hkt || '' }; ACC.pendN = new Set(ACC.mgr.pending.map(x => (x.device_id || x.row) + '|' + (x.name || ''))).size; } /* v0.6.16：can_remove 只喺 v1.16 */
     else if (o && (o.error === 'bad_op' || o.error === 'bad_action') && body.op) { if (ACC.mgr) ACC.mgr.canRm = false; ACC.mgrErr = ACC_ERR.bad_op; }
     else { ACC.mgrErr = (ACC_ERR[o && o.error] || upErrText(o && o.error)) + (o && o.remaining != null ? `（仲有 ${o.remaining} 次機會）` : ''); if (o && ['bad_manager_pin', 'manager_locked'].includes(o.error)) { ACC.mgr = null; ACC.mgrPin = ''; } }
   } catch (e) { ACC.mgrErr = e.message; }
   ACC.mgrBusy = false; if (cur.view === 'accmgr') render();
 }
+const accRowsOf = el => { const v = String(el.dataset.rows || el.dataset.row || '').split(',').map(Number).filter(n => n > 0); return v.length ? v : [Number(el.dataset.row)]; };
 function accMgrReset() { ACC.mgr = null; ACC.showRm = false; ACC.mgrPin = ''; ACC.mgrErr = ''; ACC.mgrBusy = false; }
 window.addEventListener('hashchange', () => { if (cur.view !== 'accmgr') accMgrReset(); if (cur.view !== 'wait') ACC.msg = ''; });
 document.addEventListener('click', async e => {
@@ -5097,15 +5254,15 @@ document.addEventListener('click', async e => {
   if (a === 'accrm') { if (!ACC.mgr || !ACC.mgr.canRm) return; /* v0.6.16 移除成員（唔刪紀錄） */
     if (!(await ask('移除成員？', `<div class="errbox" id="accrmask"><b style="font-size:18px">👷 ${esc(el.dataset.n)}</b><br>手機尾號 …${esc(el.dataset.tail)}</div>
       <div style="margin-top:8px">移除之後呢部手機即刻鎖住，手機上嘅公司資料會清走。「師傅名單」紀錄會保留，之後可以喺「顯示已移除」恢復。</div>`, '🗑 移除', '取消', 'danger'))) return;
-    return accMgrCall({ action: 'acc_set', row: Number(el.dataset.row), device_id_set: el.dataset.dev, op: 'remove', approve: false }); }
+    return accMgrCall(accRowsOf(el).map(r => ({ action: 'acc_set', row: r, device_id_set: el.dataset.dev, op: 'remove', approve: false }))); }
   if (a === 'accrestore') return accMgrCall({ action: 'acc_set', row: Number(el.dataset.row), device_id_set: el.dataset.dev, op: 'restore', approve: false });
   if (a === 'accmgrback') { const lk = accLocked(); go('#/'); if (lk) setTimeout(() => accCheck(), 50); return; }
-  if (a === 'accrename') { ACC.rename = true; ACC.msg = ''; return render(); }
+  if (a === 'accrename') { ACC.rename = true; ACC.msg = ''; ACC.nameDraft = null; return render(); }
   if (a === 'accmopen') { const i = $('#accmpin'), p = i ? i.value.trim() : ''; if (!p) return toast('請輸入主管密碼'); ACC.mgrPin = p; return accMgrCall({ action: 'acc_list' }); }
   if (a === 'accmreload') return accMgrCall({ action: 'acc_list' });
   if (a === 'accset') { const yes = el.dataset.v === '1';
     if (!yes && !(await ask('取消批准？', '呢部手機之後會用唔到公司資料（要再批准先用得返）。', '取消批准', '唔好'))) return;
-    return accMgrCall({ action: 'acc_set', row: Number(el.dataset.row), device_id_set: el.dataset.dev, approve: yes }); }
+    return accMgrCall((yes ? accRowsOf(el) : [Number(el.dataset.row)]).map(r => ({ action: 'acc_set', row: r, device_id_set: el.dataset.dev, approve: yes }))); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.id === 'accname') { e.preventDefault(); const b = $('[data-act=accreg]'); if (b) b.click(); return; }
   if (e.key === 'Enter' && e.target && e.target.id === 'accmpin') { e.preventDefault(); const b = $('[data-act=accmopen]'); if (b) b.click(); } });
