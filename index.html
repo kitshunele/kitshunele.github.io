@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.21-test4';
+const APP_VERSION = '0.6.21-test5';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1743,17 +1743,32 @@ function upCfg() { let u = String(Store.prefs.upUrl || '').trim(); if (u && u !=
 const upErrText = c => UP_MSG[c] || String(c || '');
 function upErr(code, msg) { const e = new Error(msg || upErrText(code)); e.code = code; return e; }
 async function gasCall(body, ms, pinTry) { // pinTry：提交頁 PIN 框試緊嘅 PIN（未儲存）
+  /* v0.6.21-test5：Google 偶發 HTTP 404（Work Order 測 ~1/20）→ 自動重試最多 2 次；408/429/502/503/504 一樣 */
   const c = upCfg(), url = c.url, pin = pinTry != null ? String(pinTry).trim() : c.pin;
   if (!url) throw upErr('no_url'); if (!pin) throw upErr('no_pin');
   if (navigator.onLine === false) throw upErr('offline');
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms || 120000);
-  let res;
-  try { // text/plain = 「simple request」→ 冇 CORS preflight；Apps Script 會 302 轉去 googleusercontent，fetch 自動跟
-    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ pin }, body)), redirect: 'follow', cache: 'no-store', credentials: 'omit', signal: ctl.signal });
-  } catch (e) { throw upErr(e && e.name === 'AbortError' ? 'timeout' : 'network'); } finally { clearTimeout(t); }
-  const txt = await res.text().catch(() => '');
-  let o; try { o = JSON.parse(txt); } catch (e) { throw upErr(res.ok ? 'bad_reply' : 'http', res.ok ? null : '伺服器出錯（HTTP ' + res.status + '）'); }
-  return o;
+  const payload = JSON.stringify(Object.assign({ pin }, body));
+  const tries = 3, retryHttp = new Set([404, 408, 429, 502, 503, 504]);
+  let lastHttp = 0;
+  for (let i = 0; i < tries; i++) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms || 120000);
+    let res;
+    try { // text/plain = 「simple request」→ 冇 CORS preflight；Apps Script 會 302 轉去 googleusercontent，fetch 自動跟
+      res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: payload, redirect: 'follow', cache: 'no-store', credentials: 'omit', signal: ctl.signal });
+    } catch (e) {
+      clearTimeout(t);
+      if (i < tries - 1 && e && e.name !== 'AbortError') { await new Promise(r => setTimeout(r, 800 + i * 400)); continue; }
+      throw upErr(e && e.name === 'AbortError' ? 'timeout' : 'network');
+    } finally { clearTimeout(t); }
+    lastHttp = res.status;
+    const txt = await res.text().catch(() => '');
+    let o; try { o = JSON.parse(txt); } catch (e) {
+      if (i < tries - 1 && retryHttp.has(res.status)) { await new Promise(r => setTimeout(r, 800 + i * 400)); continue; }
+      throw upErr(res.ok ? 'bad_reply' : 'http', res.ok ? null : '伺服器出錯（HTTP ' + res.status + '）');
+    }
+    return o;
+  }
+  throw upErr('http', '伺服器出錯（HTTP ' + lastHttp + '）');
 }
 function upPending(r) { return !!(r && r.upload && r.updated <= r.upload.queuedAt); }
 function compactTs(d) { const p = hk(d); return `${p.y}${p.m}${p.d}${p.H}${p.M}${p.S}`; }

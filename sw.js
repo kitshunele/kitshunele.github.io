@@ -1,5 +1,5 @@
 // 離線快取（network-first，冇網用快取；v0.5.6：同源 GET 用 cache:'no-cache'）
-const C='fsapp20259005-v0.6.21-test4-icon1';
+const C='fsapp20259005-v0.6.21-test5-icon1';
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png']).then(()=>c.addAll(['./pdfjs/pdf.min.js','./pdfjs/pdf.worker.min.js']).catch(()=>{}))/* v0.6.14 PDF 檢視器（冇都唔影響安裝） */));self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
 self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;if(/(^|\.)(script\.google\.com|googleusercontent\.com)$/.test(new URL(e.request.url).hostname))return;/* v0.6.15：公司伺服器（App 資料等）一律唔入快取 */const same=new URL(e.request.url).origin===self.location.origin;/* 同源：一定問返伺服器（唔用瀏覽器 HTTP 快取舊版） */e.respondWith((same?fetch(e.request.url,{cache:'no-cache',credentials:'same-origin'}):fetch(e.request)).then(r=>{const cp=r.clone();caches.open(C).then(c=>c.put(e.request,cp));return r;}).catch(()=>caches.match(e.request,{ignoreSearch:true})));});
