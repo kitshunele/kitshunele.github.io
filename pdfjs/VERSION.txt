@@ -1,0 +1,1 @@
+pdfjs-dist 3.11.174 legacy build (Apache-2.0). 由 build.py 複製去 pwa_hosting/pdfjs/ 同 App 單檔旁邊 pdfjs/。
