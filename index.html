@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.21-test7';
+const APP_VERSION = '0.6.22';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -5548,14 +5548,17 @@ function psBlkItems(estName) {
   if (PS.placesOld) { const ed = pkEstDef(estName); return ed ? pkBldItems(ed) : []; }
   return [];
 }
+const PS_PLACES_LS = 'fsapp20259005.psplaces.v1';
+(function () { try { const c = JSON.parse(localStorage.getItem(PS_PLACES_LS) || 'null'); if (c && Array.isArray(c.estates)) { PS.places = c.estates; PS.placesStale = true; } } catch (e) { } })(); /* v0.6.22：上次清單即刻顯示 */
 async function psLoadPlaces(force) {
-  if (PS.placesBusy) return; if (PS.places && !force) return;
+  if (PS.placesBusy) return; if (PS.places && !PS.placesStale && !force) return;
   const c = upCfg(); if (!c.url || !c.pin) return;
   if (typeof accLocked === 'function' && accLocked()) return; /* 唔再等 APPD.ready（之前會令清單永遠退回合約） */
   PS.placesBusy = true; if (cur.view === 'phsearch') psPaint('form');
   try {
     const o = await psCall({ action: 'photo_places', from: phAddDay(hkDate(), -(PS_MAXD - 1)), to: hkDate(), refresh: !!force }, 90000);
-    PS.places = Array.isArray(o.estates) ? o.estates : []; PS.placesOld = false; PS.placesErr = '';
+    PS.places = Array.isArray(o.estates) ? o.estates : []; PS.placesOld = false; PS.placesErr = ''; PS.placesStale = false;
+    try { localStorage.setItem(PS_PLACES_LS, JSON.stringify({ estates: PS.places, at: Date.now() })); } catch (e) { }
     if (PS.f && PS.f.est && !PS.f.estT && !psPlaceEst(PS.f.est)) { PS.f.estT = true; }
   } catch (e) {
     if (e.code === 'bad_action') { PS.placesOld = true; PS.places = null; PS.placesErr = ''; }
@@ -5621,7 +5624,7 @@ function psForm() {
   const place = f.est && !f.estT ? psPlaceEst(f.est) : null;
   const ed = PS.placesOld && f.est && !f.estT ? pkEstDef(f.est) : null;
   const blkItems = PS.places ? (place ? psBlkItems(f.est) : []) : (ed ? pkBldItems(ed) : []);
-  const estNote = PS.placesBusy ? '<div class="mut psnote">載入緊有相嘅屋邨／地方…</div>'
+  const estNote = PS.placesBusy && !PS.places ? '<div class="mut psnote">載入緊有相嘅屋邨／地方…</div>'
     : (PS.places ? '<div class="mut psnote">屋邨／地方只列最近有相嘅（房署外都有' + (PS.places.length ? '，共 ' + PS.places.length + ' 個' : '；呢段日子暫時冇') + '）。</div>'
     : (PS.placesOld ? '<div class="mut psnote">伺服器未更新 photo_places：暫時用合約屋邨清單。</div>'
     : (PS.placesErr ? `<div class="mut psnote">載入地方清單失敗：${esc(PS.placesErr)} <a class="jump" href="#" data-ps="places">再試</a></div>` : '<div class="mut psnote">載入地方清單中…</div>')));
@@ -5667,7 +5670,7 @@ function psResults() {
 function psMain() { return `${PS.err && PS.errCode === 'form' ? `<div class="errbox" id="pserr">${esc(PS.err)}</div>` : ''}${psForm()}<div id="psres">${psResults()}</div>`; }
 function viewPhs() {
   if (!PS.f) PS.f = psDef();
-  if (upCfg().url && upCfg().pin && !PS.placesBusy && (PS.places === null && !PS.placesOld)) setTimeout(() => { if (cur.view === 'phsearch') psLoadPlaces(); }, 0);
+  if (upCfg().url && upCfg().pin && !PS.placesBusy && ((PS.places === null || PS.placesStale) && !PS.placesOld)) setTimeout(() => { if (cur.view === 'phsearch') psLoadPlaces(); }, 0);
   if (!PS.done && !PS.busy && !PS.err && upCfg().url && upCfg().pin) setTimeout(() => { if (cur.view === 'phsearch' && !PS.done && !PS.busy) psSearch(); }, 0); /* 第一次入：用預設（最近 7 日）即刻搵 */
   return `<div class="top"><div class="bar"><button data-act="home" aria-label="返主頁">‹ 主頁</button><div class="ttl">🔍 尋找相片<small>WhatsApp 相 ＋ App 相 · 只讀 · 經公司 Apps Script</small></div></div></div><main id="psmain">${psMain()}</main>`;
 }
