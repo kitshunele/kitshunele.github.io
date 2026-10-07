@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.22';
+const APP_VERSION = '0.6.23';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1730,45 +1730,30 @@ function fsdImport(r, o) {
    規則：「直接上傳唔可以儲存喺電話」→ 唔會喺手機寫任何 .json／相片檔；冇分享／下載。
    上傳成功 → 刪走手機上呢座嘅資料同相片，只留一行紀錄（屋邨／座／日期／上傳時間）。
    冇網／失敗 → 「未上傳」留喺 App，有網自動再試。PIN 只存喺呢部手機，App 冇任何 token。 */
-const UPLOAD_URL_BUILTIN = "https://script.google.com/macros/s/AKfycbww4v73DbqtGwKmx8Nbl3tX3lgjqrTuoow8UqSG27yOkdirP38l9N11-JFTisGrpvQ2/exec";
+const UPLOAD_URL_BUILTIN = "https://kitshun-edge.kitshunele.workers.dev/";
 const UP_MAX = 25 * 1024 * 1024;
 const UP_HARD = ['stale_revision', 'bad_revises', 'bad_pin', 'server_pin_not_set', 'bad_schema', 'too_large', 'bad_json', 'bad_photos', 'no_url', 'no_pin', 'bad_reply', 'rate_limited', 'bad_action'];
 const UP_MSG = { network: '連唔到伺服器（冇網？）', timeout: '上傳逾時', offline: '手機冇網絡', bad_pin: 'PIN 唔啱', server_pin_not_set: 'Apps Script 未設定 TECH_PIN',
   bad_schema: '資料唔齊（屋邨／座／日期）', too_large: '檔案太大（相片太多？上限 25 MB）', bad_json: '資料格式錯', bad_photos: '相片資料錯', no_url: '未設定上傳網址',
   no_pin: '未設定 PIN', stale_revision: '呢份已經有更新版本（有人改過），請喺「查閱紀錄」開最新版再改', bad_revises: 'Drive 搵唔到原本嗰份（可能已刪除），請聯絡公司', bad_reply: '伺服器回覆唔啱（網址啱唔啱？）', rate_limited: 'PIN 錯太多次，請 10 分鐘後再試', need_approval: '呢部手機未批准（資料留喺手機，公司批准之後自動上傳）', server_error: '伺服器出錯', http: '伺服器出錯' };
 let upBusy = false;
-const UPLOAD_URL_OLD = ["https://script.google.com/macros/s/AKfycbzjpmrwK5WQPXpHwC26KCoITs56oDAyN7f9_qKJx44nsHB_8Hu5pDnquoi_mvnVKb8YnQ/exec"]; /* 以前嘅公司網址（src/upload_url_old.txt）：手機設定存咗舊公司網址 → 當冇存，跟內置新網址 */
+const UPLOAD_URL_OLD = ["https://script.google.com/macros/s/AKfycbzjpmrwK5WQPXpHwC26KCoITs56oDAyN7f9_qKJx44nsHB_8Hu5pDnquoi_mvnVKb8YnQ/exec", "https://script.google.com/macros/s/AKfycbww4v73DbqtGwKmx8Nbl3tX3lgjqrTuoow8UqSG27yOkdirP38l9N11-JFTisGrpvQ2/exec"]; /* 以前嘅公司網址（src/upload_url_old.txt）：手機設定存咗舊公司網址 → 當冇存，跟內置新網址 */
 function upCfg() { let u = String(Store.prefs.upUrl || '').trim(); if (u && u !== UPLOAD_URL_BUILTIN && UPLOAD_URL_OLD.includes(u)) u = '';
   return { url: String(u || UPLOAD_URL_BUILTIN || '').trim(), pin: String(Store.prefs.upPin || '').trim() }; }
 const upErrText = c => UP_MSG[c] || String(c || '');
 function upErr(code, msg) { const e = new Error(msg || upErrText(code)); e.code = code; return e; }
 async function gasCall(body, ms, pinTry) { // pinTry：提交頁 PIN 框試緊嘅 PIN（未儲存）
-  /* v0.6.21-test5：Google 偶發 HTTP 404（Work Order 測 ~1/20）→ 自動重試最多 2 次；408/429/502/503/504 一樣 */
   const c = upCfg(), url = c.url, pin = pinTry != null ? String(pinTry).trim() : c.pin;
   if (!url) throw upErr('no_url'); if (!pin) throw upErr('no_pin');
   if (navigator.onLine === false) throw upErr('offline');
-  const payload = JSON.stringify(Object.assign({ pin }, body));
-  const tries = 3, retryHttp = new Set([404, 408, 429, 502, 503, 504]);
-  let lastHttp = 0;
-  for (let i = 0; i < tries; i++) {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms || 120000);
-    let res;
-    try { // text/plain = 「simple request」→ 冇 CORS preflight；Apps Script 會 302 轉去 googleusercontent，fetch 自動跟
-      res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: payload, redirect: 'follow', cache: 'no-store', credentials: 'omit', signal: ctl.signal });
-    } catch (e) {
-      clearTimeout(t);
-      if (i < tries - 1 && e && e.name !== 'AbortError') { await new Promise(r => setTimeout(r, 800 + i * 400)); continue; }
-      throw upErr(e && e.name === 'AbortError' ? 'timeout' : 'network');
-    } finally { clearTimeout(t); }
-    lastHttp = res.status;
-    const txt = await res.text().catch(() => '');
-    let o; try { o = JSON.parse(txt); } catch (e) {
-      if (i < tries - 1 && retryHttp.has(res.status)) { await new Promise(r => setTimeout(r, 800 + i * 400)); continue; }
-      throw upErr(res.ok ? 'bad_reply' : 'http', res.ok ? null : '伺服器出錯（HTTP ' + res.status + '）');
-    }
-    return o;
-  }
-  throw upErr('http', '伺服器出錯（HTTP ' + lastHttp + '）');
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms || 120000);
+  let res;
+  try { // text/plain = 「simple request」→ 冇 CORS preflight；Apps Script 會 302 轉去 googleusercontent，fetch 自動跟
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ pin }, body)), redirect: 'follow', cache: 'no-store', credentials: 'omit', signal: ctl.signal });
+  } catch (e) { throw upErr(e && e.name === 'AbortError' ? 'timeout' : 'network'); } finally { clearTimeout(t); }
+  const txt = await res.text().catch(() => '');
+  let o; try { o = JSON.parse(txt); } catch (e) { throw upErr(res.ok ? 'bad_reply' : 'http', res.ok ? null : '伺服器出錯（HTTP ' + res.status + '）'); }
+  return o;
 }
 function upPending(r) { return !!(r && r.upload && r.updated <= r.upload.queuedAt); }
 function compactTs(d) { const p = hk(d); return `${p.y}${p.m}${p.d}${p.H}${p.M}${p.S}`; }
@@ -5515,12 +5500,12 @@ ehAuto = function () { ehAutoRaw_ecr(); if (cur.view === 'echist' && !ER.busy &&
 
 /* ---------- v0.6.19 🔍 尋找相片（FAN 2026-10-04 22:33）----------
    主頁格「🔍 尋找相片」（#/phsearch）：喺公司 Drive「杰信工程部 WhatsApp 相片」（yyyy-MM-dd / 屋邨 / 大廈）搵相同影片。
-   篩選：日期範圍（預設最近 7 日）、屋邨／地方 → 大廈下拉（v0.6.21-test6：只列資料夾有相嘅地方，房署外都有；都有「其他（自己打）」）、師傅（可留空）、來源（全部／WhatsApp／App：App 相 = 「App_…」捷徑）、檔名關鍵字。
+   篩選：日期範圍（預設最近 7 日）、屋邨 → 大廈下拉（都有「其他（自己打）」）、師傅（可留空）、來源（全部／WhatsApp／App：App 相 = 「App_…」捷徑）、檔名關鍵字。
    伺服器 v1.19：photo_search（分頁，每次 PS_PAGE 張）、photo_thumbs（縮圖，捷徑解返原相）、photo_full（原相）；已批准手機先用到。
    結果按 日期 → 屋邨 → 大廈 分組；撳相睇大圖（左右掃／‹ ›）＋「↗ 開 Drive」；影片顯示縮圖＋「開 Drive」播。
    相只放喺記憶體（object URL），唔會存落手機；離開頁面就清。伺服器 < v1.19（bad_action）→ 顯示提示，其他功能照用。 */
 const PS_PAGE = 60, PS_THB = 12, PS_KEEP = 6, PS_MAXD = 93;
-const PS = { f: null, items: [], next: null, busy: false, err: '', errCode: '', old: false, done: false, thumbs: {}, full: new Map(), urls: [], tok: 0, from: '', to: '', idx: -1, hist: false, more: false, places: null, placesBusy: false, placesOld: false, placesErr: '' }; /* v0.6.21-test7：places 有結果就唔退回合約全表 */
+const PS = { f: null, items: [], next: null, busy: false, err: '', errCode: '', old: false, done: false, thumbs: {}, full: new Map(), urls: [], tok: 0, from: '', to: '', idx: -1, hist: false, more: false };
 const PS_MSG = {
   bad_action: '公司伺服器（Apps Script）未更新到 v1.19，未有「尋找相片」。Work Order 部署 v1.19 之後就用得，唔使改任何設定。（當日相仍然可以喺 TR-G2／TR-H2「📷 查看當日照片」睇。）',
   wa_no_access: 'Apps Script 讀唔到「杰信工程部 WhatsApp 相片」資料夾，請通知公司。',
@@ -5531,41 +5516,6 @@ const PS_MSG = {
 const psErr = e => PS_MSG[e && e.code] || upErrText(e && e.code) || (e && e.message) || '出錯';
 async function psCall(body, ms) { const o = await gasCall(body, ms || 90000); if (!o || !o.ok) { const e = upErr(o && o.error || 'bad_reply'); e.o = o; throw e; } return o; }
 function psDef() { const t = hkDate(); return { from: phAddDay(t, -6), to: t, est: '', estT: false, blk: '', blkT: false, tech: '', src: 'all', q: '' }; }
-/* v0.6.21-test6：屋邨下拉只列資料夾入面有嘅地方（伺服器 photo_places；房署外都有） */
-function psPlaceEst(name) { const n = pkN(name); return (PS.places || []).find(e => pkN(e.name) === n) || null; }
-function psPlaceLabel(name) { /* 顯示：中文　英文（合約有就加英；否則淨中文／原名） */
-  const d = pkEstDef(name); if (d && d.zh) return d.zh + (d.en ? '　' + d.en.replace(/ Estate$/, '') : '');
-  return name;
-}
-function psEstItems() {
-  /* v0.6.21-test7：有 photo_places 結果（包括空陣列）就只用佢，唔再退回合約全表 */
-  if (PS.places) return PS.places.map(e => ({ v: e.name, t: psPlaceLabel(e.name) }));
-  if (PS.placesOld) return pkEstItems(); /* 伺服器未支援先用合約 */
-  return []; /* 未載入完：暫時空，等 note */
-}
-function psBlkItems(estName) {
-  const p = psPlaceEst(estName); if (p) return (p.blocks || []).map(b => ({ v: b, t: b }));
-  if (PS.placesOld) { const ed = pkEstDef(estName); return ed ? pkBldItems(ed) : []; }
-  return [];
-}
-const PS_PLACES_LS = 'fsapp20259005.psplaces.v1';
-(function () { try { const c = JSON.parse(localStorage.getItem(PS_PLACES_LS) || 'null'); if (c && Array.isArray(c.estates)) { PS.places = c.estates; PS.placesStale = true; } } catch (e) { } })(); /* v0.6.22：上次清單即刻顯示 */
-async function psLoadPlaces(force) {
-  if (PS.placesBusy) return; if (PS.places && !PS.placesStale && !force) return;
-  const c = upCfg(); if (!c.url || !c.pin) return;
-  if (typeof accLocked === 'function' && accLocked()) return; /* 唔再等 APPD.ready（之前會令清單永遠退回合約） */
-  PS.placesBusy = true; if (cur.view === 'phsearch') psPaint('form');
-  try {
-    const o = await psCall({ action: 'photo_places', from: phAddDay(hkDate(), -(PS_MAXD - 1)), to: hkDate(), refresh: !!force }, 90000);
-    PS.places = Array.isArray(o.estates) ? o.estates : []; PS.placesOld = false; PS.placesErr = ''; PS.placesStale = false;
-    try { localStorage.setItem(PS_PLACES_LS, JSON.stringify({ estates: PS.places, at: Date.now() })); } catch (e) { }
-    if (PS.f && PS.f.est && !PS.f.estT && !psPlaceEst(PS.f.est)) { PS.f.estT = true; }
-  } catch (e) {
-    if (e.code === 'bad_action') { PS.placesOld = true; PS.places = null; PS.placesErr = ''; }
-    else { PS.placesErr = psErr(e); /* 保留舊 places（如果有）；冇就保持 null 等再試 */ }
-  } finally { PS.placesBusy = false; }
-  if (cur.view === 'phsearch') psPaint('form');
-}
 function psClearMem() { PS.tok++; PS.urls.forEach(u => URL.revokeObjectURL(u)); PS.urls = []; PS.thumbs = {}; PS.full = new Map(); }
 function psWipe() { psClearMem(); PS.items = []; PS.next = null; PS.done = false; PS.err = ''; PS.errCode = ''; psBigClose(true); }
 const appDataWipeRaw_ps = appDataWipe;
@@ -5620,16 +5570,9 @@ const PS_WD = '日一二三四五六';
 const psDay = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); if (!m) return d || ''; const w = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay(); return `${+m[2]}月${+m[3]}號（${PS_WD[w]}）`; };
 function psGoBtn() { return `<button class="btn pri" style="width:100%" data-ps="go" id="psgo" ${PS.busy && !PS.more ? 'disabled' : ''}>${PS.busy && !PS.more ? '搵緊…' : '🔍 搵相'}</button>`; }
 function psForm() {
-  const f = PS.f, today = hkDate();
-  const place = f.est && !f.estT ? psPlaceEst(f.est) : null;
-  const ed = PS.placesOld && f.est && !f.estT ? pkEstDef(f.est) : null;
-  const blkItems = PS.places ? (place ? psBlkItems(f.est) : []) : (ed ? pkBldItems(ed) : []);
-  const estNote = PS.placesBusy && !PS.places ? '<div class="mut psnote">載入緊有相嘅屋邨／地方…</div>'
-    : (PS.places ? '<div class="mut psnote">屋邨／地方只列最近有相嘅（房署外都有' + (PS.places.length ? '，共 ' + PS.places.length + ' 個' : '；呢段日子暫時冇') + '）。</div>'
-    : (PS.placesOld ? '<div class="mut psnote">伺服器未更新 photo_places：暫時用合約屋邨清單。</div>'
-    : (PS.placesErr ? `<div class="mut psnote">載入地方清單失敗：${esc(PS.placesErr)} <a class="jump" href="#" data-ps="places">再試</a></div>` : '<div class="mut psnote">載入地方清單中…</div>')));
-  const est = pkSel('ps_est', psEstItems(), f.est, { all: '全部屋邨／地方', label: '屋邨／地方', id: 'psest', oph: '自己打地方名' });
-  const blk = pkSel('ps_blk', blkItems, f.blk, { all: f.est ? '全部大廈' : '全部大廈（可以先揀屋邨）', label: '大廈', id: 'psblk', oph: '自己打大廈名' });
+  const f = PS.f, ed = f.est && !f.estT ? pkEstDef(f.est) : null, today = hkDate();
+  const est = pkSel('ps_est', pkEstItems(), f.est, { all: '全部屋邨', label: '屋邨', id: 'psest', oph: '自己打屋邨名' });
+  const blk = pkSel('ps_blk', ed ? pkBldItems(ed) : [], f.blk, { all: f.est ? '全部大廈' : '全部大廈（可以先揀屋邨）', label: '大廈', id: 'psblk', oph: '自己打大廈名' });
   const chip = (v, t) => `<button class="chip${f.src === v ? ' on' : ''}" data-ps="src" data-v="${v}">${t}</button>`;
   const rng = (n, t) => `<button class="chip${f.to === today && f.from === phAddDay(today, -(n - 1)) ? ' on' : ''}" data-ps="rng" data-n="${n}">${t}</button>`;
   return `<div class="card psform" id="psform">
@@ -5639,7 +5582,6 @@ function psForm() {
     <div class="psrow"><label>師傅（可留空）<input type="text" data-psf="tech" id="pstech" value="${esc(f.tech)}" placeholder="例如 範俊傑" maxlength="40" autocomplete="off"></label><label>檔名關鍵字<input type="text" data-psf="q" id="psq" value="${esc(f.q)}" placeholder="例如 泵、警鐘、K2026" maxlength="60" autocomplete="off" enterkeyhint="search"></label></div>
     <div class="pschips" id="pssrc"><span class="mut">來源</span>${chip('all', '全部')}${chip('wa', '💬 WhatsApp')}${chip('app', '📱 App')}</div>
     ${psGoBtn()}
-    ${estNote}
     <div class="mut psnote">師傅名對檔名：App 相（App_師傅_…）同 WhatsApp「冇說明」相（uncaptioned_發送者_…）先有名。</div></div>`;
 }
 function psTile(x, i) {
@@ -5670,7 +5612,6 @@ function psResults() {
 function psMain() { return `${PS.err && PS.errCode === 'form' ? `<div class="errbox" id="pserr">${esc(PS.err)}</div>` : ''}${psForm()}<div id="psres">${psResults()}</div>`; }
 function viewPhs() {
   if (!PS.f) PS.f = psDef();
-  if (upCfg().url && upCfg().pin && !PS.placesBusy && ((PS.places === null || PS.placesStale) && !PS.placesOld)) setTimeout(() => { if (cur.view === 'phsearch') psLoadPlaces(); }, 0);
   if (!PS.done && !PS.busy && !PS.err && upCfg().url && upCfg().pin) setTimeout(() => { if (cur.view === 'phsearch' && !PS.done && !PS.busy) psSearch(); }, 0); /* 第一次入：用預設（最近 7 日）即刻搵 */
   return `<div class="top"><div class="bar"><button data-act="home" aria-label="返主頁">‹ 主頁</button><div class="ttl">🔍 尋找相片<small>WhatsApp 相 ＋ App 相 · 只讀 · 經公司 Apps Script</small></div></div></div><main id="psmain">${psMain()}</main>`;
 }
@@ -5697,7 +5638,6 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-ps]'); if (!b || cur.view !== 'phsearch' || b.closest('#psv')) return; const a = b.dataset.ps;
   if (a === 'go' || a === 'retry') return psSearch();
   if (a === 'more') return psSearch(true);
-  if (a === 'places') { e.preventDefault(); PS.places = null; return psLoadPlaces(true); }
   if (a === 'src') { PS.f.src = b.dataset.v; return psPaint('form'); }
   if (a === 'rng') { const t = hkDate(); PS.f.to = t; PS.f.from = phAddDay(t, -(+b.dataset.n - 1)); return psPaint('form'); }
   if (a === 'big') return psBig(+b.dataset.i);
