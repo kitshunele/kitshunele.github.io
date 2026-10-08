@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.24';
+const APP_VERSION = '0.6.25';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -3733,7 +3733,7 @@ if (typeof module !== 'undefined') module.exports = { pmCap, pmIdx, pmIndex, pmM
 
 /* ---------- v0.6.7 📷 睇相（只讀）：「杰信工程部 WhatsApp 相片」（公司 Drive）→ 經公司 Apps Script v1.4（要師傅 PIN）----------
    用喺：TR-G2／TR-H2 頁「📷 查看當日照片」（日期＋屋邨＋座）、E call 待跟進「📁 相片資料夾」（photo_url）。
-   相只放喺記憶體（object URL），閂咗就清走；唔會寫入 localStorage／IndexedDB，唔會下載落手機。
+   v0.6.25：相清單、縮圖、原相經 app_22cache 暫存喺手機（IndexedDB，按 PIN＋手機分開，30 日過期，未批准即清）；畫面用 object URL，閂咗就清走。
    Apps Script 只讀 WhatsApp 相片資料夾入面嘅相；資料夾外面嘅連結會被拒（not_inside）。 */
 const PH_BATCH = 12, PH_KEEP = 6;
 const PH_MSG = {
@@ -3741,7 +3741,7 @@ const PH_MSG = {
   wa_no_access: 'Apps Script 讀唔到「杰信工程部 WhatsApp 相片」資料夾（要分享「檢視者」畀部署 Apps Script 嗰個帳戶）。',
   not_inside: '呢個相片資料夾唔喺「杰信工程部 WhatsApp 相片」入面，App 入面睇唔到；可以撳下面「喺 Google Drive 開」。',
   not_found: '搵唔到呢個相片資料夾／相（可能已刪除，或者部署帳戶冇權限）。', bad_folder: '相片連結唔啱。', bad_date: '檢查日期唔啱。',
-  too_big: '張相太大（超過 8 MB），請喺 Google Drive 睇。', offline: '冇網：睇相要有網（相唔會存喺手機）。'
+  too_big: '張相太大（超過 8 MB），請喺 Google Drive 睇。', offline: '冇網：呢度嘅相手機未存過（之前睇過嘅冇網都睇得）。'
 };
 let PH = null;
 const phErr = e => PH_MSG[e && e.code] || upErrText(e && e.code) || (e && e.message) || '出錯';
@@ -3851,7 +3851,7 @@ function phRender(me) {
   });
   const och = (o.others || []).filter(x => !(me.showAll && o.folders.some(f => f.id === x.id && f.files.length)));
   if (och.length) h += `<div class="phsec"><h4>${o.mode === 'day' && o.estate !== false && o.folders.length ? '同日其他資料夾' : '資料夾'}</h4><div class="phchips">${och.map(chip).join('')}</div></div>`;
-  h += `<div class="mut phnote">相由公司 Google Drive「杰信工程部 WhatsApp 相片」讀取，只係喺呢度睇，唔會存落手機。</div>${drive}`;
+  h += `<div class="mut phnote">相由公司 Google Drive「杰信工程部 WhatsApp 相片」讀取，睇過嘅相會暫存喺呢部手機（下次快啲；30 日自動清）。</div>${drive}`;
   if (me.opt.rid && me.files.length) h = aiBarHtml() + (flt ? '<div class="phpl" id="phpl"></div>' : '') + h;
   h = fh + h;
   body.innerHTML = h; if (me.opt.rid) { if (flt) plCompute(me); aiPaint(); }
@@ -5522,14 +5522,14 @@ ehAuto = function () { ehAutoRaw_ecr(); if (cur.view === 'echist' && !ER.busy &&
    篩選：日期範圍（預設最近 7 日）、屋邨／地方 → 大廈下拉（v0.6.21-test6／v0.6.24：只列資料夾有相嘅地方，房署外都有；最尾「其他（自己打）」）、師傅（可留空）、來源（全部／WhatsApp／App：App 相 = 「App_…」捷徑）、檔名關鍵字。
    伺服器 v1.19：photo_search（分頁，每次 PS_PAGE 張）、photo_thumbs（縮圖，捷徑解返原相）、photo_full（原相）；已批准手機先用到。
    結果按 日期 → 屋邨 → 大廈 分組；撳相睇大圖（左右掃／‹ ›）＋「↗ 開 Drive」；影片顯示縮圖＋「開 Drive」播。
-   相只放喺記憶體（object URL），唔會存落手機；離開頁面就清。伺服器 < v1.19（bad_action）→ 顯示提示，其他功能照用。 */
+   v0.6.25（FAN 2026-10-08）：搜尋結果同縮圖／原相存喺手機緩存（app_22cache：IndexedDB，按 PIN＋手機分開，約 150 MB 上限、30 日過期；未批准／被移除即刻清走）→ 同一個搜尋即刻出、背景更新；冇網都睇到存低嘅。畫面用 object URL，離開頁面就清。伺服器 < v1.19（bad_action）→ 顯示提示，其他功能照用。 */
 const PS_PAGE = 60, PS_THB = 12, PS_KEEP = 6, PS_MAXD = 93;
 const PS = { f: null, items: [], next: null, busy: false, err: '', errCode: '', old: false, done: false, thumbs: {}, full: new Map(), urls: [], tok: 0, from: '', to: '', idx: -1, hist: false, more: false, places: null, placesBusy: false, placesOld: false, placesErr: '', placesStale: false }; /* v0.6.21-test7：places 有結果就唔退回合約全表 */
 const PS_MSG = {
   bad_action: '公司伺服器（Apps Script）未更新到 v1.19，未有「尋找相片」。Work Order 部署 v1.19 之後就用得，唔使改任何設定。（當日相仍然可以喺 TR-G2／TR-H2「📷 查看當日照片」睇。）',
   wa_no_access: 'Apps Script 讀唔到「杰信工程部 WhatsApp 相片」資料夾，請通知公司。',
   phs_range_too_long: `日期範圍太長（最多 ${PS_MAXD} 日），請收窄啲。`,
-  offline: '冇網：搵相要有網（相唔會存喺手機）。', not_found: '搵唔到呢張相（可能已經刪除或者搬走）。',
+  offline: '冇網：呢個搜尋手機未存過（之前搵過嘅搜尋同睇過嘅相冇網都睇得）。', not_found: '搵唔到呢張相（可能已經刪除或者搬走）。',
   target_missing: '呢個 App 相捷徑嘅原相已經唔見咗。', too_big: '張相太大（超過 8 MB），請撳「開 Drive」睇。', is_video: '影片要喺 Google Drive 播：撳「↗ 開 Drive」。'
 };
 const psErr = e => PS_MSG[e && e.code] || upErrText(e && e.code) || (e && e.message) || '出錯';
@@ -5672,7 +5672,7 @@ function psResults() {
   });
   if (open) h += '</div></div>';
   if (PS.next) h += `<button class="btn" style="width:100%;margin-top:10px" data-ps="more" id="psmore" ${PS.busy ? 'disabled' : ''}>${PS.busy ? '載入緊…' : `⬇️ 再載入（每次 ${PS_PAGE} 個）`}</button>`;
-  return h + '<div class="mut phnote">相由公司 Google Drive「杰信工程部 WhatsApp 相片」讀取，只係喺呢度睇，唔會存落手機。</div>';
+  return h + '<div class="mut phnote">相由公司 Google Drive「杰信工程部 WhatsApp 相片」讀取，睇過嘅相會暫存喺呢部手機（下次快啲；30 日自動清）。</div>';
 }
 function psMain() { return `${PS.err && PS.errCode === 'form' ? `<div class="errbox" id="pserr">${esc(PS.err)}</div>` : ''}${psForm()}<div id="psres">${psResults()}</div>`; }
 function viewPhs() {
@@ -5764,6 +5764,233 @@ if (/^#\/phsearch\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '.psvmsg{color:#ddd;padding:8px;text-align:center}.psvcap{padding:8px 12px 14px;background:#000;font-size:13px}.psvcap b{display:block;word-break:break-all;font-size:14px}.psvcap span{display:block;color:#ccc;margin-top:2px}' +
   '#psv .phnav{position:absolute;top:50%;width:44px;height:64px;border:0;background:rgba(0,0,0,.4);color:#fff;font-size:30px}#psv .phnav.l{left:0}#psv .phnav.r{right:0}#psv .phnav:disabled{opacity:.2}';
   document.head.appendChild(s); } catch (e) {} })();
+
+/* ---------- v0.6.25 📦 手機緩存（FAN 2026-10-08 13:05「將啲緩衝儲存落手機度，唔使等太耐」／13:06「Apps入面全部都要」）----------
+   包住 gasCall（最外層，喺 app_18acc 批准閘之外）：
+   ① 讀取動作（SWR_ACTS）：手機有存 → 即刻用存低嘅回覆，背景再問伺服器；新資料唔同 → 存低＋叫返嗰頁重畫（SWR_HOOK）。
+      15 秒內啱啱由伺服器攞過 → 直接用（唔再問），所以重畫唔會打圈。冇網／伺服器出錯 → 照用存低嘅。
+   ② 相／縮圖（SWR_IMG：photo_thumbs、wa_thumbs、bldg_thumbs 逐張；photo_full、wa_photo、bldg_file、pending_photo、photo 整張）：
+      按檔案 id 存，有就唔再問伺服器（30 日過期）。
+   規則：寫入動作（上傳、打卡、確認完成、acc_set、ai_read…）永遠唔存、唔重播；寫完清走相關讀取（SWR_INV）。
+         回覆帶 new_token（或者唔係 ok）唔存。key = SHA-256（PIN＋手機ID＋動作＋請求內容）→ 換 PIN／換手機永遠見唔到人哋嘅資料。
+         IndexedDB「fsapp20259005.swr」：總共最多 SWR_CAP（約 150 MB），超過刪最耐冇用嘅（LRU）；全部 30 日過期。
+         appDataWipe（未批准／被移除）→ 全部清走。
+   唔經呢度（本身已經有手機快取＋版本檢查／或者一定要問伺服器）：app_data、ecall_reports、photo_places、access_status、
+   list／get／clock_today（上傳／打卡流程用嚟判斷，唔可以用舊資料）、acc_list（主管批准頁一定要即時）。
+   畫面底「已更新 HH:mm／更新緊…」細提示（#swrhint）。 */
+const SWR_DB = 'fsapp20259005.swr', SWR_CAP = 150 * 1048576, SWR_MAXAGE = 30 * 864e5, SWR_FRESH = 15e3, SWR_ITEM_MAX = 12 * 1048576;
+const SWR_ACTS = new Set(['clock_staff', 'clock_mine', 'clock_status', 'clock_records', 'pending_confirms', 'data', 'ecall', 'bldg_list', 'wa_photos', 'photo_search', 'acc_pending_count', 'kv_doc']);
+/* 用家撳「🔄 重新載入／再試」→ 之後 4 秒內嘅讀取唔用存低嘅（一定攞最新） */
+document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('button,a,[role=button]'); if (!t) return;
+  const ds = Object.values(t.dataset || {}).join(' '); if (/reload|retry|refresh/i.test(ds) || /🔄|再試|重新載入/.test(t.textContent || '')) SWR.force = Date.now(); }, true);
+const SWR_HAVE = new Set(['kv_doc']); /* 背景更新帶 have=版本：冇改 → 伺服器淨係答 unchanged（唔再傳成個檔） */
+const SWR_IMG_BATCH = new Set(['photo_thumbs', 'wa_thumbs', 'bldg_thumbs']), SWR_IMG_ONE = new Set(['photo_full', 'wa_photo', 'bldg_file', 'pending_photo', 'photo']);
+const SWR_INV = { pending_confirm: ['pending_confirms', 'data:pending_work'], pending_unconfirm: ['pending_confirms', 'data:pending_work'],
+  clock: ['clock_mine', 'clock_status', 'clock_records'], register_name: ['clock_staff', 'clock_mine', 'clock_status'], acc_set: ['acc_pending_count'] };
+const SWR_AUTH_ERR = new Set(['need_approval', 'bad_pin', 'bad_manager_pin', 'manager_pin_not_set', 'manager_locked', 'removed']);
+const SWR_SKIP_KEYS = new Set(['pin', 'device_id', 'dtoken', 'device_label', 'app_version', 'hkt', 'refresh', 'have']);
+const SWR_VOLATILE = new Set(['now_hkt', 'hkt', 'time', 'ms', 'elapsed_ms', 'server_ms', 'built_hkt', 'cached', 'cache']);
+const SWR = { cap: SWR_CAP, db: null, p: null, meta: null, metaP: null, tot: 0, uk: new Map(), fly: new Map(), hint: { n: 0, at: 0, fail: false, t: null }, gen: 0, hooksT: {}, force: 0 };
+/* ----- IndexedDB：v = 內容；m = {act, tag, t（由伺服器攞嘅時間）, a（最後用）, n（大約 bytes）, img} ----- */
+function swrOpen() {
+  if (SWR.p) return SWR.p;
+  SWR.p = new Promise(res => { try { if (!window.indexedDB) return res(null); const rq = indexedDB.open(SWR_DB, 1);
+    rq.onupgradeneeded = () => { const d = rq.result; ['v', 'm'].forEach(n => { if (!d.objectStoreNames.contains(n)) d.createObjectStore(n); }); };
+    rq.onsuccess = () => { SWR.db = rq.result; res(SWR.db); }; rq.onerror = () => res(null); rq.onblocked = () => res(null); } catch (e) { res(null); } });
+  return SWR.p;
+}
+function swrTx(stores, mode, fn) { return swrOpen().then(d => d ? new Promise(res => { try { const t = d.transaction(stores, mode), r = fn(t); t.oncomplete = () => res(r && r.result !== undefined ? r.result : true); t.onerror = () => res(undefined); t.onabort = () => res(undefined); } catch (e) { res(undefined); } }) : undefined); }
+function swrMeta() { if (SWR.meta) return Promise.resolve(SWR.meta); if (!SWR.metaP) SWR.metaP = swrMetaLoad().finally(() => { SWR.metaP = null; }); return SWR.metaP; }
+async function swrMetaLoad() {
+  const gen = SWR.gen, m = new Map(); let tot = 0;
+  await swrTx(['m'], 'readonly', t => { const rq = t.objectStore('m').openCursor(); rq.onsuccess = () => { const c = rq.result; if (!c) return; m.set(c.key, c.value); tot += c.value.n || 0; c.continue(); }; return null; });
+  if (gen !== SWR.gen) return SWR.meta || new Map();
+  SWR.meta = m; SWR.tot = tot; return m;
+}
+async function swrGet(k) {
+  const M = await swrMeta(), m = M.get(k); if (!m) return null;
+  if (Date.now() - m.t > SWR_MAXAGE) { swrDel([k]); return null; }
+  const v = await swrTx(['v'], 'readonly', t => t.objectStore('v').get(k));
+  if (v == null || v === true) { M.delete(k); return null; }
+  if (Date.now() - (m.a || 0) > 600e3) { m.a = Date.now(); swrTx(['m'], 'readwrite', t => { t.objectStore('m').put(m, k); return null; }); }
+  return { t: m.t, v };
+}
+async function swrPut(k, act, tag, v, img) {
+  let n = 0; try { n = JSON.stringify(v).length; } catch (e) { return; }
+  if (n > SWR_ITEM_MAX) return;
+  const gen = SWR.gen, M = await swrMeta(), old = M.get(k), m = { act, tag, t: Date.now(), a: Date.now(), n, img: !!img };
+  if (gen !== SWR.gen) return;
+  const ok = await swrTx(['v', 'm'], 'readwrite', t => { t.objectStore('v').put(v, k); t.objectStore('m').put(m, k); return null; });
+  if (gen !== SWR.gen) { swrTx(['v', 'm'], 'readwrite', t => { t.objectStore('v').delete(k); t.objectStore('m').delete(k); return null; }); return; } /* 寫緊嗰陣被清走 → 唔留 */
+  if (!ok) return;
+  SWR.tot += n - (old ? old.n || 0 : 0); M.set(k, m);
+  if (SWR.tot > SWR.cap) swrEvict();
+}
+async function swrDel(keys) {
+  if (!keys.length) return; const M = await swrMeta();
+  keys.forEach(k => { const m = M.get(k); if (m) { SWR.tot -= m.n || 0; M.delete(k); } });
+  await swrTx(['v', 'm'], 'readwrite', t => { keys.forEach(k => { t.objectStore('v').delete(k); t.objectStore('m').delete(k); }); return null; });
+}
+async function swrEvict() { /* LRU：刪到 85% 以下；順手刪過期 */
+  const M = await swrMeta(), now = Date.now(), L = [...M.entries()].sort((a, b) => (a[1].a || 0) - (b[1].a || 0)), del = []; let tot = SWR.tot;
+  for (const [k, m] of L) { if (tot <= SWR.cap * 0.85 && now - m.t <= SWR_MAXAGE) continue; del.push(k); tot -= m.n || 0; }
+  await swrDel(del);
+}
+async function swrInvalidate(tags) { const M = await swrMeta(), del = []; M.forEach((m, k) => { if (!m.img && (tags.includes(m.act) || tags.includes(m.tag))) del.push(k); }); await swrDel(del); }
+function swrWipe() { /* appDataWipe：全部清走（未批准／被移除） */
+  SWR.gen++; SWR.meta = new Map(); SWR.metaP = null; SWR.tot = 0; SWR.fly.clear(); SWR.uk.clear();
+  return swrTx(['v', 'm'], 'readwrite', t => { t.objectStore('v').clear(); t.objectStore('m').clear(); return null; });
+}
+/* ----- key ----- */
+const swrHex = buf => Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+function swrFnv(s) { let h1 = 0x811c9dc5, h2 = 0x01000193 ^ s.length; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = Math.imul(h2 ^ c, 2246822519); } return (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0'); }
+async function swrHash(s) { try { if (crypto && crypto.subtle) return swrHex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))).slice(0, 40); } catch (e) { } return swrFnv(s) + swrFnv('x' + s); }
+const swrCanon = x => Array.isArray(x) ? x.map(swrCanon) : x && typeof x === 'object' ? Object.keys(x).sort().reduce((o, k) => (o[k] = swrCanon(x[k]), o), {}) : x;
+function swrUser() { const c = upCfg(); return c.pin ? 'u\n' + c.pin + '\n' + ckDev() + '\n' + (c.url || '') : ''; }
+async function swrKey(body, extra) {
+  const u = swrUser(); if (!u) return '';
+  const q = {}; Object.keys(body).forEach(k => { if (!SWR_SKIP_KEYS.has(k)) q[k] = body[k]; }); if (extra) Object.assign(q, extra);
+  return swrHash(u + '\n' + JSON.stringify(swrCanon(q)));
+}
+const swrTag = b => b.action === 'data' ? 'data:' + String(b.name || '') : b.action;
+const swrCmp = o => { if (!o || typeof o !== 'object') return JSON.stringify(o); const c = {}; Object.keys(o).forEach(k => { if (!SWR_VOLATILE.has(k)) c[k] = o[k]; }); return JSON.stringify(c); };
+const swrStorable = o => !!(o && typeof o === 'object' && o.ok === true && !o.new_token && !o.token && !o.dtoken);
+/* ----- 細提示 ----- */
+function swrHintPaint() {
+  let el = document.getElementById('swrhint'); const h = SWR.hint;
+  if (!el) { el = document.createElement('div'); el.id = 'swrhint'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  const hm = h.at ? new Date(h.at + 8 * 3600e3).toISOString().slice(11, 16) : '';
+  if (h.n > 0) { el.textContent = '🔄 更新緊…' + (hm ? `（顯示緊 ${hm} 存低嘅）` : ''); el.className = 'show'; clearTimeout(h.t); return; }
+  el.textContent = h.fail ? `📴 未能更新：顯示緊 ${hm} 存低嘅資料` : `✅ 已更新 ${new Date(Date.now() + 8 * 3600e3).toISOString().slice(11, 16)}`; el.className = 'show' + (h.fail ? ' off' : '');
+  clearTimeout(h.t); h.t = setTimeout(() => { el.className = ''; }, h.fail ? 4500 : 2500);
+}
+function swrHintStart(at) { SWR.hint.n++; SWR.hint.fail = false; SWR.hint.at = at; try { swrHintPaint(); } catch (e) { } }
+function swrHintEnd(fail) { SWR.hint.n = Math.max(0, SWR.hint.n - 1); if (fail) SWR.hint.fail = true; try { swrHintPaint(); } catch (e) { } }
+/* ----- 新資料到 → 叫返嗰頁重畫（每個動作 300 ms 內合併一次） ----- */
+const SWR_HOOK = {};
+function swrFire(act, body, o) {
+  const h = SWR_HOOK[act]; if (!h) return; clearTimeout(SWR.hooksT[act]);
+  SWR.hooksT[act] = setTimeout(() => { try { h(body, o); } catch (e) { } }, 300);
+}
+/* ----- 包住 gasCall ----- */
+const gasCallNoCache = gasCall;
+function swrBg(k, body, ms, ent) { /* 背景問伺服器（同一個 key 同一時間只問一次） */
+  if (SWR.fly.has(k)) return; const gen = SWR.gen; swrHintStart(ent.t);
+  const have = SWR_HAVE.has(body.action) && ent.v && ent.v.v ? String(ent.v.v) : '';
+  const p = gasCallNoCache(have ? Object.assign({}, body, { have }) : body, ms).then(async o => {
+    if (gen !== SWR.gen) return swrHintEnd(false);
+    if (have && o && o.ok === true && o.unchanged) { if (String(o.v) === have) await swrPut(k, body.action, swrTag(body), ent.v, false); return swrHintEnd(false); } /* 冇改：存低嗰份當啱啱攞 */
+    if (swrStorable(o)) { await swrPut(k, body.action, swrTag(body), o, false); swrHintEnd(false); if (swrCmp(o) !== swrCmp(ent.v)) swrFire(body.action, body, o); }
+    else if (o && SWR_AUTH_ERR.has(o.error)) { await swrDel([k]); swrHintEnd(false); swrFire(body.action, body, o); } /* 冇權（need_approval、主管密碼改咗…）→ 唔再用舊嘅，叫嗰頁再問 */
+    else swrHintEnd(true);
+  }).catch(() => swrHintEnd(true)).finally(() => SWR.fly.delete(k));
+  SWR.fly.set(k, p);
+}
+async function swrImgBatch(body, ms) {
+  const ids = Array.isArray(body.ids) ? body.ids : [], keys = await Promise.all(ids.map(id => swrKey({ action: body.action, id: String(id) })));
+  if (!keys.every(Boolean)) return gasCallNoCache(body, ms);
+  const got = await Promise.all(keys.map(k => swrGet(k))), miss = ids.filter((id, i) => !got[i]);
+  let fresh = null;
+  if (miss.length) {
+    fresh = await gasCallNoCache(Object.assign({}, body, { ids: [...new Set(miss)] }), ms);
+    if (!fresh || fresh.ok !== true || !Array.isArray(fresh.items)) return fresh;
+    if (!fresh.new_token) fresh.items.forEach(x => { const i = x && ids.indexOf(x.id); if (x && x.base64 && i >= 0) swrPut(keys[i], body.action, body.action, { mime: x.mime, base64: x.base64, full: !!x.full }, true); });
+  }
+  const byId = {}; (fresh ? fresh.items : []).forEach(x => { if (x && x.id != null) byId[x.id] = x; });
+  const items = ids.map((id, i) => got[i] ? Object.assign({ id, mime: got[i].v.mime, base64: got[i].v.base64 }, got[i].v.full ? { full: true } : {}) : (byId[id] || { id, error: 'not_found' }));
+  return Object.assign({}, fresh || { ok: true }, { ok: true, items });
+}
+async function swrImgOne(body, ms) {
+  const k = await swrKey(body); if (!k) return gasCallNoCache(body, ms);
+  const c = await swrGet(k); if (c) return c.v;
+  const o = await gasCallNoCache(body, ms);
+  if (swrStorable(o) && o.base64) swrPut(k, body.action, body.action, o, true);
+  return o;
+}
+gasCall = async function (body, ms, pinTry) {
+  const act = body && body.action;
+  if (pinTry != null || !act || !upCfg().pin) return gasCallNoCache(body, ms, pinTry);
+  try {
+    if (SWR_IMG_BATCH.has(act)) return await swrImgBatch(body, ms);
+    if (SWR_IMG_ONE.has(act)) return await swrImgOne(body, ms);
+  } catch (e) { if (e && e.code) throw e; return gasCallNoCache(body, ms); }
+  if (!SWR_ACTS.has(act)) { /* 寫入／其他：照舊；寫完清走相關讀取 */
+    const inv = SWR_INV[act]; if (!inv) return gasCallNoCache(body, ms);
+    try { return await gasCallNoCache(body, ms); } finally { swrInvalidate(inv); }
+  }
+  let k = ''; try { k = await swrKey(body); } catch (e) { k = ''; }
+  if (!k) return gasCallNoCache(body, ms);
+  const force = body.refresh || Date.now() - SWR.force < 4000;
+  const ent = body.refresh ? null : await swrGet(k);
+  if (ent && force) { /* 撳咗「🔄 重新載入」：一定問伺服器；冇網先用返存低嗰份 */
+    const gen = SWR.gen; swrHintStart(ent.t);
+    try { const o = await gasCallNoCache(body, ms); if (gen === SWR.gen && swrStorable(o)) await swrPut(k, act, swrTag(body), o, false); else if (o && SWR_AUTH_ERR.has(o.error)) await swrDel([k]); swrHintEnd(false); return o; }
+    catch (e) { if (e && ['network', 'timeout', 'http', 'offline', 'bad_reply'].includes(e.code)) { swrHintEnd(true); return ent.v; } swrHintEnd(false); throw e; }
+  }
+  if (ent) {
+    if (Date.now() - ent.t >= SWR_FRESH || SWR.fly.has(k)) swrBg(k, body, ms, ent);
+    return ent.v; /* IndexedDB 每次畀一份新複本：頁面改佢唔會改到存低嘅 */
+  }
+  const gen = SWR.gen, o = await gasCallNoCache(body, ms);
+  if (gen === SWR.gen && swrStorable(o)) await swrPut(k, act, swrTag(body), o, false);
+  return o;
+};
+/* ----- 各頁重畫 ----- */
+SWR_HOOK.photo_search = (b, o) => { if (!o.ok) return; /* 同一個搜尋（第一頁）→ 用新結果（已載入「再載入」頁就唔郁） */
+  if (cur.view !== 'phsearch' || !PS.qbody || b.cursor || PS.busy) return;
+  const q = JSON.parse(PS.qbody); if (JSON.stringify(swrCanon(q)) !== JSON.stringify(swrCanon(Object.assign({}, b)))) return;
+  if (PS.items.length > PS_PAGE) return;
+  PS.items = o.items || []; PS.next = o.next || null; PS.from = o.from || PS.from; PS.to = o.to || PS.to; psPaint(); psThumbs(PS.tok);
+};
+SWR_HOOK.clock_staff = (b, o) => { if (typeof CK !== 'undefined' && Array.isArray(o.names)) { CK.names = o.names; if (cur.view === 'clock') render(); } };
+SWR_HOOK.clock_mine = () => { if (cur.view === 'clock' && CK.step === 'today') ckToday(); };
+SWR_HOOK.clock_status = () => { if (cur.view === 'clock' && CK.step === 'stat' && CKS.pin && CKS.tab !== 'rec' && !CKS.busy) cksLoad(); };
+SWR_HOOK.clock_records = () => { if (cur.view === 'clock' && CK.step === 'stat' && CKS.pin && CKS.tab === 'rec' && !CKR.busy) ckrLoad(); };
+SWR_HOOK.pending_confirms = () => { if (cur.view === 'pend' && !PW.loading) pwLoadCf().then(() => { if (cur.view === 'pend') render(); }); };
+SWR_HOOK.data = b => { if (b.name === 'ecall' && cur.view === 'ecall' && !EC.loading) ecLoad(); else if (b.name === 'pending_work' && cur.view === 'pend' && !PW.loading) pwLoad(); };
+SWR_HOOK.ecall = () => { if (cur.view === 'ecall' && !EC.loading) ecLoad(); };
+SWR_HOOK.bldg_list = (b, o) => { if (typeof BD === 'undefined' || !o.ok) return;
+  if (b.folder) { if (BD.lists[b.folder]) { BD.lists[b.folder] = o; BD.stale[b.folder] = false; BDB.put('meta', { id: 'L:' + b.folder, o, at: Date.now() }); if (cur.view === 'bldg') { bdPaint(); bdThumbs(b.folder); } } }
+  else { BD.root = o; BD.rootAt = o.hkt || ''; BD.stale.root = false; BDB.put('meta', { id: 'L:root', o, at: Date.now() }); if (cur.view === 'bldg') render(); } };
+SWR_HOOK.wa_photos = () => { if (typeof PH !== 'undefined' && PH && PH.q && PH.idx < 0) phLoad(PH.q); }; /* 睇緊大相就唔郁 */
+SWR_HOOK.kv_doc = (b, o) => { if (typeof FL !== 'undefined' && o.ok && b.doc === 'fsline') flFresh(o); };
+SWR_HOOK.acc_pending_count = () => { try { accBadge(); } catch (e) { } };
+/* ----- 清走 ----- */
+const appDataWipeRaw_swr = appDataWipe;
+appDataWipe = function () { appDataWipeRaw_swr(); swrWipe(); try { localStorage.removeItem(PS_PLACES_LS); PS.places = null; PS.placesAt = 0; } catch (e) { } }; /* 未批准／被移除 → 手機緩存全部清走 */
+(function () { try { const s = document.createElement('style'); s.textContent =
+  '#swrhint{position:fixed;left:50%;bottom:calc(10px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:rgba(17,24,39,.88);color:#fff;font-size:13px;padding:5px 12px;border-radius:14px;z-index:70;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:92vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+  '#swrhint.show{opacity:1;transform:translate(-50%,0)}#swrhint.off{background:rgba(146,64,14,.92)}';
+  document.head.appendChild(s); } catch (e) { } })();
+
+/* ---------- v0.6.25 📞 消防直線（FAN 2026-10-08 13:23）----------
+   主頁格「📞 消防直線」→ 即刻開「RM Schedule Link (FS) - NT Region (01.04.2026 - 31.03.2027)」PDF（冇揀屋邨／大廈）。
+   檔案係內部資料：唔放公開網址（Pages），放 Cloudflare Worker KV（doc "fsline"），edge action kv_doc ＝ 同 app_data 一樣要 PIN＋已批准手機。
+   經手機緩存（app_22cache）：開過一次之後即刻開、冇網都開到；背景用 have=版本 問有冇新版（冇改 → 細回覆）。
+   用樓宇資料嘅 pdf.js 檢視器（bdViewer：兩指放大／拖、雙擊放大、左右掃揭頁）。顯示 Drive 檔案修改日期。
+   更新：cf_worker/tools/fsline_refresh.sh（Drive id 1Qg4Er0z_xgKVCCjdPRncv2Sp0RFqPtOT）。 */
+const FL = { busy: false, v: '' };
+const FL_MSG = { doc_missing: '公司未上載消防直線檔案（請通知公司）。', bad_action: '要用公司新伺服器（Cloudflare）網址先開到消防直線：☰ → ⚙️ 上傳設定 → 公司網址留空（用內置）。',
+  offline: '冇網，而呢部手機未開過消防直線（開過一次之後冇網都睇到）。' };
+function flB64Blob(b64, mime) { const bin = atob(b64), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type: mime || 'application/pdf' }); }
+const flName = o => String((o && o.title) || '消防直線').replace(/\.pdf$/i, '');
+function flSub(o) { const el = BV && BV.el.querySelector('#bdvsub'); if (el && o) el.textContent = (o.modified_hkt ? `檔案更新：${o.modified_hkt}` : '') + (FL.cached ? ' · 已存喺手機' : ''); }
+function flShow(o) { FL.v = String(o.v || ''); bdViewer({ name: flName(o), blob: flB64Blob(o.base64, o.mime), kind: 'pdf' }); if (BV) BV.fl = FL.v; flSub(o); }
+function flFresh(o) { /* 背景攞到新版 → 檢視器開緊就換 */ if (!BV || !BV.fl || !o.base64 || String(o.v) === BV.fl) return; FL.cached = true; flShow(o); toast('📞 消防直線已更新', 2500); }
+async function flOpen() {
+  if (FL.busy) return; if (typeof accLocked === 'function' && accLocked()) return;
+  const c = upCfg(); if (!c.url || !c.pin) return toast('要先喺 ☰ →「⚙️ 上傳設定」填好 PIN');
+  FL.busy = true; bdViewer({ name: '消防直線', loading: true }); const tok = BV && BV.tok;
+  try {
+    const t0 = Date.now(), o = await gasCall({ action: 'kv_doc', doc: 'fsline' }, 60000);
+    if (!BV || BV.tok !== tok) return; /* 已經閂咗 */
+    if (o && o.ok && o.base64) { FL.cached = Date.now() - t0 < 400; flShow(o); }
+    else bdViewer({ name: '消防直線', err: FL_MSG[o && o.error] || upErrText((o && o.error) || 'bad_reply') });
+  } catch (e) { if (BV && BV.tok === tok) bdViewer({ name: '消防直線', err: FL_MSG[['network', 'timeout', 'offline'].includes(e.code) ? 'offline' : e.code] || e.message }); }
+  finally { FL.busy = false; }
+}
+(function () { const k = TILES.findIndex(t => t.act === 'phsearch'); TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'fsline', icon: '📞', name: '消防直線', sub: 'RM Schedule Link（FS）NT' }); })();
+document.addEventListener('click', e => { const t = e.target.closest('[data-act="fsline"]'); if (!t || t.disabled) return; const m = $('#modal'); if (m) m.classList.remove('show'); flOpen(); });
 
 /* ---------- 樓層 /F ---------- */
 function floorSync(r) { // 記錄 + 畫面上嘅樓層欄位一齊整理（下一頁／提交前）
