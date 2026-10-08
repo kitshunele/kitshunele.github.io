@@ -5968,7 +5968,7 @@ appDataWipe = function () { appDataWipeRaw_swr(); swrWipe(); try { localStorage.
    檔案係內部資料：唔放公開網址（Pages），放 Cloudflare Worker KV（doc "fsline"），edge action kv_doc ＝ 同 app_data 一樣要 PIN＋已批准手機。
    經手機緩存（app_22cache）：開過一次之後即刻開、冇網都開到；背景用 have=版本 問有冇新版（冇改 → 細回覆）。
    用樓宇資料嘅 pdf.js 檢視器（bdViewer：兩指放大／拖、雙擊放大、左右掃揭頁）。顯示 Drive 檔案修改日期。
-   更新：cf_worker/tools/fsline_refresh.sh（Drive id 1Qg4Er0z_xgKVCCjdPRncv2Sp0RFqPtOT）。 */
+   更新：cf_worker/tools/fsline_refresh.sh（見 cf_worker/README.md）。 */
 const FL = { busy: false, v: '' };
 const FL_MSG = { doc_missing: '公司未上載消防直線檔案（請通知公司）。', bad_action: '要用公司新伺服器（Cloudflare）網址先開到消防直線：☰ → ⚙️ 上傳設定 → 公司網址留空（用內置）。',
   offline: '冇網，而呢部手機未開過消防直線（開過一次之後冇網都睇到）。' };
