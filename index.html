@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.27';
+const APP_VERSION = '0.6.28';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -3350,7 +3350,7 @@ async function cksLoad() {
   if (CKS.busy || !CKS.pin) return; CKS.busy = true; CKS.err = ''; CKS.old = false; render();
   try {
     const o = await gasCall(Object.assign({ action: 'clock_status', manager_pin: CKS.pin }, CKS.date ? { date: CKS.date } : {}), 30000);
-    if (o && o.ok && Array.isArray(o.members)) { CKS.data = o; CKS.date = o.date; ckSkewDay(o.today); }
+    if (o && o.ok && Array.isArray(o.members)) { CKS.data = o; CKS.date = o.date; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; }
     else { const c = (o && o.error) || 'bad_reply'; CKS.old = c === 'bad_action';
       CKS.err = (CKS_ERR[c] || upErrText(c)) + (o && o.remaining != null ? `（仲有 ${Number(o.remaining)} 次機會）` : '');
       if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.pin = ''; CKS.data = null; CKR.data = null; } }
@@ -3396,7 +3396,7 @@ async function ckrLoad() {
   CKR.busy = true; CKR.err = ''; CKR.old = false; render();
   try {
     const o = await gasCall(Object.assign({ action: 'clock_records', manager_pin: CKS.pin, from: CKR.from, to: CKR.to }, CKR.name ? { name: CKR.name } : {}), 60000);
-    if (o && o.ok && Array.isArray(o.items)) { CKR.data = o; CKR.from = o.from; CKR.to = o.to; ckSkewDay(o.today); }
+    if (o && o.ok && Array.isArray(o.items)) { CKR.data = o; CKR.from = o.from; CKR.to = o.to; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; }
     else { const c = (o && o.error) || 'bad_reply'; CKR.old = c === 'bad_action';
       CKR.err = (CKR_ERR[c] || CKS_ERR[c] || upErrText(c)) + (o && o.remaining != null ? `（仲有 ${Number(o.remaining)} 次機會）` : '');
       if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.err = CKR.err; CKS.pin = ''; CKS.data = null; CKR.data = null; } }
@@ -5048,7 +5048,7 @@ if (typeof bdLoadSaved === 'function') bdLoadSaved();
    未批准 → need_approval：顯示「已登記，等公司批准」（#/wait，有「重新檢查」）；手機上未上傳嘅嘢照留，批准之後自動上傳。
    主管頁：☰ → ⚙️ 設定 →「管理：批准手機」（#/accmgr，要 MANAGER_PIN；PIN 只喺記憶體，離開頁就清）。主頁冇格、冇 badge。 */
 const ACC_LS = 'fsapp20259005.acc.v1';
-const ACC = { busy: false, msg: '', mgr: null, showRm: false, mgrPin: '', mgrBusy: false, mgrErr: '', pendN: null, back: '', chk: 'pending', chkAt: 0, rename: false };
+const ACC = { busy: false, msg: '', mgr: null, showRm: false, mgrPin: '', mgrOk: false, mgrBusy: false, mgrErr: '', pendN: null, back: '', chk: 'pending', chkAt: 0, rename: false };
 function accGet() { try { return JSON.parse(localStorage.getItem(ACC_LS) || '{}') || {}; } catch (e) { return {}; } }
 function accPut(o) { try { localStorage.setItem(ACC_LS, JSON.stringify(o)); } catch (e) {} }
 /* v0.6.14.3 開 App 閘（FAN 2026-10-04 19:38）：未批准（或者未登記）嘅手機只見到鎖住頁（viewLock），主頁／選單／資料頁一律唔顯示，打 #/xxx 都冇用。
@@ -5253,14 +5253,14 @@ async function accMgrCall(body) {
   if (ACC.mgrBusy) return; ACC.mgrBusy = true; ACC.mgrErr = ''; render();
   const list = Array.isArray(body) ? body : [body]; body = list[0]; /* v0.6.21：合併咗嘅卡 → 一行一行送（有錯即停） */
   try { let o; for (const b of list) { o = await gasCall(Object.assign({ manager_pin: ACC.mgrPin }, b), 30000); if (!o || !o.ok) break; }
-    if (o && o.ok) { ACC.mgr = { pending: o.pending || [], approved: o.approved || [], removed: Array.isArray(o.removed) ? o.removed : [], canRm: o.can_remove === true, now_hkt: o.now_hkt || '' }; ACC.pendN = new Set(ACC.mgr.pending.map(x => (x.device_id || x.row) + '|' + (x.name || ''))).size; } /* v0.6.16：can_remove 只喺 v1.16 */
+    if (o && o.ok) { ACC.mgrOk = true; ACC.mgr = { pending: o.pending || [], approved: o.approved || [], removed: Array.isArray(o.removed) ? o.removed : [], canRm: o.can_remove === true, now_hkt: o.now_hkt || '' }; ACC.pendN = new Set(ACC.mgr.pending.map(x => (x.device_id || x.row) + '|' + (x.name || ''))).size; } /* v0.6.16：can_remove 只喺 v1.16 */
     else if (o && (o.error === 'bad_op' || o.error === 'bad_action') && body.op) { if (ACC.mgr) ACC.mgr.canRm = false; ACC.mgrErr = ACC_ERR.bad_op; }
     else { ACC.mgrErr = (ACC_ERR[o && o.error] || upErrText(o && o.error)) + (o && o.remaining != null ? `（仲有 ${o.remaining} 次機會）` : ''); if (o && ['bad_manager_pin', 'manager_locked'].includes(o.error)) { ACC.mgr = null; ACC.mgrPin = ''; } }
   } catch (e) { ACC.mgrErr = e.message; }
   ACC.mgrBusy = false; if (cur.view === 'accmgr') render();
 }
 const accRowsOf = el => { const v = String(el.dataset.rows || el.dataset.row || '').split(',').map(Number).filter(n => n > 0); return v.length ? v : [Number(el.dataset.row)]; };
-function accMgrReset() { ACC.mgr = null; ACC.showRm = false; ACC.mgrPin = ''; ACC.mgrErr = ''; ACC.mgrBusy = false; }
+function accMgrReset() { ACC.mgr = null; ACC.showRm = false; ACC.mgrPin = ''; ACC.mgrErr = ''; ACC.mgrBusy = false; } /* mgrOk 留喺記憶體：呢個分頁入面開過管理先算管理員。PIN 離開頁就清，唔寫入手機。 */
 window.addEventListener('hashchange', () => { if (cur.view !== 'accmgr') accMgrReset(); if (cur.view !== 'wait') ACC.msg = ''; });
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act;
@@ -6111,7 +6111,7 @@ bdBody = function () {
    筒身編號、位置、出廠年份、試壓、每期檢查結果）。cf_worker/tools/svpe_build.py 整理成 JSON → Cloudflare Worker KV（doc "svpe"；內部資料，唔放公開網址）。
    App 用 kv_doc（同 app_data 一樣要 PIN＋已批准手機）→ 手機緩存（即刻開、冇網照搵；背景 have=版本 問有冇新版）。
    揀屋邨 → 揀大廈（下拉，TNS 次序，最尾「其他（自己打）」）＋ 關鍵字（閘掣編號、Tag、筒身編號、位置、類型…；空格分開 = 全部要中；唔理大細楷、/ - 空格）。 */
-const SVP = { doc: null, busy: false, err: '', est: '', blk: '', estTxt: '', blkTxt: '', q: '', tab: 'all', show: 40, ix: null, cached: false };
+const SVP = { doc: null, busy: false, err: '', est: '', blk: '', estTxt: '', blkTxt: '', q: '', tab: 'all', show: 40, ix: null, cached: false, old: null, locOpen: null };
 const SVP_PAGE = 40;
 const SVP_MSG = { doc_missing: '公司未上載 SV／PE 資料（請通知公司）。', bad_action: '要用公司新伺服器（Cloudflare）網址先用到 SV／PE 搜尋：☰ → ⚙️ 上傳設定 → 公司網址留空（用內置）。',
   offline: '冇網，而呢部手機未開過 SV／PE 搜尋（開過一次之後冇網都搵到）。' };
@@ -6164,14 +6164,25 @@ function svpRun() { /* → {sv:[idx], pe:[idx]} 或 null（未揀／未打） */
 /* ----- 卡 ----- */
 const svpRes = r => (r === '合格' || r === 'ü' || r === '✓' || r === '✔') ? '✓ 合格' : (r === '唔合格' || r === '不合格' || r === 'û' || r === '✗') ? '✗ 不合格' : r ? esc(r) : '';
 function svpBName(b) { const d = SVP.doc, x = d.B[b]; if (!x) return ''; const ed = d.E[x[0]].c ? DATA.estates.find(q => q.code === d.E[x[0]].c) : null, bd = ed && x[1] ? ed.blocks.find(q => q.code === x[1]) : null; return bd ? bd.zh || bd.en : x[2]; }
-function svpCardSV(i, showEst) { const d = SVP.doc, r = d.SV[i], x = d.B[r[0]], tags = [];
-  for (let k = 0; k < r[5].length; k += 2) tags.push(`<span class="svtag"><i>${esc(d.P[r[5][k]])}</i> <b>${esc(r[5][k + 1])}</b></span>`);
+function svpPairs(r) { const d = SVP.doc, out = []; for (let k = 0; k < (r[5] || []).length; k += 2) out.push({ p: String(d.P[r[5][k]] || ''), tag: String(r[5][k + 1] || '') }); return out; }
+function svpPerKey(p) { const m = String(p).match(/(20\d{2})-(\d{2})(?:-(\d{2}))?/); return m ? (+m[1]) * 10000 + (+m[2]) * 100 + (+m[3] || 0) : 0; }
+function svpLatestAt(pairs) { let b = 0; for (let i = 1; i < pairs.length; i++) { const A = svpPerKey(pairs[b].p), B = svpPerKey(pairs[i].p); if (B > A || (B === A && A > 0) || (A === 0 && B === 0)) b = i; } return b; }
+function svpTagHit(pair, terms) { const s = svpC(pair.p + ' ' + pair.tag), k = svpK(s); return terms.some(t => s.includes(t) || k.includes(svpK(t))); }
+function svpCardSV(i, showEst) { const d = SVP.doc, r = d.SV[i], x = d.B[r[0]], pairs = svpPairs(r);
+  const li = pairs.length ? svpLatestAt(pairs) : -1, open = !!(SVP.old && SVP.old.has(i));
+  const terms = svpC(SVP.q).split(/\s+/).filter(Boolean);
+  const show = pairs.map((_, n) => n).filter(n => n === li || open || svpTagHit(pairs[n], terms));
+  const tags = show.map(n => `<span class="svtag${n === li ? '' : ' old'}"><i>${esc(pairs[n].p)}</i> <b>${esc(pairs[n].tag)}</b></span>`);
+  const hidden = pairs.length - show.length;
+  const oldBtn = (hidden || open) ? `<button class="btn sm svold" type="button" data-svp="old" data-i="${i}">${open ? '收起舊資料' : '查舊資料'}</button>` : '';
   const loc = r[2] || '';
-  const edit = r[3] ? `<div class="svedit"><input class="svloci" data-svi="${i}" value="${esc(loc)}" maxlength="80" aria-label="位置" placeholder="位置"><button class="btn sm" type="button" data-svp="loc" data-i="${i}">上傳</button></div>` : '';
+  const openLoc = !!(r[3] && SVP.locOpen === i);
+  const locLine = r[3] ? `<button type="button" class="svloc svlocbtn" data-svp="locopen" data-i="${i}">${loc ? esc(loc) : '<span class="mut">未有位置</span>'}</button>` : `<div class="svloc">${loc ? esc(loc) : '<span class="mut">未有位置</span>'}</div>`;
+  const edit = openLoc ? `<div class="svedit"><input class="svloci" data-svi="${i}" value="${esc(loc)}" maxlength="80" aria-label="位置" placeholder="位置"><button class="btn sm" type="button" data-svp="loc" data-i="${i}">上傳</button></div>` : '';
   return `<div class="card svcard" data-svi="${i}"><div class="svh">🚿 <b class="svno">${r[3] ? esc(r[3]) : '（冇閘掣編號）'}</b>${r[4] ? `<span class="mut"> · 代碼 ${esc(r[4])}</span>` : ''}</div>
     <div class="svw">${showEst ? esc(d.E[x[0]].n) + ' · ' : ''}${esc(svpBName(r[0]))}${r[1] ? ' · ' + esc(r[1]) : ''}</div>
-    <div class="svloc">${loc ? esc(loc) : '<span class="mut">未有位置</span>'}</div>${edit}
-    ${tags.length ? `<div class="svtags">Tag：${tags.join('')}</div>` : '<div class="mut">未有 Tag 編號</div>'}</div>`; }
+    ${locLine}${edit}
+    ${tags.length ? `<div class="svtags">Tag：${tags.join('')}</div>` : '<div class="mut">未有 Tag 編號</div>'}${oldBtn}</div>`; }
 function svpCardPE(i, showEst) { const d = SVP.doc, r = d.PE[i], x = d.B[r[0]], per = [];
   for (let k = 0; k < r[7].length; k += 4) { const res = r[7][k + 1], bad = r[7][k + 2], note = r[7][k + 3];
     per.push(`<div class="perow"><i>${esc(d.P[r[7][k]])}</i> ${svpRes(res) || '<span class="mut">未填結果</span>'}${bad ? `<span class="pebad">：${esc(bad)}</span>` : ''}${note ? `<span class="mut"> · ${esc(note)}</span>` : ''}</div>`); }
@@ -6189,7 +6200,8 @@ function svpBody() {
   const sel = `<div class="pkrow"><label>屋邨${pkSel('svp_est', eItems, SVP.est || (SVP.estTxt ? SVP.estTxt : ''), { ph: '— 揀屋邨 —', label: '屋邨', id: 'svpest', oph: '自己打屋邨名' })}</label>
     <label>大廈${pkSel('svp_blk', bItems, SVP.blk || (SVP.blkTxt ? SVP.blkTxt : ''), { all: w.e != null || w.et ? '全部大廈' : '大廈：先揀屋邨', label: '大廈', id: 'svpblk', oph: '自己打大廈名', disabled: w.e == null && !w.et })}</label></div>`;
   const form = `<div class="card svpform">${sel}<label class="svpql">關鍵字<input id="svpq" type="search" value="${esc(SVP.q)}" placeholder="閘掣編號、Tag、筒身編號、位置…（例：SSSV、SV/、Tag 號、CO2）" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-    <div class="mut svpsrc">SV ${d.SV.length} 個閘掣 · PE ${d.PE.length} 個滅火器材 · 整理 ${esc(d.built_hkt || '')}${SVP.cached ? ' · 已存喺手機（冇網都搵到）' : ''}</div></div>`;
+    <div class="mut svpsrc">SV ${d.SV.length} 個閘掣 · PE ${d.PE.length} 個滅火器材 · 整理 ${esc(d.built_hkt || '')}${SVP.cached ? ' · 已存喺手機（冇網都搵到）' : ''}</div>
+    <button class="btn" type="button" id="svppeadd" data-svp="peadd" style="width:100%;margin-top:8px">新增滅火筒檢查</button></div>`;
   let notes = '';
   if (typeof bnSection === 'function' && w.e != null) { const E = d.E[w.e], x = w.b != null ? d.B[w.b] : null; notes = bnSection(bnPlace(E.c, x ? x[1] : '', [E.n, ...(E.s || [])], x ? [x[2], x[3]] : []), !x, 'svpe'); }
   const R = svpRun();
@@ -6212,9 +6224,12 @@ document.addEventListener('input', e => { if (e.target && e.target.id === 'svpq'
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-act="svpe"]'); if (t && !t.disabled) { const m = $('#modal'); if (m) m.classList.remove('show'); return go('#/svpe'); }
   const b = e.target.closest('[data-svp]'); if (!b || cur.view !== 'svpe') return; const a = b.dataset.svp;
+  if (a === 'peadd') { if (typeof pecOpenAdd === 'function') pecOpenAdd(); return; }
   if (a === 'retry') return svpLoad();
   if (a === 'tab') { SVP.tab = b.dataset.k; SVP.show = SVP_PAGE; return svpPaint(); }
   if (a === 'more') { SVP.show += SVP_PAGE; return svpPaint(); }
+  if (a === 'old') { if (!SVP.old) SVP.old = new Set(); const i = +b.dataset.i; if (SVP.old.has(i)) SVP.old.delete(i); else SVP.old.add(i); return svpPaint(); }
+  if (a === 'locopen') { SVP.locOpen = +b.dataset.i; svpPaint(); const inp = document.querySelector('.svcard[data-svi="' + SVP.locOpen + '"] .svloci'); if (inp) { inp.focus(); try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e2) {} } return; }
   if (a === 'loc') return svpSaveLoc(+b.dataset.i, b);
 });
 async function svpSaveLoc(i, btn) {
@@ -6228,8 +6243,8 @@ async function svpSaveLoc(i, btn) {
 
     if (!o || o.ok !== true) { toast(upErrText((o && o.error) || 'bad_reply')); btn.textContent = old; btn.disabled = false; return; }
     r[2] = loc; SVP.ix = svpIndex(d);
-    const line = btn.closest('.svcard') && btn.closest('.svcard').querySelector('.svloc'); if (line) line.textContent = loc || '未有位置';
-    btn.textContent = '已上傳';
+    if (SVP.locOpen === i) SVP.locOpen = null;
+    svpPaint();
     toast(o.xlsx ? '位置已寫入閘掣目錄，下次開都係新位置' : (o.xlsx_error === 'bad_action' ? '位置已更新喺 App。公司伺服器未到 v1.28，Excel 未改到。' : '位置已更新喺 App。Excel 未寫到。'), 4000);
   } catch (e) { toast(e.message || '上傳唔到'); btn.textContent = old; btn.disabled = false; }
 }
@@ -6247,7 +6262,7 @@ if (/^#\/svpe\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '.svpsrc{font-size:12px;margin-top:6px}.svcard{padding:12px;margin:8px 0}.svh{font-size:16px}.svno{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:22px;color:#1e3a8a;word-break:break-all}' +
   '.svw{font-size:16px;margin:4px 0;color:#111}.svloc{font-size:20px;font-weight:700;margin:2px 0 6px;line-height:1.35}.svkind{font-size:20px;font-weight:700;margin:2px 0}' +
   '.svtags{font-size:16px;margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}.svtag{background:#eef2ff;border-radius:8px;padding:4px 8px}.svtag i,.perow i{font-style:normal;color:#6b7280;font-size:13px}' +
-  '.svtag b{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:20px}.svedit{display:flex;gap:6px;align-items:center;margin-top:4px}.svloci{flex:1;font-size:18px;min-height:44px;border:1px solid #d1d5db;border-radius:8px;padding:0 8px}.perow{font-size:15px;margin-top:3px}.pebad{color:#b91c1c}';
+  '.svtag b{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:20px}.svtag.old{background:#f3f4f6}.svold{margin-top:8px}.svlocbtn{display:block;width:100%;box-sizing:border-box;text-align:left;background:transparent;border:0;padding:0;color:inherit;font-family:inherit;cursor:pointer}.svedit{display:flex;gap:6px;align-items:center;margin-top:4px}.svloci{flex:1;font-size:18px;min-height:44px;border:1px solid #d1d5db;border-radius:8px;padding:0 8px}.perow{font-size:15px;margin-top:3px}.pebad{color:#b91c1c}';
   document.head.appendChild(s); } catch (e) {} })();
 
 
@@ -6260,7 +6275,7 @@ if (/^#\/svpe\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
 const PEC_LS = 'fsapp20259005.pecheck.v1';
 const PEC_FILE = '1bSkHwoyxYaAsnMZnLUVDkbp7JCDR7Nb4';
 const PEC_CHIPS = ['過期', '損壞', '生銹', '需試壓', '需更換'];
-const PEC = { err: '', busy: false, ei: '', bi: '', date: '', who: '', rows: {}, rid: '' };
+const PEC = { err: '', busy: false, ei: '', bi: '', date: '', who: '', rows: {}, rid: '', mode: '', only: null, old: null, form: { tank: '', loc: '', year: '', last: '', kind: '' }, estTxt: '', blkTxt: '', pdf: null };
 const pecAll = () => { try { return JSON.parse(localStorage.getItem(PEC_LS) || '{}') || {}; } catch (e) { return {}; } };
 const pecSave = () => { if (PEC.ei === '' || PEC.bi === '') return; const all = pecAll(); all[PEC.ei + '|' + PEC.bi] = { date: PEC.date, who: PEC.who, rows: PEC.rows, rid: PEC.rid }; try { localStorage.setItem(PEC_LS, JSON.stringify(all)); } catch (e) {} };
 function pecMark(s) { s = String(s || '').trim(); if (s === 'ü' || s === '✓' || s === '✔' || s === '合格') return '✓'; if (s === 'û' || s === '✗' || s === '✘' || s === '不合格' || s === '唔合格') return '✗'; return ''; }
@@ -6275,12 +6290,71 @@ function pecEi() { return /^e\d+$/.test(PEC.ei) ? +PEC.ei.slice(1) : null; }
 function pecBi() { return /^b\d+$/.test(PEC.bi) ? +PEC.bi.slice(1) : null; }
 function pecEstItems() { const d = SVP.doc; if (!d) return []; const has = new Set(d.PE.map(r => d.B[r[0]][0])); return svpEstItems().filter(x => has.has(+String(x.v).slice(1))); }
 function pecBlkItems(ei) { return svpBlkItems(ei); } /* buildings with no cylinders stay on the list as an empty checklist, not an error, and no blank rows are invented */
-function pecItems() { const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return []; return d.PE.map((r, i) => [r, i]).filter(([r]) => r[0] === bi); }
-function pecDone() { return pecItems().filter(([, i]) => PEC.rows[i] && pecMark(PEC.rows[i].res)).length; }
+function pecItems() { const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return []; const items = d.PE.map((r, i) => [r, i]).filter(([r]) => r[0] === bi); return PEC.only == null ? items : items.filter(([, i]) => i === PEC.only); }
+function pecDone() { return pecItems().filter(([, i]) => { const st = (PEC.mode === 'old' && PEC.old && PEC.old.rows[i]) ? PEC.old.rows[i] : PEC.rows[i]; return st && pecMark(st.res); }).length; }
 function pecRow(i) { return PEC.rows[i] || (PEC.rows[i] = { res: '', chips: [], note: '', photos: [] }); }
 const PEC_PH_MAX = 8;
 function pecPh(a) { return (Array.isArray(a) ? a : []).filter(p => p && p.id).map(p => ({ id: String(p.id) })).slice(0, PEC_PH_MAX); }
+
+function pecMgr() { return typeof ACC !== 'undefined' && !!(ACC.mgrOk || ACC.mgr); }
+function pecActs() {
+  if (PEC.mode === 'add' || PEC.mode === 'old' || PEC.mode === 'oldpick') return '';
+  return `<div class="pecacts"><button class="btn pri" type="button" id="pecadd" data-pec="add">新增滅火筒檢查</button>${pecMgr() ? `<button class="btn" type="button" id="pecmgr" data-pec="mgr">修改之前嘅 PE 表</button>` : ''}</div>`;
+}
+function pecShareRow() {
+  if (pecBi() == null || PEC.mode === 'add' || PEC.mode === 'oldpick') return '';
+  return `<div class="pecacts"><button class="btn" type="button" id="pecpdf" data-pec="pdf">PDF 預覽</button><button class="btn" type="button" id="pecshare" data-pec="share">共享</button></div>`;
+}
+function pecAddForm() {
+  const f = PEC.form;
+  return `<div class="card peckhead" id="pecaddform"><b>新增滅火筒</b>
+    <label class="pecnote">筒身編號<input id="pectank" value="${esc(f.tank)}" maxlength="40" placeholder="筒身編號"></label>
+    <label class="pecnote">位置<input id="pecloc" value="${esc(f.loc)}" maxlength="80" placeholder="位置"></label>
+    <label class="pecnote">出廠年份<input id="pecyear" value="${esc(f.year)}" maxlength="20" placeholder="例如 2024"></label>
+    <label class="pecnote">上次試壓<input id="peclast" value="${esc(f.last)}" maxlength="20" placeholder="例如 NA"></label>
+    <label class="pecnote">種類<input id="peckind" value="${esc(f.kind)}" maxlength="40" placeholder="例如 CO2 5KG、粉筒 4.5KG、沙桶"></label>
+    <div class="mut">251 編號、日期、負責人喺下一頁，同而家檢查表一樣。結果留空，唔會自動打剔。</div>
+    <button class="btn pri" style="width:100%;margin-top:8px" type="button" data-pec="addgo">新增</button>
+    <button class="btn" style="width:100%;margin-top:8px" type="button" data-pec="addx">取消</button></div>`;
+}
+function pecOldPeriods(bi) {
+  const d = SVP.doc; if (!d || bi == null) return [];
+  const seen = [];
+  d.PE.forEach(r => { if (r[0] !== bi) return; for (let k = 0; k < (r[7] || []).length; k += 4) { const lab = String(d.P[r[7][k]] || '').trim(); if (!/^(AM|HF)\d{4}-\d{2}$/.test(lab) || lab === 'AM2026-10') continue; if (!seen.includes(lab)) seen.push(lab); } });
+  return seen;
+}
+function pecOldPick() {
+  const bi = pecBi(), ps = pecOldPeriods(bi);
+  return `<div class="card" id="pecoldpick"><b>修改之前嘅 PE 表</b><div class="mut">只寫你揀嗰一期。唔會改 AM2026-10，亦唔會改其他欄。</div>
+    ${bi == null ? '<div class="mut">先揀屋邨同座。</div>' : (ps.length ? ps.map(p => `<button class="btn" style="width:100%;margin-top:8px" type="button" data-pec="old" data-p="${esc(p)}">${esc(p)}</button>`).join('') : '<div class="mut">呢座冇舊期數。</div>')}
+    <button class="btn" style="width:100%;margin-top:8px" type="button" data-pec="addx">返回</button></div>`;
+}
+function pecOpenOld(period) {
+  const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return;
+  PEC.only = null; PEC.old = { period: period, rows: {} };
+  d.PE.forEach((r, i) => {
+    if (r[0] !== bi) return;
+    let res = '', chips = [], note = '';
+    for (let k = 0; k < (r[7] || []).length; k += 4) if (String(d.P[r[7][k]] || '').trim() === period) { res = pecMark(r[7][k + 1]); chips = String(r[7][k + 2] || '').split('、').filter(c => PEC_CHIPS.includes(c)); note = r[7][k + 3] || ''; }
+    PEC.old.rows[i] = { res: res, chips: chips, note: note, photos: [], tank: r[2] || '', loc: r[3] || '', year: String(r[4] == null ? '' : r[4]), last: String(r[5] == null ? '' : r[5]), kind: r[6] || '' };
+  });
+  PEC.mode = 'old'; pecPaint();
+}
+function pecCardOld(r, i) {
+  const st = (PEC.old && PEC.old.rows[i]) || { res: '', chips: [], note: '', photos: [], tank: '', loc: '', year: '', last: '', kind: '' };
+  const mark = pecMark(st.res);
+  const res = v => `<button type="button" class="pecmk ${mark === v ? 'on' : ''}" data-pec="res" data-i="${i}" data-v="${v}">${v === '✓' ? '✓ 合格' : '✗ 不合格'}</button>`;
+  const fld = (k, lab) => `<label class="pecnote">${lab}<input class="pecold" data-i="${i}" data-f="${k}" value="${esc(st[k] || '')}" maxlength="80"></label>`;
+  const chips = `<div class="pecchips">${PEC_CHIPS.map(c => `<button type="button" class="pecchip ${(st.chips || []).includes(c) ? 'on' : ''}" data-pec="chip" data-i="${i}" data-k="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <label class="pecnote">備註（可選）<input class="pecold" data-i="${i}" data-f="note" value="${esc(st.note || '')}" maxlength="80" placeholder="可留空"></label>`;
+  const ph = pecPh(st.photos), full = ph.length >= PEC_PH_MAX;
+  const cams = `<div class="row pecam"><label class="btn">📷 影相<input type="file" class="peccam" data-i="${i}" accept="image/*" capture="environment" hidden ${full ? 'disabled' : ''}></label></div>${ph.length ? `<div class="thumbs">${ph.map(p => `<div class="thumb"><img data-photo="${esc(p.id)}" alt="相"><button type="button" class="del" data-pec="delph" data-i="${i}" data-id="${esc(p.id)}" aria-label="刪相">✕</button></div>`).join('')}</div>` : ''}`;
+  return `<div class="card peckrow" data-i="${i}">${fld('tank', '筒身編號')}${fld('loc', '位置')}${fld('year', '出廠年份')}${fld('last', '上次試壓')}${fld('kind', '種類')}${cams}<div class="pecres">${res('✓')}${res('✗')}</div>${chips}</div>`;
+}
+function pecOpenAdd() { PEC.mode = 'add'; PEC.only = null; PEC.old = null; if (cur.view !== 'pecheck') go('#/pecheck'); else pecPaint(); }
+
 function pecCard(r, i) {
+  if (PEC.mode === 'old' && PEC.old) return pecCardOld(r, i);
   const st = PEC.rows[i] || { res: '', chips: [], note: '', photos: [] }; const mark = pecMark(st.res);
   const res = v => `<button type="button" class="pecmk ${mark === v ? 'on' : ''}" data-pec="res" data-i="${i}" data-v="${v}">${v === '✓' ? '✓ 合格' : '✗ 不合格'}</button>`;
   const chips = st.res ? `<div class="pecchips">${PEC_CHIPS.map(c => `<button type="button" class="pecchip ${(st.chips || []).includes(c) ? 'on' : ''}" data-pec="chip" data-i="${i}" data-k="${esc(c)}">${esc(c)}</button>`).join('')}</div>
@@ -6297,24 +6371,33 @@ function pecCard(r, i) {
 function pecBody() {
   if (!SVP.doc) return PEC.err ? `<div class="errbox">${esc(PEC.err)}</div><button class="btn" style="width:100%" data-pec="retry">🔄 再試</button>` : '<div class="card mut">讀緊滅火筒資料…</div>';
   const d = SVP.doc, eItems = pecEstItems(), bItems = pecEi() != null ? pecBlkItems(pecEi()) : [];
-  const sel = `<div class="pkrow"><label>屋邨${pkSel('pec_est', eItems, PEC.ei, { ph: '— 揀屋邨 —', label: '屋邨', id: 'pecest', oph: '自己打屋邨名' })}</label>
-    <label>座${pkSel('pec_blk', bItems, PEC.bi, { all: PEC.ei !== '' ? '— 揀座 —' : '座：先揀屋邨', label: '座', id: 'pecblk', oph: '自己打座名', disabled: PEC.ei === '' })}</label></div>`;
+  const blkOn = PEC.ei !== '' || !!(PEC.estTxt || '').trim();
+  const sel = `<div class="pkrow"><label>屋邨${pkSel('pec_est', eItems, PEC.ei || PEC.estTxt, { ph: '— 揀屋邨 —', label: '屋邨', id: 'pecest', oph: '自己打屋邨名' })}</label>
+    <label>座${pkSel('pec_blk', bItems, PEC.bi || PEC.blkTxt, { all: blkOn ? '— 揀座 —' : '座：先揀屋邨', label: '座', id: 'pecblk', oph: '自己打座名', disabled: !blkOn })}</label></div>`;
+  if (PEC.mode === 'add') return `<div class="peck">${sel}${pecAddForm()}</div>`;
+  if (PEC.mode === 'oldpick') return `<div class="peck">${sel}${pecOldPick()}</div>`;
   let body = '';
   if (pecBi() != null) {
     const bi = pecBi(), b = d.B[bi], E = d.E[b[0]], n251 = (d.PB || {})[bi] || '';
     const items = pecItems(), done = pecDone();
+    const old = PEC.mode === 'old' && PEC.old;
+    const pinBox = old && !(typeof ACC !== 'undefined' && ACC.mgrPin) ? `<label class="pecnote">主管密碼<input id="pecmpin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼"></label>` : '';
     body = `<div class="card peckhead">
       <div class="pecmeta"><span>屋邨</span> ${esc(E.n)}${E.en ? ' · ' + esc(E.en) : ''}</div>
       <div class="pecmeta"><span>座</span> ${esc(svpBName(bi))}</div>
       <div class="pecmeta"><span>251 編號</span> ${n251 ? esc(n251) : '—'}</div>
+      ${old ? `<div class="pecmeta" id="pecperiod"><span>期數</span> ${esc(PEC.old.period)}（舊期，唔會改 AM2026-10）</div>` : ''}
       <label class="pecnote">日期<input id="pecdate" type="date" value="${esc(PEC.date)}"></label>
       <label class="pecnote">負責人<input id="pecwho" value="${esc(PEC.who)}" maxlength="40" placeholder="填名"></label>
+      ${pinBox}
       </div>
+      ${PEC.only != null && !old ? `<button class="btn sm" type="button" data-pec="all">睇返成座</button>` : ''}
       <div class="pecprog" id="pecprog">已填 ${done}／${items.length}</div>
       ${items.length ? items.map(([r, i]) => pecCard(r, i)).join('') : '<div class="card mut" id="pecempty">呢座冇滅火筒（0 支），冇要剔的項目。</div>'}
-      ${items.length ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="up" ${done === items.length ? '' : 'disabled'}>上傳呢座檢查</button><div class="mut">未填完都可以離開，剔號留喺手機。上傳用公司現有收件箱，唔使等新伺服器。</div>` : ''}`;
+      ${old ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="upold">上傳呢期修改</button><div class="mut">只寫 ${esc(PEC.old.period)} 呢期嘅結果、問題、備註、日期、負責人同筒身資料。其他期數唔郁。</div>` : (items.length ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="up" ${done === items.length ? '' : 'disabled'}>上傳呢座檢查</button><div class="mut">未填完都可以離開，剔號留喺手機。上傳用公司現有收件箱，唔使等新伺服器。</div>` : '')}
+      ${pecShareRow()}`;
   } else body = '<div class="card mut">揀一座。一版一棟，欄位跟滅火筒檢查記錄。</div>';
-  return `<div class="peck">${sel}${body}</div>`;
+  return `<div class="peck">${pecActs()}${sel}${body}</div>`;
 }
 function viewPe() {
   if (!SVP.doc && !SVP.busy && !PEC.err) setTimeout(() => { if (cur.view === 'pecheck') pecLoadDoc(); }, 0);
@@ -6323,14 +6406,14 @@ function viewPe() {
 function pecPaint() { if (cur.view !== 'pecheck') return; const m = $('#pecmain'); if (!m) return; const y = window.scrollY; m.innerHTML = pecBody(); window.scrollTo(0, y); pecThumbs(); }
 function pecThumbs() { const root = $('#pecmain'); if (!root) return; root.querySelectorAll('img[data-photo]').forEach(async img => { const u = await thumbOf(img.dataset.photo); if (u && img.isConnected) img.src = u; }); }
 async function pecAddPhotos(i, files) {
-  const r = pecRow(i); r.photos = pecPh(r.photos);
+  const r = (PEC.mode === 'old' && PEC.old && PEC.old.rows[i]) ? PEC.old.rows[i] : pecRow(i); r.photos = pecPh(r.photos);
   for (const f of files) {
     if (r.photos.length >= PEC_PH_MAX) { toast('每個筒最多 ' + PEC_PH_MAX + ' 張相', 2500); break; }
     try { const c = await compress(f); const id = newId('p'); await PhotoDB.put({ id, rec: 'pe|' + PEC.ei + '|' + PEC.bi, dataUrl: c.dataUrl, w: c.w, h: c.h });
       thumbs.set(id, c.dataUrl); r.photos.push({ id }); }
     catch (e) { toast('相片失敗：' + (e.message || ''), 4000); }
   }
-  pecSave(); pecPaint();
+  if (PEC.mode !== 'old') pecSave(); pecPaint();
   if (!PhotoDB.db) toast('⚠ 呢部手機唔支援相片長期儲存，請盡快上傳', 5000);
 }
 async function pecLoadDoc() {
@@ -6340,12 +6423,34 @@ async function pecLoadDoc() {
   catch (e) { PEC.err = e.message || 'network'; }
   finally { PEC.busy = false; } pecPaint();
 }
-PKH.pec_est = (v, how) => { if (how === 'type') return; pecSave(); PEC.ei = (how === 'other' || how === 'done') ? '' : v; PEC.bi = ''; PEC.rows = {}; pecPaint(); };
-PKH.pec_blk = (v, how) => { if (how === 'type') return; pecSave(); if (how === 'other' || how === 'done' || !v) { PEC.bi = ''; } else { pecLoad(PEC.ei, v); } pecPaint(); };
+PKH.pec_est = (v, how) => {
+  if (how === 'type') { PEC.estTxt = v || ''; return; }
+  pecSave(); PEC.only = null;
+  if (PEC.mode === 'old') { PEC.mode = 'oldpick'; PEC.old = null; }
+  if (how === 'other') { PEC.ei = ''; PEC.estTxt = ''; }
+  else if (how === 'done') { PEC.ei = ''; PEC.estTxt = v || PEC.estTxt; }
+  else { PEC.ei = v; PEC.estTxt = ''; }
+  PEC.bi = ''; PEC.blkTxt = ''; PEC.rows = {}; pecPaint();
+};
+PKH.pec_blk = (v, how) => {
+  if (how === 'type') { PEC.blkTxt = v || ''; return; }
+  pecSave(); PEC.only = null;
+  if (PEC.mode === 'old') { PEC.mode = 'oldpick'; PEC.old = null; }
+  if (how === 'other') { PEC.bi = ''; PEC.blkTxt = ''; }
+  else if (how === 'done' || !v) { PEC.bi = ''; if (how === 'done') PEC.blkTxt = v || ''; }
+  else { PEC.blkTxt = ''; pecLoad(PEC.ei, v); }
+  pecPaint();
+};
 document.addEventListener('input', e => {
   const t = e.target; if (!t || cur.view !== 'pecheck') return;
-  if (t.id === 'pecdate') { PEC.date = t.value; pecSave(); }
-  else if (t.id === 'pecwho') { PEC.who = t.value; pecSave(); }
+  if (t.id === 'pecdate') { PEC.date = t.value; if (PEC.mode !== 'old') pecSave(); }
+  else if (t.id === 'pecwho') { PEC.who = t.value; if (PEC.mode !== 'old') pecSave(); }
+  else if (t.id === 'pectank') PEC.form.tank = t.value;
+  else if (t.id === 'pecloc') PEC.form.loc = t.value;
+  else if (t.id === 'pecyear') PEC.form.year = t.value;
+  else if (t.id === 'peclast') PEC.form.last = t.value;
+  else if (t.id === 'peckind') PEC.form.kind = t.value;
+  else if (t.classList && t.classList.contains('pecold') && PEC.old) { const r = PEC.old.rows[+t.dataset.i]; if (r) r[t.dataset.f] = t.value; }
   else if (t.classList && t.classList.contains('pecni')) { const r = pecRow(+t.dataset.i); r.note = t.value; pecSave(); }
 });
 document.addEventListener('change', e => {
@@ -6353,13 +6458,31 @@ document.addEventListener('change', e => {
   if (t.classList && (t.classList.contains('peccam'))) { const files = Array.from(t.files || []); t.value = ''; pecAddPhotos(+t.dataset.i, files); }
 });
 document.addEventListener('click', e => {
-  const tile = e.target.closest('[data-act="pecheck"]'); if (tile && !tile.disabled) { const m = $('#modal'); if (m) m.classList.remove('show'); return go('#/pecheck'); }
+  const tile = e.target.closest('[data-act="pecheck"]'); if (tile && !tile.disabled) { const m = $('#modal'); if (m) m.classList.remove('show'); PEC.mode = ''; PEC.only = null; PEC.old = null; return go('#/pecheck'); }
   const b = e.target.closest('[data-pec]'); if (!b || cur.view !== 'pecheck') return;
   const a = b.dataset.pec;
   if (a === 'retry') return pecLoadDoc();
-  if (a === 'res') { const r = pecRow(+b.dataset.i); r.res = b.dataset.v; if (!r.chips) r.chips = []; pecSave(); return pecPaint(); }
-  if (a === 'chip') { const r = pecRow(+b.dataset.i); const k = b.dataset.k; r.chips = r.chips || []; r.chips = r.chips.includes(k) ? r.chips.filter(x => x !== k) : r.chips.concat(k); pecSave(); return pecPaint(); }
-  if (a === 'delph') { const r = pecRow(+b.dataset.i); const id = b.dataset.id; r.photos = pecPh(r.photos).filter(p => p.id !== id); PhotoDB.del(id); thumbs.delete(id); pecSave(); return pecPaint(); }
+  if (a === 'add') return pecOpenAdd();
+  if (a === 'addx') { PEC.mode = ''; PEC.old = null; return pecPaint(); }
+  if (a === 'addgo') return pecCommitAdd();
+  if (a === 'mgr') { if (!pecMgr()) return; PEC.mode = 'oldpick'; PEC.only = null; PEC.old = null; return pecPaint(); }
+  if (a === 'old') return pecOpenOld(b.dataset.p);
+  if (a === 'all') { PEC.only = null; return pecPaint(); }
+  if (a === 'pdf') return pecPreview();
+  if (a === 'share') return pecShare();
+  if (a === 'upold') return pecUploadOld(b);
+  if (a === 'res') {
+    if (PEC.mode === 'old' && PEC.old) { const r = PEC.old.rows[+b.dataset.i]; if (!r) return; r.res = b.dataset.v; if (!r.chips) r.chips = []; return pecPaint(); }
+    const r = pecRow(+b.dataset.i); r.res = b.dataset.v; if (!r.chips) r.chips = []; pecSave(); return pecPaint();
+  }
+  if (a === 'chip') {
+    if (PEC.mode === 'old' && PEC.old) { const r = PEC.old.rows[+b.dataset.i]; if (!r) return; const k = b.dataset.k; r.chips = r.chips || []; r.chips = r.chips.includes(k) ? r.chips.filter(x => x !== k) : r.chips.concat(k); return pecPaint(); }
+    const r = pecRow(+b.dataset.i); const k = b.dataset.k; r.chips = r.chips || []; r.chips = r.chips.includes(k) ? r.chips.filter(x => x !== k) : r.chips.concat(k); pecSave(); return pecPaint();
+  }
+  if (a === 'delph') {
+    const r = (PEC.mode === 'old' && PEC.old && PEC.old.rows[+b.dataset.i]) ? PEC.old.rows[+b.dataset.i] : pecRow(+b.dataset.i);
+    const id = b.dataset.id; r.photos = pecPh(r.photos).filter(p => p.id !== id); PhotoDB.del(id); thumbs.delete(id); if (PEC.mode !== 'old') pecSave(); return pecPaint();
+  }
   if (a === 'up') return pecUpload(b);
 });
 async function pecUpload(btn) {
@@ -6406,6 +6529,217 @@ async function pecUpload(btn) {
   btn.disabled = false;
   toast((inbox ? (shots.length ? '公司收件箱有呢座檢查，相片喺同一個資料夾。' : '公司收件箱有呢座檢查。') : '收件箱未收到。') + excel, 4000);
 }
+
+const PEC_ADD_LS = 'fsapp20259005.peadd.v1';
+function pecAddedLoad() { try { return JSON.parse(localStorage.getItem(PEC_ADD_LS) || '[]') || []; } catch (e) { return []; } }
+function pecAddedSave(a) { try { localStorage.setItem(PEC_ADD_LS, JSON.stringify(a)); } catch (e) {} }
+function pecMergeAdded() {
+  const d = SVP.doc; if (!d) return;
+  pecAddedLoad().forEach(a => {
+    let ei = d.E.findIndex(e => (a.ec && e.c === a.ec) || e.n === a.en);
+    if (ei < 0) { d.E.push({ c: a.ec || '', n: a.en, en: '', s: [a.sheet || a.en] }); ei = d.E.length - 1; }
+    let bi = -1; d.B.forEach((b, i) => { if (bi < 0 && b[0] === ei && (svpBName(i) === a.bn || b[2] === a.bn)) bi = i; });
+    if (bi < 0) { d.B.push([ei, '', a.bn, a.bn]); bi = d.B.length - 1; }
+    if (d.PE.some(r => r[0] === bi && String(r[2]) === String(a.tank))) return;
+    d.PE.push([bi, String(d.PE.filter(r => r[0] === bi).length + 1), a.tank, a.loc || '', a.year || '', a.last || '', a.kind || '', []]);
+  });
+}
+function pecResolvePlace() {
+  const d = SVP.doc; if (!d) return;
+  let ei = pecEi(), bi = pecBi();
+  if (ei == null && (PEC.estTxt || '').trim()) {
+    const n = PEC.estTxt.trim(); ei = d.E.findIndex(e => e.n === n);
+    if (ei < 0) { d.E.push({ c: '', n: n, en: '', s: [n] }); ei = d.E.length - 1; }
+    PEC.ei = 'e' + ei; PEC.estTxt = '';
+  }
+  if (bi == null && (PEC.blkTxt || '').trim() && pecEi() != null) {
+    const n = PEC.blkTxt.trim(); ei = pecEi(); bi = -1;
+    d.B.forEach((b, i) => { if (bi < 0 && b[0] === ei && (svpBName(i) === n || b[2] === n)) bi = i; });
+    if (bi < 0) { d.B.push([ei, '', n, n]); bi = d.B.length - 1; }
+    PEC.bi = 'b' + bi; PEC.blkTxt = '';
+  }
+}
+async function pecCommitAdd() {
+  const f = PEC.form, tank = (f.tank || '').trim();
+  if (!tank) return toast('請填筒身編號');
+  pecResolvePlace();
+  const bi = pecBi(), ei = pecEi();
+  if (bi == null || ei == null || !SVP.doc) return toast('請揀屋邨同座');
+  const d = SVP.doc, b = d.B[bi], E = d.E[b[0]];
+  const rec = { ec: E.c || '', en: E.n, bn: svpBName(bi), sheet: (E.s && E.s[0]) || E.n, tank: tank, loc: (f.loc || '').trim(), year: (f.year || '').trim(), last: (f.last || '').trim(), kind: (f.kind || '').trim() };
+  const all = pecAddedLoad();
+  if (!all.some(a => a.en === rec.en && a.bn === rec.bn && a.tank === rec.tank)) all.push(rec);
+  pecAddedSave(all); pecMergeAdded(); if (SVP.ix) SVP.ix = svpIndex(d);
+  PEC.only = d.PE.findIndex(r => r[0] === bi && String(r[2]) === tank);
+  PEC.mode = ''; if (!PEC.date) PEC.date = hkDate(); pecPaint(); pecServerAdd(rec, E, bi);
+}
+async function pecServerAdd(rec, E, bi) {
+  const d = SVP.doc;
+  try {
+    const o = await gasCall({ action: 'pe_add', sheets: E.s && E.s.length ? E.s : [E.n], estate: E.n, building: rec.bn, tank: rec.tank, loc: rec.loc, year: rec.year, last: rec.last, kind: rec.kind, n251: (d.PB || {})[bi] || '', date: PEC.date, who: (PEC.who || '').trim() }, 90000);
+    if (o && o.ok && o.mode === 'sheet') toast('Excel 已開新頁。結果未填。');
+    else if (o && o.ok) toast('Excel 已喺今期加一行。結果未填，舊期冇改。');
+    else if (o && o.error === 'bad_action') toast('公司伺服器未到 v1.29（未部署），Excel 未開新頁。紀錄已留喺手機。', 4000);
+    else toast('Excel 未寫到。紀錄已留喺手機。', 4000);
+  } catch (e) { toast('Excel 未寫到。紀錄已留喺手機。', 4000); }
+}
+async function pecUploadOld(btn) {
+  const d = SVP.doc, bi = pecBi(); if (!d || bi == null || !PEC.old || btn.disabled) return;
+  const pinEl = document.getElementById('pecmpin');
+  const pin = (pinEl && pinEl.value.trim()) || (typeof ACC !== 'undefined' && ACC.mgrPin) || '';
+  if (!pin) return toast('請輸入主管密碼');
+  if (typeof ACC !== 'undefined') ACC.mgrPin = pin;
+  const bld = d.B[bi], E = d.E[bld[0]], who = (PEC.who || '').trim();
+  const rows = pecItems().map(([r, i]) => { const st = PEC.old.rows[i] || {}; return { tank: r[2] || '', tankNew: st.tank && st.tank !== r[2] ? st.tank : '', loc: st.loc, year: st.year, last: st.last, kind: st.kind, res: st.res, chips: st.chips || [], note: st.note || '' }; });
+  btn.disabled = true; btn.textContent = '上傳緊…';
+  try {
+    const o = await gasCall({ action: 'pe_prev', manager_pin: pin, period: PEC.old.period, sheets: E.s && E.s.length ? E.s : [E.n], building: svpBName(bi), date: PEC.date, who: who, rows: rows }, 90000);
+    if (o && o.ok) toast('已寫入 ' + PEC.old.period + '。冇改其他期數。');
+    else if (o && (o.error === 'bad_manager_pin' || o.error === 'manager_locked' || o.error === 'not_manager')) { if (typeof ACC !== 'undefined') ACC.mgrPin = ''; toast(o.error === 'manager_locked' ? '主管密碼錯太多次，鎖咗 15 分鐘' : '主管密碼唔啱'); }
+    else if (o && o.error === 'bad_action') toast('公司伺服器未到 v1.29（未部署），舊期未寫。', 4000);
+    else if (o && o.error === 'not_old_period') toast('呢期唔係舊期，冇寫。');
+    else toast('舊期未寫到。');
+  } catch (e) { toast('舊期未寫到。'); }
+  btn.textContent = '上傳呢期修改'; btn.disabled = false;
+}
+function pecSlice(r, period) {
+  const d = SVP.doc, a = r[7] || [];
+  for (let k = 0; k + 3 < a.length; k += 4) {
+    if (String(d.P[a[k]] || '').trim() !== period) continue;
+    return { res: pecMark(a[k + 1]), chips: String(a[k + 2] || '').split(/[、,，]/).filter(c => PEC_CHIPS.includes(c)), note: String(a[k + 3] || '') };
+  }
+  return { res: '', chips: [], note: '' };
+}
+function pecPdfInfo() {
+  const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return null;
+  const bld = d.B[bi], E = d.E[bld[0]];
+  const old = PEC.mode === 'old' && PEC.old;
+  const period = old ? PEC.old.period : 'AM2026-10';
+  /* Whole building sheet. PEC.only (the new-record page) must not drop the other cylinders. */
+  const rows = d.PE.map((r, i) => [r, i]).filter(([r]) => r[0] === bi).map(([r, i]) => {
+    const sl = pecSlice(r, period);
+    if (old) {
+      const st = (PEC.old.rows && PEC.old.rows[i]) || {};
+      return { tank: st.tank || r[2] || '', loc: st.loc != null && st.loc !== '' ? st.loc : (r[3] || ''), year: st.year != null && st.year !== '' ? String(st.year) : String(r[4] == null ? '' : r[4]), last: st.last != null && st.last !== '' ? String(st.last) : String(r[5] == null ? '' : r[5]), kind: st.kind || r[6] || '', res: pecMark(st.res || sl.res), chips: (st.chips && st.chips.length) ? st.chips : sl.chips, note: st.note || sl.note || '' };
+    }
+    const touched = Object.prototype.hasOwnProperty.call(PEC.rows, i);
+    const st = touched ? PEC.rows[i] : null;
+    return { tank: r[2] || '', loc: r[3] || '', year: String(r[4] == null ? '' : r[4]), last: String(r[5] == null ? '' : r[5]), kind: r[6] || '', res: pecMark(touched ? st.res : sl.res), chips: touched ? (st.chips || []) : sl.chips, note: touched ? (st.note || '') : (sl.note || '') };
+  });
+  return { estate: E.n, block: svpBName(bi), n251: (d.PB || {})[bi] || '', date: PEC.date || '', who: PEC.who || '', period: period, rows: rows };
+}
+function pecPdfCols() {
+  return [['tank', '筒身編號', 156], ['loc', '位置', 196], ['year', '出廠年份', 92], ['last', '上次試壓', 92], ['kind', '種類', 118], ['res', '檢查結果', 84], ['過期', '過期', 58], ['損壞', '損壞', 58], ['生銹', '生銹', 58], ['需試壓', '需試壓', 72], ['需更換', '需更換', 72], ['note', '備註', 168]];
+}
+function pecPdfVal(r, key) {
+  if (PEC_CHIPS.includes(key)) return (r.chips || []).includes(key) ? '✓' : '';
+  const v = r[key]; return v == null ? '' : String(v);
+}
+function pecDrawPage(info, rows, first, pageNo, pageN) {
+  const COLS = pecPdfCols(), W = 1400, H = 990, rowH = 34, headH = 38;
+  const tableW = COLS.reduce((s, c) => s + c[2], 0), x0 = Math.round((W - tableW) / 2);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'), font = '"Noto Sans CJK TC","Noto Sans CJK HK",sans-serif';
+  g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = '#111'; g.textBaseline = 'middle';
+  g.font = 'bold 32px ' + font; g.fillText('滅火筒檢查記錄', 36, 40);
+  g.font = 'bold 22px ' + font; g.fillStyle = '#1e3a8a'; g.fillText(info.period + (pageN > 1 ? '  ' + pageNo + '/' + pageN : ''), 360, 40);
+  g.fillStyle = '#111'; g.font = '20px ' + font;
+  const meta = first
+    ? [['屋邨', info.estate, '座', info.block], ['251 編號', info.n251 || '—', '日期', info.date || '—'], ['負責人', info.who || '—', '', '']]
+    : [['屋邨', info.estate, '座', info.block]];
+  meta.forEach((ln, i) => {
+    const y = 88 + i * 32;
+    g.fillStyle = '#64748b'; g.fillText(ln[0], 36, y); g.fillStyle = '#111'; g.fillText(String(ln[1]), 140, y);
+    if (ln[2]) { g.fillStyle = '#64748b'; g.fillText(ln[2], 640, y); g.fillStyle = '#111'; g.fillText(String(ln[3]), 750, y); }
+  });
+  const top = first ? 196 : 132;
+  let y = top;
+  g.fillStyle = '#1e3a8a'; g.fillRect(x0, y, tableW, headH);
+  g.font = 'bold 16px ' + font; g.fillStyle = '#fff'; g.textAlign = 'center';
+  let x = x0;
+  COLS.forEach(c => { g.fillText(c[1], x + c[2] / 2, y + headH / 2 + 1); x += c[2]; });
+  g.textAlign = 'left'; y += headH;
+  g.font = '18px ' + font;
+  if (!rows.length) {
+    g.strokeStyle = '#cbd5e1'; g.strokeRect(x0, y, tableW, rowH);
+    g.fillStyle = '#64748b'; g.fillText('呢座未有滅火筒', x0 + 12, y + rowH / 2);
+  }
+  rows.forEach((r, ri) => {
+    if (ri % 2 === 0) { g.fillStyle = '#f8fafc'; g.fillRect(x0, y, tableW, rowH); }
+    let cx = x0;
+    COLS.forEach(c => {
+      const val = pecPdfVal(r, c[0]);
+      const mid = c[0] === 'res' || PEC_CHIPS.includes(c[0]);
+      g.save(); g.beginPath(); g.rect(cx + 2, y + 2, c[2] - 4, rowH - 4); g.clip();
+      g.font = mid ? 'bold 20px ' + font : '18px ' + font;
+      g.fillStyle = val === '✓' ? '#047857' : val === '✗' ? '#b91c1c' : '#111';
+      g.textAlign = mid ? 'center' : 'left';
+      g.fillText(val, mid ? cx + c[2] / 2 : cx + 6, y + rowH / 2 + 1);
+      g.restore(); cx += c[2];
+    });
+    g.strokeStyle = '#e2e8f0'; g.beginPath(); g.moveTo(x0, y + rowH); g.lineTo(x0 + tableW, y + rowH); g.stroke();
+    y += rowH;
+  });
+  g.strokeStyle = '#1e3a8a'; g.lineWidth = 1.5; g.strokeRect(x0, top, tableW, headH + Math.max(rows.length, 1) * rowH);
+  g.textAlign = 'left'; g.font = '14px ' + font; g.fillStyle = '#64748b';
+  g.fillText('共 ' + info.rows.length + ' 支' + (pageN > 1 ? '　第 ' + pageNo + ' 頁' : ''), 36, H - 18);
+  return cv;
+}
+function pecDrawPdf(info) {
+  const rowH = 34, headH = 38, H = 990;
+  const cap0 = Math.max(1, Math.floor((H - 196 - headH - 28) / rowH));
+  const capN = Math.max(1, Math.floor((H - 132 - headH - 28) / rowH));
+  const chunks = []; let i = 0; const total = info.rows.length;
+  if (!total) return [pecDrawPage(info, [], true, 1, 1)];
+  while (i < total) { const n = chunks.length ? capN : cap0; chunks.push(info.rows.slice(i, i + n)); i += n; }
+  return chunks.map((rows, pi) => pecDrawPage(info, rows, pi === 0, pi + 1, chunks.length));
+}
+async function pecMakePdf() {
+  const info = pecPdfInfo(); if (!info) throw new Error('未揀座');
+  try { if (document.fonts && document.fonts.load) await document.fonts.load('20px "Noto Sans CJK TC"'); } catch (e) {}
+  const cvs = pecDrawPdf(info), pages = [];
+  for (const cv of cvs) {
+    const jpg = await new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('pdf')), 'image/jpeg', 0.86));
+    pages.push({ blob: jpg, w: cv.width, h: cv.height, land: true });
+  }
+  const pdf = await xPdf(pages, 'PE ' + info.estate + ' ' + info.block + ' ' + info.period);
+  const name = ('PE_' + info.estate + '_' + info.block + '_' + info.period + '.pdf').replace(/[^\w.\-\u4e00-\u9fff]+/g, '_');
+  return { pdf: pdf, name: name, urls: pages.map(p => URL.createObjectURL(p.blob)), n: info.rows.length, period: info.period, locs: info.rows.map(r => r.loc), res: info.rows.map(r => r.res) };
+}
+function pecClosePdf() {
+  const el = document.getElementById('pdfv');
+  if (el && el.dataset.pe === '1') { el.remove(); document.body.classList.remove('pvopen'); if (PEC.pdf && PEC.pdf.urls) PEC.pdf.urls.forEach(u => URL.revokeObjectURL(u)); }
+}
+async function pecShareBlob(m) {
+  const file = new File([m.pdf], m.name, { type: 'application/pdf' });
+  try {
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: m.name }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; toast((e && e.message) || '分享唔到'); return; }
+  const u = URL.createObjectURL(m.pdf), a = document.createElement('a'); a.href = u; a.download = m.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 60000); toast('已下載 PDF：' + m.name, 3000);
+}
+async function pecShare() {
+  const btn = document.getElementById('pecshare'); if (btn) btn.disabled = true;
+  try { const m = await pecMakePdf(); PEC.pdf = m; await pecShareBlob(m); }
+  catch (e) { toast('PDF 出錯：' + (e.message || '')); }
+  finally { const b = document.getElementById('pecshare'); if (b) b.disabled = false; }
+}
+async function pecPreview() {
+  try {
+    const m = await pecMakePdf(); PEC.pdf = m; pecClosePdf();
+    const el = document.createElement('div'); el.id = 'pdfv'; el.dataset.pe = '1';
+    const imgs = m.urls.map((u, i) => `<img class="pvpg land" ${i ? '' : 'id="pecpdfimg"'} alt="PE PDF 第 ${i + 1} 頁" src="${u}">`).join('');
+    el.innerHTML = `<div class="pvbar"><button class="btn sm" id="pecpdfx" type="button">‹ 返回</button><div class="pvt">PDF 預覽<small>${esc(m.name)}</small></div></div>
+      <div class="pvacts"><button class="btn pri" id="pecpdfshare" type="button">共享</button></div>
+      <div id="pvpages">${imgs}</div>`;
+    document.body.appendChild(el); document.body.classList.add('pvopen');
+    el.querySelector('#pecpdfx').onclick = pecClosePdf;
+    el.querySelector('#pecpdfshare').onclick = () => pecShareBlob(m);
+  } catch (e) { toast('PDF 出錯：' + (e.message || '')); }
+}
+const svpTakeRaw_pecadd = svpTake;
+svpTake = function (o) { svpTakeRaw_pecadd(o); pecMergeAdded(); };
+
 SWR_HOOK.kv_doc = (function (prev) { return (b, o) => { if (prev) prev(b, o); if (b.doc === 'svpe' && cur.view === 'pecheck') pecPaint(); }; })(SWR_HOOK.kv_doc);
 (function () { const k = TILES.findIndex(t => t.act === 'svpe'); TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'pecheck', icon: '🧯', name: 'PE 檢查', sub: '滅火筒，一座一版' }); })();
 const parseHashRaw_pec = parseHash;
@@ -6421,8 +6755,9 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '.pecmk[data-v="✓"]{color:#047857;border-color:#6ee7b7}.pecmk[data-v="✗"]{color:#b91c1c;border-color:#fca5a5}.pecmk[data-v="✓"].on{background:#d1fae5;border-color:#059669}.pecmk[data-v="✗"].on{background:#fee2e2;border-color:#b91c1c}' +
   '.pecchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.pecchip{min-height:44px;font-size:16px;padding:0 10px;border-radius:999px;border:1px solid #d1d5db;background:#fff}' +
   '.pecchip.on{background:#fff7ed;border-color:#c2410c;font-weight:700}.pecnote{display:block;font-size:14px;color:#555;margin-top:8px}.pecnote input{width:100%;box-sizing:border-box;font-size:18px;min-height:44px;margin-top:2px;border:1px solid #d1d5db;border-radius:8px;padding:0 8px}' +
-  '.pecam{margin:8px 0}.pecam .btn{flex:1}' +
-  '.pecprog{font-size:16px;font-weight:700;margin:8px 0}';
+  '.pecam{margin:8px 0}.pecam .btn{flex:1}.pecacts{display:flex;gap:8px;margin:8px 0}.pecacts .btn{flex:1;min-height:52px;font-size:17px}' +
+  '.pecprog{font-size:16px;font-weight:700;margin:8px 0}' +
+  '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
 /* ---------- 樓層 /F ---------- */
