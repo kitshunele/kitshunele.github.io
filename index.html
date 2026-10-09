@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.39';
+const APP_VERSION = '0.6.40';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -6362,6 +6362,7 @@ if (/^#\/svpe\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.37（FAN 2026-10-09）：公司雲端列表可查看／編輯／刪除全部紀錄；儲存直寫公司。已 publish。
    v0.6.38-test（FAN 2026-10-09）：離線暫存可查看／編輯／上傳到公司雲端。未 publish。
    v0.6.39（FAN 2026-10-09）：唔使重整／返回上一頁／紀錄列表；頁面加「更換」掣；離線暫存可查看／編輯／上傳。已 publish。
+   v0.6.40（FAN 2026-10-09）：新增檢查滅火筒／新增更換滅火筒；置頂更換唔要；全部刪除暫存。已 publish。
    剔號存手機（localStorage）。相片用現有 PhotoDB（IndexedDB），清單只記 id。
    上傳用現有 upload：相片同 JSON 一齊放公司收件箱同一個資料夾，舊伺服器都收得。
    Excel 冇相欄，格入面放唔到圖。v1.28 先喺今期備註後面加「相：」連結，而且唔會蓋過師傅寫嘅備註。 */
@@ -6529,6 +6530,15 @@ function pecDeleteRec(rid) {
   if (PEC.rid === rid) { PEC.rid = ''; PEC.rows = {}; PEC.mode = 'list'; PEC.cloudId = ''; }
   toast('已刪離線暫存'); pecPaint();
 }
+function pecDeleteAllRec() {
+  const n = pecLocalList().length;
+  if (!n) return toast('冇離線暫存');
+  if (!confirm('全部刪除呢部手機嘅離線暫存？\n共 ' + n + ' 份\n（只刪手機；公司雲端唔會刪）')) return;
+  pecRecsWrite({});
+  try { localStorage.removeItem(PEC_LS); } catch (e) {}
+  PEC.rid = ''; PEC.rows = {}; PEC.cloudId = ''; PEC.mode = 'list';
+  toast('已全部刪除離線暫存（' + n + ' 份）'); pecPaint();
+}
 function pecEi() { return /^e\d+$/.test(PEC.ei) ? +PEC.ei.slice(1) : null; }
 function pecBi() { return /^b\d+$/.test(PEC.bi) ? +PEC.bi.slice(1) : null; }
 function pecEstItems() { const d = SVP.doc; if (!d) return []; const has = new Set(d.PE.map(r => d.B[r[0]][0])); return svpEstItems().filter(x => has.has(+String(x.v).slice(1))); }
@@ -6543,7 +6553,7 @@ function pecMgr() { return typeof ACC !== 'undefined' && !!(ACC.mgrOk || ACC.mgr
 function pecActs() {
   if (PEC.mode === 'add' || PEC.mode === 'old' || PEC.mode === 'oldpick') return '';
   if (PEC.mode === 'list') return '';
-  return `<div class="pecacts"><button class="btn pri" type="button" id="pecadd" data-pec="add">新增檢查</button><button class="btn" type="button" data-pec="replgo">更換</button>${pecMgr() ? `<button class="btn" type="button" id="pecmgr" data-pec="mgr">修改之前嘅檢查表</button>` : ''}</div>`;
+  return `<div class="pecacts"><button class="btn pri" type="button" id="pecadd" data-pec="add">新增檢查滅火筒</button><button class="btn" type="button" data-pec="replgo">新增更換滅火筒</button>${pecMgr() ? `<button class="btn" type="button" id="pecmgr" data-pec="mgr">修改之前嘅檢查表</button>` : ''}</div>`;
 }
 
 function pecLocalList() {
@@ -6585,7 +6595,7 @@ function pecListHtml() {
         ${canDel ? `<button class="btn" type="button" data-pec="delco" data-i="${i}" style="color:#b91c1c">刪除</button>` : `<button class="btn" type="button" disabled title="Excel 組唔可以喺 App 刪">刪除</button>`}
       </div></div>`;
     }).join('');
-  } else coCards = '<div class="card mut">公司雲端暫時未有 PE 紀錄。撳「新增檢查」填完後「儲存到公司」——唔使靠手機本地做主檔。</div>';
+  } else coCards = '<div class="card mut">公司雲端暫時未有 PE 紀錄。撳「新增檢查滅火筒」填完後「儲存到公司雲端」——唔使靠手機本地做主檔。</div>';
   const localFiltered = local.filter(r => {
     if (!q) return true;
     const blob = [r.estate, r.block, r.kind, r.n251, r.date, r.status].map(x => String(x || '').toLowerCase()).join(' ');
@@ -6605,12 +6615,14 @@ function pecListHtml() {
       </div></div>`;
   }).join('') : (local.length ? `<div class="card mut">篩選「${esc(PEC.cloudFilter)}」冇離線暫存。</div>` : '<div class="card mut">冇離線暫存。主檔喺公司雲端。</div>');
   return `<div class="peck" id="peclist">
-    <div class="pecacts"><button class="btn pri" type="button" data-pec="add">新增檢查</button><button class="btn" type="button" data-pec="replgo">更換</button></div>
+    <div class="pecacts"><button class="btn pri" type="button" data-pec="add">新增檢查滅火筒</button><button class="btn" type="button" data-pec="replgo">新增更換滅火筒</button></div>
     <div class="card peckhead"><b>公司雲端紀錄</b><div class="mut">所有屋邨／座：撳「查看／編輯」改完直存公司；「刪除」刪收件箱紀錄（Excel 組唔刪）。入頁自動更新列表。</div>
       <label class="pecnote">篩選屋邨／座／251<input id="peccofilter" value="${esc(PEC.cloudFilter || '')}" placeholder="例如：青山道、博康、251…" maxlength="40"></label>
     </div>
     ${coCards}
-    <div class="card peckhead" style="margin-top:12px"><b>離線暫存（呢部手機）</b><div class="mut">可查看／編輯；撳「上傳到公司」寫入公司雲端。冇網先暫存呢度。</div></div>
+    <div class="card peckhead" style="margin-top:12px"><b>離線暫存（呢部手機）</b><div class="mut">可查看／編輯；撳「上傳到公司」寫入公司雲端。冇網先暫存呢度。</div>
+      ${local.length ? `<button class="btn" type="button" data-pec="delallrec" style="width:100%;margin-top:8px;color:#b91c1c">全部刪除暫存</button>` : ''}
+    </div>
     ${locCards}
   </div>`;
 }
@@ -7037,7 +7049,7 @@ function viewPe() {
   if (!SVP.doc && !SVP.busy && !PEC.err) setTimeout(() => { if (cur.view === 'pecheck') pecLoadDoc(); }, 0);
   if ((PEC.mode === 'list' || (!PEC.ei && pecBi() == null)) && !PEC.company && !PEC.companyBusy) setTimeout(() => { if (cur.view === 'pecheck') pecFetchCompany(); }, 0);
   const canDrop = PEC.mode !== 'list' && (PEC.rid || pecBi() != null || PEC.mode === 'add');
-  return `<div class="top"><div class="bar"><button data-act="home" aria-label="返主頁">‹ 主頁</button><div class="ttl">🧯 滅火筒檢查及更換<small>一座一版 · 合格／更換</small></div></div><div class="pecacts" style="padding:8px 10px 0"><button class="btn" type="button" data-pec="replgo">更換</button>${canDrop ? `<button class="btn" type="button" data-pec="abandon" style="color:#b91c1c">放棄</button>` : ''}</div></div><main id="pecmain">${pecBody()}</main>`;
+  return `<div class="top"><div class="bar"><button data-act="home" aria-label="返主頁">‹ 主頁</button><div class="ttl">🧯 滅火筒檢查及更換<small>一座一版 · 合格／更換</small></div></div><div class="pecacts" style="padding:8px 10px 0">${canDrop ? `<button class="btn" type="button" data-pec="abandon" style="color:#b91c1c">放棄</button>` : ''}</div></div><main id="pecmain">${pecBody()}</main>`;
 }
 function pecPaint() {
   if (cur.view !== 'pecheck') return;
@@ -7047,7 +7059,7 @@ function pecPaint() {
   const bar = document.querySelector('.top .pecacts');
   if (bar) {
     const canDrop = PEC.mode !== 'list' && (PEC.rid || pecBi() != null || PEC.mode === 'add');
-    bar.innerHTML = `<button class="btn" type="button" data-pec="replgo">更換</button>${canDrop ? `<button class="btn" type="button" data-pec="abandon" style="color:#b91c1c">放棄</button>` : ''}`;
+    bar.innerHTML = canDrop ? `<button class="btn" type="button" data-pec="abandon" style="color:#b91c1c">放棄</button>` : '';
   }
   window.scrollTo(0, y); pecThumbs();
 }
@@ -7159,6 +7171,7 @@ document.addEventListener('click', e => {
   if (a === 'openrec') return pecOpenRec(b.dataset.rid);
   if (a === 'uprec') return pecUploadRec(b.dataset.rid);
   if (a === 'delrec') return pecDeleteRec(b.dataset.rid);
+  if (a === 'delallrec') return pecDeleteAllRec();
   if (a === 'openco') return pecOpenCompany(+b.dataset.i);
   if (a === 'delco') return pecDeleteCompany(+b.dataset.i);
   if (a === 'mgr') { if (!pecMgr()) return; PEC.mode = 'oldpick'; PEC.only = null; PEC.old = null; return pecPaint(); }
