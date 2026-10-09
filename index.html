@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.41';
+const APP_VERSION = '0.6.42';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -6364,6 +6364,7 @@ if (/^#\/svpe\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.39（FAN 2026-10-09）：唔使重整／返回上一頁／紀錄列表；頁面加「更換」掣；離線暫存可查看／編輯／上傳。已 publish。
    v0.6.40（FAN 2026-10-09）：新增檢查滅火筒／新增更換滅火筒；置頂更換唔要；全部刪除暫存。已 publish。
    v0.6.41（FAN 2026-10-09）：pe_list 公司列表 server_error 修復（inbox-only＋錯誤文案）。已 publish。
+   v0.6.42（FAN 2026-10-09）：出廠年份／上次試壓／滅火筒種類改下拉（常用種類＋其他自己打）；可增加／刪除滅火筒位置。已 publish。
    剔號存手機（localStorage）。相片用現有 PhotoDB（IndexedDB），清單只記 id。
    上傳用現有 upload：相片同 JSON 一齊放公司收件箱同一個資料夾，舊伺服器都收得。
    Excel 冇相欄，格入面放唔到圖。v1.28 先喺今期備註後面加「相：」連結，而且唔會蓋過師傅寫嘅備註。 */
@@ -6544,7 +6545,15 @@ function pecEi() { return /^e\d+$/.test(PEC.ei) ? +PEC.ei.slice(1) : null; }
 function pecBi() { return /^b\d+$/.test(PEC.bi) ? +PEC.bi.slice(1) : null; }
 function pecEstItems() { const d = SVP.doc; if (!d) return []; const has = new Set(d.PE.map(r => d.B[r[0]][0])); return svpEstItems().filter(x => has.has(+String(x.v).slice(1))); }
 function pecBlkItems(ei) { return svpBlkItems(ei); } /* buildings with no cylinders stay on the list as an empty checklist, not an error, and no blank rows are invented */
-function pecItems() { const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return []; const items = d.PE.map((r, i) => [r, i]).filter(([r]) => r[0] === bi); return PEC.only == null ? items : items.filter(([, i]) => i === PEC.only); }
+function pecItems() {
+  const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return [];
+  const items = d.PE.map((r, i) => [r, i]).filter(([r, i]) => {
+    if (r[0] !== bi) return false;
+    const st = (PEC.mode === 'old' && PEC.old && PEC.old.rows[i]) ? PEC.old.rows[i] : PEC.rows[i];
+    return !(st && st.removed);
+  });
+  return PEC.only == null ? items : items.filter(([, i]) => i === PEC.only);
+}
 function pecDone() { return pecItems().filter(([, i]) => { const st = (PEC.mode === 'old' && PEC.old && PEC.old.rows[i]) ? PEC.old.rows[i] : PEC.rows[i]; return st && pecMark(st.res); }).length; }
 function pecRow(i) { return PEC.rows[i] || (PEC.rows[i] = { res: '', chips: [], note: '', photos: [] }); }
 const PEC_PH_MAX = 8;
@@ -6792,6 +6801,7 @@ function pecOpenOld(period) {
 }
 function pecCardOld(r, i) {
   const st = (PEC.old && PEC.old.rows[i]) || { res: '', chips: [], note: '', photos: [], tank: '', loc: '', year: '', last: '', kind: '' };
+  if (st.removed) return '';
   const mark = pecMark(st.res), replOn = pecHasRepl(st), kindRepl = pecIsReplaceKind() || (PEC.old && /^Replace/i.test(String(PEC.old.period || '')));
   const res = v => `<button type="button" class="pecmk ${mark === v ? 'on' : ''}" data-pec="res" data-i="${i}" data-v="${v}">${v === '✓' ? '✓ 合格' : '✗ 不合格'}</button>`;
   const fld = (k, lab) => `<label class="pecnote">${lab}<input class="pecold" data-i="${i}" data-f="${k}" value="${esc(st[k] || '')}" maxlength="80"></label>`;
@@ -6801,7 +6811,8 @@ function pecCardOld(r, i) {
   const note = `<label class="pecnote">${noteLab}<input class="pecold" data-i="${i}" data-f="note" value="${esc(st.note || '')}" maxlength="80" placeholder="${notePh}"></label>`;
   const ph = pecPh(st.photos), full = ph.length >= PEC_PH_MAX;
   const cams = `<div class="row pecam"><label class="btn">📷 影相<input type="file" class="peccam" data-i="${i}" accept="image/*" capture="environment" hidden ${full ? 'disabled' : ''}></label></div>${ph.length ? `<div class="thumbs">${ph.map(p => `<div class="thumb"><img data-photo="${esc(p.id)}" alt="相"><button type="button" class="del" data-pec="delph" data-i="${i}" data-id="${esc(p.id)}" aria-label="刪相">✕</button></div>`).join('')}</div>` : ''}`;
-  return `<div class="card peckrow" data-i="${i}">${fld('tank', '筒身編號')}${fld('loc', '位置')}${fld('year', '出廠年份')}${fld('last', '上次試壓')}${fld('kind', '種類')}${cams}<div class="pecres">${res('✓')}${res('✗')}</div>${fail}${note}</div>`;
+  const del = `<button class="btn" type="button" data-pec="delcyl" data-i="${i}" style="width:100%;margin-top:6px;color:#b91c1c">刪除位置</button>`;
+  return `<div class="card peckrow" data-i="${i}">${fld('tank', '筒身編號')}${fld('loc', '位置')}${pecMetaSel(i, 'year', '出廠年份', pecYearItems(), '其他年份（自己打）')}${pecMetaSel(i, 'last', '上次試壓', pecLastItems(), '其他試壓年份（自己打）')}${pecMetaSel(i, 'kind', '滅火筒種類', pecKindItems(), '其他種類（自己打）')}${cams}<div class="pecres">${res('✓')}${res('✗')}</div>${fail}${note}${del}</div>`;
 }
 
 async function pecOpenCompany(i) {
@@ -6955,16 +6966,83 @@ function pecAddCylLocal(fields) {
   pecSave(); pecPaint();
   toast('已加一支滅火筒（上傳先寫入 Excel）', 2500);
 }
+
+/* v0.6.42：出廠年份／上次試壓／滅火筒種類下拉（跟 Excel 常用值；其他自己打） */
+function pecYearItems() {
+  const y = (typeof hkDate === 'function' ? +hkDate().slice(0, 4) : new Date().getFullYear()) || 2026;
+  const out = [];
+  for (let i = y; i >= y - 25; i--) out.push({ v: String(i), t: String(i) });
+  out.push({ v: 'NA', t: 'NA' }, { v: 'N/A', t: 'N/A' });
+  return out;
+}
+function pecLastItems() {
+  const y = (typeof hkDate === 'function' ? +hkDate().slice(0, 4) : new Date().getFullYear()) || 2026;
+  const out = [{ v: 'NA', t: 'NA' }, { v: 'N/A', t: 'N/A' }];
+  for (let i = y; i >= y - 20; i--) out.push({ v: String(i), t: String(i) });
+  return out;
+}
+function pecKindItems() {
+  /* 次序：Excel SVPE 高頻 ＋ 常用港式種類 */
+  const common = [
+    'CO2 5KG', 'CO2 1KG', 'CO2 2KG',
+    '水筒 9L', '水筒 1L',
+    '粉筒 4.5KG', '粉筒 5KG', '粉筒 2KG', '粉筒 4KG',
+    '泡筒 9L',
+    '濕化學筒',
+    '沙桶', '防火毯',
+    'CO2 5KG 沙桶', 'CO2 5KG 防火毯', '泡筒 9L 沙桶', '水筒 9L 防火毯'
+  ];
+  return common.map(k => ({ v: k, t: k }));
+}
+function pecStFor(i) {
+  return (PEC.mode === 'old' && PEC.old && PEC.old.rows[i]) ? PEC.old.rows[i] : pecRow(i);
+}
+function pecPkMeta(i, field, v, how) {
+  const st = pecStFor(i);
+  if (how === 'type') { st[field] = v || ''; pecApplyMetaToDoc(i, st); pecSave(); return; }
+  if (how === 'other') { st[field] = ''; pecApplyMetaToDoc(i, st); pecSave(); return pecPaint(); }
+  if (how === 'done') { st[field] = (v || '').trim(); pecApplyMetaToDoc(i, st); pecSave(); return pecPaint(); }
+  st[field] = v || '';
+  pecApplyMetaToDoc(i, st); pecSave(); pecPaint();
+}
+function pecMetaSel(i, field, lab, items, oph) {
+  const st = pecStFor(i);
+  const key = 'pecm_' + field + '_' + i;
+  PKH[key] = (v, how) => pecPkMeta(i, field, v, how);
+  return `<label class="pecnote">${lab}${pkSel(key, items, st[field] || '', { ph: '— 揀' + lab + ' —', label: lab, id: key.replace(/_/g, ''), oph: oph || ('其他' + lab + '（自己打）') })}</label>`;
+}
+function pecCylPk(field, v, how) {
+  PEC.cylForm = PEC.cylForm || {};
+  if (how === 'type') { PEC.cylForm[field] = v || ''; return; }
+  if (how === 'other') { PEC.cylForm[field] = ''; return pecPaint(); }
+  if (how === 'done') { PEC.cylForm[field] = (v || '').trim(); return pecPaint(); }
+  PEC.cylForm[field] = v || '';
+  pecPaint();
+}
+function pecDelCyl(i) {
+  const st = pecStFor(i);
+  if (!st || st.removed) return;
+  const lab = (st.loc || st.tank || ('項目 ' + (st.item || i + 1)));
+  const tip = st.added ? '' : '\n（只係呢次檢查清單；Excel 原有行唔會自動刪）';
+  if (!confirm('刪除呢個滅火筒位置？\n' + lab + tip)) return;
+  st.removed = true;
+  st.res = ''; st.chips = []; st.note = '';
+  pecSave(); pecPaint();
+  toast(st.added ? '已刪除新加嘅滅火筒位置' : '已從呢次清單移除（Excel 原行仍在）', 2800);
+}
 function pecCylFormHtml(idPrefix) {
   const f = PEC.cylForm || { tank: '', loc: '', year: '', last: '', kind: '' };
+  PKH.pec_cyl_year = (v, how) => pecCylPk('year', v, how);
+  PKH.pec_cyl_last = (v, how) => pecCylPk('last', v, how);
+  PKH.pec_cyl_kind = (v, how) => pecCylPk('kind', v, how);
   return `<div class="card" id="${idPrefix}" style="margin:8px 0">
     <b>加一支滅火筒</b>
-    <div class="mut">冇紀錄／要加多支：填筒身資料後撳「加入清單」。上傳先寫 Excel。</div>
+    <div class="mut">冇紀錄／要加多支：填筒身編號／位置，再揀出廠年份、上次試壓、滅火筒種類。撳「加入清單」。上傳先寫 Excel。每卡可「刪除位置」。</div>
     <label class="pecnote">筒身編號<input id="peccyltank" value="${esc(f.tank)}" maxlength="40" placeholder="可留空"></label>
     <label class="pecnote">位置<input id="peccylloc" value="${esc(f.loc)}" maxlength="80" placeholder="例如：G/F大堂"></label>
-    <label class="pecnote">出廠年份<input id="peccylyear" value="${esc(f.year)}" maxlength="20" placeholder="例如：2022"></label>
-    <label class="pecnote">上次試壓<input id="peccyllast" value="${esc(f.last)}" maxlength="20" placeholder="例如：NA"></label>
-    <label class="pecnote">種類<input id="peccylkind" value="${esc(f.kind)}" maxlength="40" placeholder="例如：粉筒 4.5KG／CO2 5KG"></label>
+    <label class="pecnote">出廠年份${pkSel('pec_cyl_year', pecYearItems(), f.year || '', { ph: '— 揀出廠年份 —', label: '出廠年份', id: 'peccylyear', oph: '其他年份（自己打）' })}</label>
+    <label class="pecnote">上次試壓${pkSel('pec_cyl_last', pecLastItems(), f.last || '', { ph: '— 揀上次試壓 —', label: '上次試壓', id: 'peccyllast', oph: '其他試壓年份（自己打）' })}</label>
+    <label class="pecnote">滅火筒種類${pkSel('pec_cyl_kind', pecKindItems(), f.kind || '', { ph: '— 揀滅火筒種類 —', label: '滅火筒種類', id: 'peccylkind', oph: '其他種類（自己打）' })}</label>
     <button class="btn pri" style="width:100%;margin-top:8px" type="button" data-pec="addcyl">加入清單</button>
   </div>`;
 }
@@ -6990,7 +7068,8 @@ function pecOpenAdd() {
 
 function pecCard(r, i) {
   if (PEC.mode === 'old' && PEC.old) return pecCardOld(r, i);
-  const st = pecEnsureMeta(i, r); const mark = pecMark(st.res), replOn = pecHasRepl(st), kindRepl = pecIsReplaceKind();
+  const st = pecEnsureMeta(i, r); if (st.removed) return '';
+  const mark = pecMark(st.res), replOn = pecHasRepl(st), kindRepl = pecIsReplaceKind();
   const res = v => `<button type="button" class="pecmk ${mark === v ? 'on' : ''}" data-pec="res" data-i="${i}" data-v="${v}">${v === '✓' ? '✓ 合格' : '✗ 不合格'}</button>`;
   const fail = mark === '✗' ? `<div class="pecchips">${PEC_CHIPS.map(c => `<button type="button" class="pecchip ${(st.chips || []).includes(c) ? 'on' : ''}" data-pec="chip" data-i="${i}" data-k="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : '';
   const notePh = kindRepl || replOn ? '換咗咩（例如新筒身編號／種類）' : '可留空';
@@ -7000,9 +7079,13 @@ function pecCard(r, i) {
   const cams = `<div class="row pecam"><label class="btn">📷 影相<input type="file" class="peccam" data-i="${i}" accept="image/*" capture="environment" hidden ${full ? 'disabled' : ''}></label></div>${ph.length ? `<div class="thumbs">${ph.map(p => `<div class="thumb"><img data-photo="${esc(p.id)}" alt="相"><button type="button" class="del" data-pec="delph" data-i="${i}" data-id="${esc(p.id)}" aria-label="刪相">✕</button></div>`).join('')}</div>` : ''}`;
   const fld = (k, lab, phv) => `<label class="pecnote">${lab}<input class="pecid" data-i="${i}" data-f="${k}" value="${esc(st[k] || '')}" maxlength="80" placeholder="${phv || ''}"></label>`;
   const badge = st.added ? '<div class="mut" style="color:#047857">新加（未上 Excel）</div>' : '<div class="mut">可改筒身資料；上傳寫入今期 Excel</div>';
+  const del = `<button class="btn" type="button" data-pec="delcyl" data-i="${i}" style="width:100%;margin-top:6px;color:#b91c1c">刪除位置</button>`;
   return `<div class="card peckrow" data-i="${i}">${badge}
-    ${fld('tank', '筒身編號', '可留空')}${fld('loc', '位置', '')}${fld('year', '出廠年份', '')}${fld('last', '上次試壓', '')}${fld('kind', '種類', '粉筒／CO2…')}
-    ${cams}<div class="pecres">${res('✓')}${res('✗')}</div>${fail}${note}</div>`;
+    ${fld('tank', '筒身編號', '可留空')}${fld('loc', '位置', '例如：G/F大堂')}
+    ${pecMetaSel(i, 'year', '出廠年份', pecYearItems(), '其他年份（自己打）')}
+    ${pecMetaSel(i, 'last', '上次試壓', pecLastItems(), '其他試壓年份（自己打）')}
+    ${pecMetaSel(i, 'kind', '滅火筒種類', pecKindItems(), '其他種類（自己打）')}
+    ${cams}<div class="pecres">${res('✓')}${res('✗')}</div>${fail}${note}${del}</div>`;
 }
 function pecBody() {
   if (!SVP.doc) return PEC.err ? `<div class="errbox">${esc(PEC.err)}</div><button class="btn" style="width:100%" data-pec="retry">🔄 再試</button>` : '<div class="card mut">讀緊滅火筒資料…</div>';
@@ -7133,10 +7216,10 @@ document.addEventListener('input', e => {
     const st = (PEC.mode === 'old' && PEC.old && PEC.old.rows[i]) ? PEC.old.rows[i] : pecRow(i);
     st[f] = t.value; pecApplyMetaToDoc(i, st); pecSave();
   }
-  else if (t.id === 'peccyltank' || t.id === 'peccylloc' || t.id === 'peccylyear' || t.id === 'peccyllast' || t.id === 'peccylkind') {
+  else if (t.id === 'peccyltank' || t.id === 'peccylloc') {
     PEC.cylForm = PEC.cylForm || {};
-    const map = { peccyltank: 'tank', peccylloc: 'loc', peccylyear: 'year', peccyllast: 'last', peccylkind: 'kind' };
-    PEC.cylForm[map[t.id]] = t.value;
+    if (t.id === 'peccyltank') PEC.cylForm.tank = t.value;
+    else PEC.cylForm.loc = t.value;
   }
   else if (t.classList && t.classList.contains('pecni')) { const r = pecRow(+t.dataset.i); r.note = t.value; pecSave(); }
 });
@@ -7197,15 +7280,17 @@ document.addEventListener('click', e => {
     const r = (PEC.mode === 'old' && PEC.old && PEC.old.rows[+b.dataset.i]) ? PEC.old.rows[+b.dataset.i] : pecRow(+b.dataset.i);
     const id = b.dataset.id; r.photos = pecPh(r.photos).filter(p => p.id !== id); PhotoDB.del(id); thumbs.delete(id); if (PEC.mode !== 'old') pecSave(); return pecPaint();
   }
+  if (a === 'delcyl') return pecDelCyl(+b.dataset.i);
   if (a === 'addcyl') {
     const fields = {
       tank: (document.getElementById('peccyltank') || {}).value || (PEC.cylForm && PEC.cylForm.tank) || '',
       loc: (document.getElementById('peccylloc') || {}).value || (PEC.cylForm && PEC.cylForm.loc) || '',
-      year: (document.getElementById('peccylyear') || {}).value || (PEC.cylForm && PEC.cylForm.year) || '',
-      last: (document.getElementById('peccyllast') || {}).value || (PEC.cylForm && PEC.cylForm.last) || '',
-      kind: (document.getElementById('peccylkind') || {}).value || (PEC.cylForm && PEC.cylForm.kind) || ''
+      year: (PEC.cylForm && PEC.cylForm.year) || '',
+      last: (PEC.cylForm && PEC.cylForm.last) || '',
+      kind: (PEC.cylForm && PEC.cylForm.kind) || ''
     };
     PEC.cylForm = { tank: '', loc: '', year: '', last: '', kind: '' };
+    delete PK.open.pec_cyl_year; delete PK.open.pec_cyl_last; delete PK.open.pec_cyl_kind;
     return pecAddCylLocal(fields);
   }
   if (a === 'up') return pecUpload(b);
