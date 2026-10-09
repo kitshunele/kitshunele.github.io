@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.43';
+const APP_VERSION = '0.6.44';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1773,7 +1773,7 @@ async function gasCall(body, ms, pinTry) { // pinTry：提交頁 PIN 框試緊�
 }
 const GAS_READS = new Set(['ping', 'access_status', 'app_data', 'ecall_reports', 'clock_status', 'clock_records', 'photo_search', 'photo_thumbs', 'photo_full', 'photo_places',
   'acc_list', 'acc_pending_count', 'list', 'get', 'photo', 'clock_staff', 'clock_today', 'clock_mine', 'data', 'wa_photos', 'wa_thumbs', 'wa_photo', 'bldg_list', 'bldg_thumbs', 'bldg_file',
-  'pending_confirms', 'pending_photo', 'ecall', 'svpe_data', 'kv_doc', 'bldg_notes', 'drive_doc', 'pe_list', 'pe_next_251']);
+  'pending_confirms', 'pending_photo', 'ecall', 'svpe_data', 'kv_doc', 'bldg_notes', 'drive_doc', 'pe_list', 'pe_next_251', 'pe_building']);
 function upPending(r) { return !!(r && r.upload && r.updated <= r.upload.queuedAt); }
 function compactTs(d) { const p = hk(d); return `${p.y}${p.m}${p.d}${p.H}${p.M}${p.S}`; }
 function upProgress(r, msg) {
@@ -6366,6 +6366,7 @@ if (/^#\/svpe\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.41（FAN 2026-10-09）：pe_list 公司列表 server_error 修復（inbox-only＋錯誤文案）。已 publish。
    v0.6.42（FAN 2026-10-09）：出廠年份／上次試壓／滅火筒種類改下拉（常用種類＋其他自己打）；可增加／刪除滅火筒位置。已 publish。
    v0.6.43（FAN 2026-10-09）：刪除／改資料持久化（草稿存 removed；SVPE 刷新重套；公司雲端用改後資料）。澄清「放棄」。已 publish。
+   v0.6.44（FAN 2026-10-09）：滅火筒表雙向同步第一刀——pe_building 拉 Excel；上傳寫 Excel；LWW（Excel mtime vs 本地 touched）。已 publish。
    剔號存手機（localStorage）。相片用現有 PhotoDB（IndexedDB），清單只記 id。
    上傳用現有 upload：相片同 JSON 一齊放公司收件箱同一個資料夾，舊伺服器都收得。
    Excel 冇相欄，格入面放唔到圖。v1.28 先喺今期備註後面加「相：」連結，而且唔會蓋過師傅寫嘅備註。 */
@@ -6468,7 +6469,8 @@ function pecSnapRow(r) {
   return {
     res: pecMark(r.res), chips: r.chips || [], note: r.note || '', photos: pecPh(r.photos),
     tank: r.tank != null ? r.tank : '', loc: r.loc != null ? r.loc : '', year: r.year != null ? String(r.year) : '', last: r.last != null ? String(r.last) : '', kind: r.kind != null ? r.kind : '',
-    origTank: r.origTank != null ? r.origTank : (r.tank || ''), added: !!r.added, removed: !!r.removed, item: r.item != null ? String(r.item) : ''
+    origTank: r.origTank != null ? r.origTank : (r.tank || ''), added: !!r.added, removed: !!r.removed, item: r.item != null ? String(r.item) : '',
+    touched_ms: Number(r.touched_ms) || 0, from_excel: !!r.from_excel
   };
 }
 function pecLoad(ei, bi) {
@@ -6962,6 +6964,8 @@ function pecApplyMetaToDoc(i, st) {
   if (st.last != null) r[5] = st.last;
   if (st.kind != null) r[6] = st.kind;
 }
+function pecTouch(st) { if (st) { st.touched_ms = Date.now(); st.from_excel = false; } }
+
 
 /* v0.6.43：草稿快照（含刪除／新加／改欄）＋ SVPE 刷新後重套，避免重開／背景更新就還原 */
 function pecFindPeIdx(st, preferI) {
@@ -7069,6 +7073,88 @@ function pecAddCylLocal(fields) {
   toast('已加一支滅火筒（上傳先寫入 Excel）', 2500);
 }
 
+
+/* v0.6.44：雙向同步——Excel SoT；LWW = max(Excel modified_ms, 本地 touched_ms) */
+async function pecPullExcel(force) {
+  const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return toast('請先揀座');
+  const bld = d.B[bi], E = d.E[bld[0]];
+  const sheets = E.s && E.s.length ? E.s : [E.n];
+  const period = (PEC.mode === 'old' && PEC.old && PEC.old.period) ? PEC.old.period : 'AM2026-10';
+  if (!force && pecDirtyLocal()) {
+    if (!confirm('你喺手機有未上傳嘅修改。由 Excel 更新會用「最後寫入贏」（Excel 檔時間 vs 你改嘅時間）。繼續？')) return;
+  }
+  toast('由 Excel 更新緊…', 2000);
+  try {
+    const o = await gasCall({ action: 'pe_building', sheets: sheets, building: svpBName(bi), period: period, refresh: !!force }, 120000);
+    if (!o || !o.ok) {
+      if (o && o.error === 'bad_action') return toast('公司伺服器未到 v1.37（未有 pe_building）', 4000);
+      return toast('Excel 讀唔到：' + ((o && o.error) || ''), 4000);
+    }
+    pecMergeExcelBuilding(o);
+    pecSave(); pecPaint();
+    toast('已跟 Excel 更新（' + (o.count || 0) + ' 支 · ' + (o.modified_hkt || '') + '）', 3500);
+  } catch (e) { toast('Excel 讀唔到：' + (e.message || ''), 4000); }
+}
+function pecDirtyLocal() {
+  return Object.keys(PEC.rows || {}).some(k => {
+    const st = PEC.rows[k]; return st && !st.removed && Number(st.touched_ms) > 0 && !st.from_excel;
+  });
+}
+function pecMergeExcelBuilding(o) {
+  const d = SVP.doc, bi = pecBi(); if (!d || bi == null || !o) return;
+  const excelMs = Number(o.modified_ms) || 0;
+  const xlRows = Array.isArray(o.rows) ? o.rows : [];
+  /* 保留：本地 removed（未放棄）、本地 added 未上 Excel、本地 touched 新過 Excel 檔 */
+  const keepRemoved = {}, keepAdded = [], keepTouched = {};
+  Object.keys(PEC.rows || {}).forEach(k => {
+    const st = PEC.rows[k], i = +k;
+    if (!st) return;
+    if (st.removed) keepRemoved[pecNormTank(st.origTank || st.tank) || ('#' + k)] = st;
+    else if (st.added) keepAdded.push(st);
+    else if (Number(st.touched_ms) > excelMs) keepTouched[pecNormTank(st.origTank || st.tank) || ('item:' + st.item)] = st;
+  });
+  /* 清呢座舊 PE 列，改用 Excel（保留其他座） */
+  const kept = [];
+  d.PE.forEach(r => { if (r[0] !== bi) kept.push(r); });
+  d.PE = kept;
+  PEC.rows = {};
+  if (PEC.mode === 'old' && PEC.old) PEC.old.rows = {};
+  xlRows.forEach((row, idx) => {
+    const item = String(row.item || (idx + 1));
+    const tank = row.tank || '', loc = row.loc || '', year = String(row.year || ''), last = String(row.last || ''), kind = row.kind || '';
+    d.PE.push([bi, item, tank, loc, year, last, kind, []]);
+    const i = d.PE.length - 1;
+    const key = pecNormTank(tank) || ('item:' + item);
+    const local = keepTouched[key];
+    let st;
+    if (local && Number(local.touched_ms) > excelMs) {
+      st = pecSnapRow(local);
+      st.from_excel = false;
+    } else {
+      st = {
+        res: pecMark(row.res), chips: row.chips || [], note: row.note || '', photos: [],
+        tank, loc, year, last, kind, origTank: tank, added: false, removed: false, item,
+        touched_ms: 0, from_excel: true
+      };
+    }
+    const rk = pecNormTank(st.origTank || st.tank);
+    if (rk && keepRemoved[rk]) { st.removed = true; }
+    if (PEC.mode === 'old' && PEC.old) PEC.old.rows[i] = st;
+    else PEC.rows[i] = st;
+  });
+  keepAdded.forEach(st => {
+    const n = d.PE.filter(r => r[0] === bi).length + 1;
+    d.PE.push([bi, String(n), st.tank || '', st.loc || '', st.year || '', st.last || '', st.kind || '', []]);
+    const i = d.PE.length - 1;
+    st.item = String(n); st.added = true;
+    if (PEC.mode === 'old' && PEC.old) PEC.old.rows[i] = st;
+    else PEC.rows[i] = st;
+  });
+  if (o.n251 && pec251Ok(o.n251) && !PEC.n251) PEC.n251 = o.n251;
+  PEC.excelMod = { ms: excelMs, hkt: o.modified_hkt || '', at: Date.now(), period: o.period || '' };
+  pecReapplyLocalMeta();
+}
+
 /* v0.6.42：出廠年份／上次試壓／滅火筒種類下拉（跟 Excel 常用值；其他自己打） */
 function pecYearItems() {
   const y = (typeof hkDate === 'function' ? +hkDate().slice(0, 4) : new Date().getFullYear()) || 2026;
@@ -7101,11 +7187,11 @@ function pecStFor(i) {
 }
 function pecPkMeta(i, field, v, how) {
   const st = pecStFor(i);
-  if (how === 'type') { st[field] = v || ''; pecApplyMetaToDoc(i, st); pecSave(); return; }
-  if (how === 'other') { st[field] = ''; pecApplyMetaToDoc(i, st); pecSave(); return pecPaint(); }
-  if (how === 'done') { st[field] = (v || '').trim(); pecApplyMetaToDoc(i, st); pecSave(); return pecPaint(); }
+  if (how === 'type') { st[field] = v || ''; pecTouch(st); pecApplyMetaToDoc(i, st); pecSave(); return; }
+  if (how === 'other') { st[field] = ''; pecTouch(st); pecApplyMetaToDoc(i, st); pecSave(); return pecPaint(); }
+  if (how === 'done') { st[field] = (v || '').trim(); pecTouch(st); pecApplyMetaToDoc(i, st); pecSave(); return pecPaint(); }
   st[field] = v || '';
-  pecApplyMetaToDoc(i, st); pecSave(); pecPaint();
+  pecTouch(st); pecApplyMetaToDoc(i, st); pecSave(); pecPaint();
 }
 function pecMetaSel(i, field, lab, items, oph) {
   const st = pecStFor(i);
@@ -7235,7 +7321,7 @@ function pecBody() {
       <div class="pecprog" id="pecprog">已填 ${done}／${items.length}</div>
       ${items.length ? items.map(([r, i]) => pecCard(r, i)).join('') : '<div class="card mut" id="pecempty">呢座未有滅火筒紀錄（0 支）。請喺下面「加一支滅火筒」填資料。</div>'}
       ${pecCylFormHtml('pecaddcyl')}
-      ${old ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="upold" ${done > 0 ? '' : 'disabled'}>上傳呢期修改</button><div class="mut">只寫 ${esc(PEC.old.period)} 已剔嘅結果（未剔唔寫）。可改筒身資料。其他期數唔郁。做到一半可以返主頁——草稿喺手機。</div>` : `<div class="pecacts"><button class="btn pri" type="button" data-pec="up" ${(done > 0 || (!old && typeof pecDirty === 'function' && pecDirty())) ? '' : 'disabled'}>上傳呢座檢查</button><button class="btn" type="button" data-pec="saveco">儲存到公司雲端</button></div><div class="mut" id="pecdraft">做到一半可以返主頁——草稿喺手機（刪除位置／改欄都會暫存）。未全部剔完都可以上傳已填嘅。要留喺公司／Excel：撳「儲存到公司雲端」或「上傳呢座檢查」。「放棄」先會清呢份草稿。</div>`}
+      ${old ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="upold" ${done > 0 ? '' : 'disabled'}>上傳呢期修改</button><button class="btn" style="width:100%;margin:4px 0" type="button" data-pec="pullex">從 Excel 更新</button><div class="mut">只寫 ${esc(PEC.old.period)} 已剔嘅結果（未剔唔寫）。可改筒身資料。其他期數唔郁。做到一半可以返主頁——草稿喺手機。</div>` : `<div class="pecacts"><button class="btn pri" type="button" data-pec="up" ${(done > 0 || (!old && typeof pecDirty === 'function' && pecDirty())) ? '' : 'disabled'}>上傳呢座檢查</button><button class="btn" type="button" data-pec="saveco">儲存到公司雲端</button></div><button class="btn" style="width:100%;margin:4px 0" type="button" data-pec="pullex">從 Excel 更新</button><div class="mut" id="pecdraft">雙向同步：辦公室改 Excel → 撳「從 Excel 更新」；你改完 → 撳「上傳呢座檢查」寫返 Excel。衝突用最後寫入贏（Excel 檔時間 vs 你改嘅時間）。草稿喺手機；「放棄」會清。</div>`}
       ${pecShareRow()}`;
   } else body = `<div class="card mut" id="pecpickblk">${PEC.ei || (PEC.estTxt || '').trim() ? '屋邨已揀。請揀下一座（上一座草稿仍喺手機）。' : '揀一座。一版一棟，欄位跟滅火筒檢查及更換。'}</div>`;
   return `<div class="peck">${pecActs()}${sel}${body}</div>`;
@@ -7324,7 +7410,7 @@ document.addEventListener('input', e => {
   else if (t.classList && t.classList.contains('pecid')) {
     const i = +t.dataset.i, f = t.dataset.f;
     const st = (PEC.mode === 'old' && PEC.old && PEC.old.rows[i]) ? PEC.old.rows[i] : pecRow(i);
-    st[f] = t.value; pecApplyMetaToDoc(i, st); pecSave();
+    st[f] = t.value; pecTouch(st); pecApplyMetaToDoc(i, st); pecSave();
   }
   else if (t.id === 'peccyltank' || t.id === 'peccylloc') {
     PEC.cylForm = PEC.cylForm || {};
@@ -7356,13 +7442,14 @@ document.addEventListener('click', e => {
     return;
   }
   if (a === 'addx') { PEC.mode = pecBi() != null ? '' : 'list'; PEC.old = null; PEC.replLock = false; return pecPaint(); }
-  if (a === 'addgo') return pecCommitAdd();
+  if (a === 'addgo') return pecCommitAdd().then(() => { try { return pecPullExcel(false); } catch (e) {} });
   if (a === '251next') return pecFetch251();
   if (a === 'back') return pecBack();
   if (a === 'abandon') return pecAbandon();
   if (a === 'tolist') { pecSave(); PEC.mode = 'list'; PEC.only = null; return pecPaint(); }
   if (a === 'refreshco') return pecFetchCompany();
   if (a === 'saveco') return pecSaveCompany();
+  if (a === 'pullex') return pecPullExcel(true);
   if (a === 'openrec') return pecOpenRec(b.dataset.rid);
   if (a === 'uprec') return pecUploadRec(b.dataset.rid);
   if (a === 'delrec') return pecDeleteRec(b.dataset.rid);
@@ -7503,7 +7590,7 @@ async function pecUpload(btn) {
       px = await gasCall({ action: 'pe_check', sheets: E.s && E.s.length ? E.s : [E.n], building: svpBName(bi), date: PEC.date, who: who, n251: PEC.n251 || '', rows: checkRows }, 90000);
     }
     if (checkRows.length) {
-      if (px && px.ok) excel = (excel ? excel + ' ' : '') + '已寫入今期 AM2026-10（已填 ' + checkRows.length + ' 支；含筒身資料）。';
+      if (px && px.ok) { excel = (excel ? excel + ' ' : '') + '已寫入今期 AM2026-10（已填 ' + checkRows.length + ' 支；含筒身資料）。'; idItems.forEach(([, i]) => { const st = PEC.rows[i]; if (st) { st.touched_ms = 0; st.from_excel = true; } }); pecSave(); }
       else if (px && px.error === 'no_current_period') excel = (excel ? excel + ' ' : '') + '呢張表未有今期 AM2026-10，冇寫入舊期數。';
       else if (px && px.error === 'bad_action') excel = (excel ? excel + ' ' : '') + '公司伺服器未到 v1.33，Excel 結果／改資料未寫。' + (shots.length ? '相連結要等伺服器先寫入備註。' : '紀錄已留喺手機。');
       else excel = (excel ? excel + ' ' : '') + 'Excel 未寫到。';
