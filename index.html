@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.42';
+const APP_VERSION = '0.6.43';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -6365,6 +6365,7 @@ if (/^#\/svpe\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.40（FAN 2026-10-09）：新增檢查滅火筒／新增更換滅火筒；置頂更換唔要；全部刪除暫存。已 publish。
    v0.6.41（FAN 2026-10-09）：pe_list 公司列表 server_error 修復（inbox-only＋錯誤文案）。已 publish。
    v0.6.42（FAN 2026-10-09）：出廠年份／上次試壓／滅火筒種類改下拉（常用種類＋其他自己打）；可增加／刪除滅火筒位置。已 publish。
+   v0.6.43（FAN 2026-10-09）：刪除／改資料持久化（草稿存 removed；SVPE 刷新重套；公司雲端用改後資料）。澄清「放棄」。已 publish。
    剔號存手機（localStorage）。相片用現有 PhotoDB（IndexedDB），清單只記 id。
    上傳用現有 upload：相片同 JSON 一齊放公司收件箱同一個資料夾，舊伺服器都收得。
    Excel 冇相欄，格入面放唔到圖。v1.28 先喺今期備註後面加「相：」連結，而且唔會蓋過師傅寫嘅備註。 */
@@ -6439,11 +6440,12 @@ const pecSave = () => {
   if (PEC.mode === 'old' && PEC.old && PEC.old.rows) {
     sidePeriod = String(PEC.old.period || '');
     rows = {};
-    Object.keys(PEC.old.rows).forEach(k => {
-      const r = PEC.old.rows[k] || {};
-      rows[k] = { res: pecMark(r.res), chips: r.chips || [], note: r.note || '', photos: pecPh(r.photos), tank: r.tank || '', loc: r.loc || '', year: r.year || '', last: r.last || '', kind: r.kind || '' };
-    });
+    Object.keys(PEC.old.rows).forEach(k => { rows[k] = pecSnapRow(PEC.old.rows[k] || {}); });
     PEC.rows = rows;
+  } else {
+    const snap = {};
+    Object.keys(PEC.rows || {}).forEach(k => { snap[k] = pecSnapRow(PEC.rows[k] || {}); });
+    rows = snap;
   }
   const done = Object.keys(rows).filter(k => pecMark((rows[k] || {}).res)).length;
   all[PEC.rid] = {
@@ -6460,6 +6462,15 @@ const pecSave = () => {
   }
 };
 function pecMark(s) { s = String(s || '').trim(); if (s === 'ü' || s === '✓' || s === '✔' || s === '合格') return '✓'; if (s === 'û' || s === '✗' || s === '✘' || s === '不合格' || s === '唔合格') return '✗'; return ''; }
+
+function pecSnapRow(r) {
+  r = r || {};
+  return {
+    res: pecMark(r.res), chips: r.chips || [], note: r.note || '', photos: pecPh(r.photos),
+    tank: r.tank != null ? r.tank : '', loc: r.loc != null ? r.loc : '', year: r.year != null ? String(r.year) : '', last: r.last != null ? String(r.last) : '', kind: r.kind != null ? r.kind : '',
+    origTank: r.origTank != null ? r.origTank : (r.tank || ''), added: !!r.added, removed: !!r.removed, item: r.item != null ? String(r.item) : ''
+  };
+}
 function pecLoad(ei, bi) {
   /* 開一座：若有呢座最新 draft rid 就用，否則新開 */
   const legacy = pecAll()[ei + '|' + bi] || {};
@@ -6470,7 +6481,9 @@ function pecLoad(ei, bi) {
   if (hit) return pecOpenRec(hit.rid);
   PEC.ei = ei; PEC.bi = bi; PEC.date = hkDate(); PEC.who = ((typeof Store !== 'undefined' && Store.prefs && Store.prefs.ckName) || '');
   PEC.rows = {}; PEC.rid = newId('pe'); const bix = /^b\d+$/.test(bi) ? +bi.slice(1) : bi; PEC.n251 = pecPb251(bix) || '';
-  PEC.inspKind = ''; pecSave();
+  PEC.inspKind = '';
+  try { pecReapplyLocalMeta(); } catch (e) {}
+  pecSave();
 }
 function pecOpenRec(rid) {
   const s = pecRecsAll()[rid]; if (!s) return toast('搵唔到呢份離線暫存');
@@ -6482,8 +6495,9 @@ function pecOpenRec(rid) {
   PEC.n251 = pec251Ok(s.n251) ? String(s.n251).trim() : '';
   PEC.inspKind = s.kind || '';
   const rows = s.rows && typeof s.rows === 'object' ? s.rows : {};
-  PEC.rows = {}; Object.keys(rows).forEach(k => { const r = rows[k] || {}; PEC.rows[k] = { res: pecMark(r.res), chips: r.chips || [], note: r.note || '', photos: pecPh(r.photos), tank: r.tank || '', loc: r.loc || '', year: r.year || '', last: r.last || '', kind: r.kind || '', origTank: r.origTank != null ? r.origTank : (r.tank || ''), added: !!r.added }; });
+  PEC.rows = {}; Object.keys(rows).forEach(k => { PEC.rows[k] = pecSnapRow(rows[k] || {}); });
   PEC.only = null;
+  try { pecReapplyLocalMeta(); } catch (e) {}
   /* 對返屋邨／座（svpe 已載） */
   const d = SVP.doc;
   if (d && pecBi() == null && (s.estate || s.block)) {
@@ -6662,7 +6676,7 @@ function pecBack() {
   PEC.mode = 'list'; return pecPaint();
 }
 function pecAbandon() {
-  if (!confirm('放棄而家呢份檢查草稿？只刪呢一份，其他座／其他紀錄唔會冇。')) return;
+  if (!confirm('放棄而家呢份檢查草稿？\n會清呢座未上傳嘅刪除／修改（只呢一份）。其他座唔會冇。')) return;
   const rid = PEC.rid;
   if (rid) {
     const a = pecRecsAll(); delete a[rid]; pecRecsWrite(a);
@@ -6674,8 +6688,11 @@ function pecAbandon() {
       }
     }
   }
+  if (PEC.ei && PEC.bi) {
+    pecRemovedSave(pecRemovedLoad().filter(x => !(x.ei === PEC.ei && x.bi === PEC.bi)));
+  }
   PEC.rid = ''; PEC.rows = {}; PEC.bi = ''; PEC.blkTxt = ''; PEC.only = null; PEC.old = null; PEC.mode = 'list'; PEC.n251 = ''; PEC.cloudId = '';
-  toast('已放棄呢份草稿'); pecPaint();
+  toast('已放棄呢份草稿（刪除／修改唔再保留）'); pecPaint();
 }
 async function pecSaveCompany() {
   const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return toast('請先揀座');
@@ -6683,7 +6700,17 @@ async function pecSaveCompany() {
   const bld = d.B[bi], E = d.E[bld[0]], who = (PEC.who || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(PEC.date || '')) return toast('請填日期');
   const items = pecItems();
-  const rows = items.map(([r, i]) => { const st = PEC.rows[i] || {}; return { tank: r[2] || '', loc: r[3] || '', year: String(r[4] == null ? '' : r[4]), last: String(r[5] == null ? '' : r[5]), kind: r[6] || '', res: st.res || '', chips: st.chips || [], note: st.note || '' }; });
+  const rows = items.map(([r, i]) => {
+    const st = pecEnsureMeta(i, r);
+    return {
+      tank: st.tank != null && st.tank !== '' ? st.tank : (r[2] || ''),
+      loc: st.loc != null ? st.loc : (r[3] || ''),
+      year: st.year != null ? String(st.year) : String(r[4] == null ? '' : r[4]),
+      last: st.last != null ? String(st.last) : String(r[5] == null ? '' : r[5]),
+      kind: st.kind != null ? st.kind : (r[6] || ''),
+      res: st.res || '', chips: st.chips || [], note: st.note || ''
+    };
+  });
   const btn = document.querySelector('[data-pec="saveco"]');
   if (btn) { btn.disabled = true; btn.textContent = '儲存緊…'; }
   try {
@@ -6716,17 +6743,16 @@ function pecNavRow() {
   return `<div class="pecacts" id="pecnav"><button class="btn" type="button" id="pecreview" data-pec="review">返回查看</button><button class="btn" type="button" id="pecnext" data-pec="next">新增另一座</button></div>`;
 }
 function pecReviewList() {
-  const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return '';
-  const old = false;
-  const items = d.PE.map((r, i) => [r, i]).filter(([r]) => r[0] === bi);
+  const items = pecItems();
   const done = items.filter(([, i]) => pecMark((PEC.rows[i] || {}).res)).length;
   const rows = items.map(([r, i]) => {
-    const st = PEC.rows[i] || {}, mark = pecMark(st.res);
+    const st = pecEnsureMeta(i, r), mark = pecMark(st.res);
     const badge = mark === '✓' ? '<span class="pecbadge ok">✓ 合格</span>' : mark === '✗' ? '<span class="pecbadge bad">✗ 不合格</span>' : '<span class="pecbadge mute">未填</span>';
-    return `<button type="button" class="card peckrev" data-pec="goto" data-i="${i}"><div class="pecyl">${r[2] ? esc(r[2]) : '（冇筒身編號）'}</div><div class="pecmeta"><span>位置</span> ${esc(r[3] || '—')}</div><div class="pecmeta">${badge}${st.chips && st.chips.length ? ' · ' + esc(st.chips.join('、')) : ''}</div></button>`;
+    const tank = st.tank || r[2] || ''; const loc = st.loc != null ? st.loc : (r[3] || '');
+    return `<button type="button" class="card peckrev" data-pec="goto" data-i="${i}"><div class="pecyl">${tank ? esc(tank) : '（冇筒身編號）'}</div><div class="pecmeta"><span>位置</span> ${esc(loc || '—')}</div><div class="pecmeta">${badge}${st.chips && st.chips.length ? ' · ' + esc(st.chips.join('、')) : ''}</div></button>`;
   }).join('');
-  return `<div class="card peckhead" id="pecreviewbox"><b>返回查看</b><div class="mut">呢座已填 ${done}／${items.length}。草稿已喺手機，唔會冇咗。撳其中一支可以改。</div></div>
-    <div class="pecprog">已填 ${done}／${items.length}</div>${rows || '<div class="card mut">呢座冇滅火筒。</div>'}`;
+  return `<div class="card peckhead" id="pecreviewbox"><b>返回查看</b><div class="mut">呢座已填 ${done}／${items.length}。草稿已喺手機（含刪除／改欄）。撳其中一支可以改。</div></div>
+    <div class="pecprog">已填 ${done}／${items.length}</div>${rows || '<div class="card mut">呢座冇滅火筒（或已全部刪除位置）。</div>'}`;
 }
 function pecNextBlock() {
   pecSave();
@@ -6915,6 +6941,7 @@ function pecEnsureMeta(i, r) {
   return st;
 }
 function pecDirty() {
+  if (Object.keys(PEC.rows || {}).some(k => (PEC.rows[k] || {}).removed)) return true;
   return pecItems().some(([r, i]) => {
     const st = PEC.rows[i]; if (!st) return false;
     if (st.added) return true;
@@ -6935,6 +6962,81 @@ function pecApplyMetaToDoc(i, st) {
   if (st.last != null) r[5] = st.last;
   if (st.kind != null) r[6] = st.kind;
 }
+
+/* v0.6.43：草稿快照（含刪除／新加／改欄）＋ SVPE 刷新後重套，避免重開／背景更新就還原 */
+function pecFindPeIdx(st, preferI) {
+  const d = SVP.doc, bi = pecBi(); if (!d || bi == null || !st) return -1;
+  const wantTank = pecNormTank(st.origTank || st.tank || '');
+  if (preferI >= 0 && d.PE[preferI] && d.PE[preferI][0] === bi) {
+    const tt = pecNormTank(d.PE[preferI][2]);
+    if (!wantTank || tt === wantTank || tt === pecNormTank(st.tank || '')) return preferI;
+  }
+  let hit = -1;
+  d.PE.forEach((r, i) => {
+    if (hit >= 0 || r[0] !== bi) return;
+    if (wantTank && pecNormTank(r[2]) === wantTank) hit = i;
+    else if (st.item && String(r[1]) === String(st.item) && (!wantTank || !r[2])) hit = i;
+  });
+  return hit;
+}
+function pecReapplyLocalMeta() {
+  const d = SVP.doc; if (!d || !PEC.rows) return;
+  const bi = pecBi(); if (bi == null) return;
+  const next = {};
+  Object.keys(PEC.rows).forEach(k => {
+    const st = PEC.rows[k]; if (!st) return;
+    let i = pecFindPeIdx(st, +k);
+    if (i < 0 && st.added && !st.removed) {
+      const n = d.PE.filter(r => r[0] === bi).length + 1;
+      d.PE.push([bi, String(n), st.tank || '', st.loc || '', st.year || '', st.last || '', st.kind || '', []]);
+      i = d.PE.length - 1; st.item = String(n);
+    }
+    if (i < 0) { next[k] = st; return; }
+    if (!st.removed) pecApplyMetaToDoc(i, st);
+    next[i] = st;
+  });
+  pecRemovedLoad().forEach(rm => {
+    if (rm.ei && PEC.ei && rm.ei !== PEC.ei) return;
+    if (rm.bi && PEC.bi && rm.bi !== PEC.bi) return;
+    const place = pecPlaceNames();
+    if (rm.en && place.estate && rm.en !== place.estate) return;
+    if (rm.bn && place.block && rm.bn !== place.block) return;
+    d.PE.forEach((r, i) => {
+      if (r[0] !== bi) return;
+      const hit = (rm.tank && pecNormTank(r[2]) === pecNormTank(rm.tank))
+        || (!rm.tank && rm.loc && String(r[3] || '') === String(rm.loc) && (!rm.item || String(r[1]) === String(rm.item)));
+      if (!hit) return;
+      const st = next[i] || pecRow(i);
+      st.removed = true;
+      if (!st.origTank) st.origTank = r[2] || rm.tank || '';
+      if (st.loc == null) st.loc = r[3] || rm.loc || '';
+      next[i] = st;
+    });
+  });
+  PEC.rows = next;
+  if (PEC.mode === 'old' && PEC.old) {
+    PEC.old.rows = {};
+    Object.keys(next).forEach(k => { PEC.old.rows[k] = Object.assign({}, next[k]); });
+  }
+}
+const PEC_RM_LS = 'fsapp20259005.pecheck.removed.v1';
+function pecRemovedLoad() { try { return JSON.parse(localStorage.getItem(PEC_RM_LS) || '[]') || []; } catch (e) { return []; } }
+function pecRemovedSave(a) { try { localStorage.setItem(PEC_RM_LS, JSON.stringify(a.slice(-500))); } catch (e) {} }
+function pecRememberRemoved(st) {
+  const place = pecPlaceNames();
+  const tank = String((st && (st.origTank || st.tank)) || '').trim();
+  const loc = String((st && st.loc) || '').trim();
+  const item = String((st && st.item) || '').trim();
+  if (!tank && !loc && !item) return;
+  const a = pecRemovedLoad().filter(x => !(x.ei === PEC.ei && x.bi === PEC.bi && (
+    (tank && pecNormTank(x.tank) === pecNormTank(tank)) ||
+    (!tank && loc && x.loc === loc && String(x.item || '') === item)
+  )));
+  a.push({ ei: PEC.ei, bi: PEC.bi, en: place.estate, bn: place.block, tank, loc, item, t: Date.now() });
+  pecRemovedSave(a);
+}
+
+
 function pecAddCylLocal(fields) {
   const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return toast('請先揀座');
   const tank = String(fields.tank || '').trim();
@@ -7023,12 +7125,20 @@ function pecDelCyl(i) {
   const st = pecStFor(i);
   if (!st || st.removed) return;
   const lab = (st.loc || st.tank || ('項目 ' + (st.item || i + 1)));
-  const tip = st.added ? '' : '\n（只係呢次檢查清單；Excel 原有行唔會自動刪）';
+  const tip = st.added
+    ? '\n（新加未上 Excel：刪咗就唔會再出現）'
+    : '\n會暫存呢座手機草稿。要同步公司請撳「儲存到公司雲端」或「上傳」。Excel 簿唔會自動刪行。';
   if (!confirm('刪除呢個滅火筒位置？\n' + lab + tip)) return;
   st.removed = true;
   st.res = ''; st.chips = []; st.note = '';
+  if (!st.added) pecRememberRemoved(st);
+  else {
+    const tank = st.tank || '';
+    const bn = pecPlaceNames().block;
+    pecAddedSave(pecAddedLoad().filter(a => !(pecNormTank(a.tank) === pecNormTank(tank) && a.bn === bn)));
+  }
   pecSave(); pecPaint();
-  toast(st.added ? '已刪除新加嘅滅火筒位置' : '已從呢次清單移除（Excel 原行仍在）', 2800);
+  toast('已刪除並暫存手機。同步公司請撳「儲存到公司雲端」或「上傳呢座檢查」。', 3500);
 }
 function pecCylFormHtml(idPrefix) {
   const f = PEC.cylForm || { tank: '', loc: '', year: '', last: '', kind: '' };
@@ -7125,7 +7235,7 @@ function pecBody() {
       <div class="pecprog" id="pecprog">已填 ${done}／${items.length}</div>
       ${items.length ? items.map(([r, i]) => pecCard(r, i)).join('') : '<div class="card mut" id="pecempty">呢座未有滅火筒紀錄（0 支）。請喺下面「加一支滅火筒」填資料。</div>'}
       ${pecCylFormHtml('pecaddcyl')}
-      ${old ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="upold" ${done > 0 ? '' : 'disabled'}>上傳呢期修改</button><div class="mut">只寫 ${esc(PEC.old.period)} 已剔嘅結果（未剔唔寫）。可改筒身資料。其他期數唔郁。做到一半可以返主頁——草稿喺手機。</div>` : `<div class="pecacts"><button class="btn pri" type="button" data-pec="up" ${(done > 0 || (!old && typeof pecDirty === 'function' && pecDirty())) ? '' : 'disabled'}>上傳呢座檢查</button><button class="btn" type="button" data-pec="saveco">儲存到公司雲端</button></div><div class="mut" id="pecdraft">做到一半可以返主頁——草稿喺手機。未全部剔完都可以上傳已填嘅。可加筒／改資料。撳「儲存到公司雲端」直寫公司（主檔唔喺手機）。</div>`}
+      ${old ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="upold" ${done > 0 ? '' : 'disabled'}>上傳呢期修改</button><div class="mut">只寫 ${esc(PEC.old.period)} 已剔嘅結果（未剔唔寫）。可改筒身資料。其他期數唔郁。做到一半可以返主頁——草稿喺手機。</div>` : `<div class="pecacts"><button class="btn pri" type="button" data-pec="up" ${(done > 0 || (!old && typeof pecDirty === 'function' && pecDirty())) ? '' : 'disabled'}>上傳呢座檢查</button><button class="btn" type="button" data-pec="saveco">儲存到公司雲端</button></div><div class="mut" id="pecdraft">做到一半可以返主頁——草稿喺手機（刪除位置／改欄都會暫存）。未全部剔完都可以上傳已填嘅。要留喺公司／Excel：撳「儲存到公司雲端」或「上傳呢座檢查」。「放棄」先會清呢份草稿。</div>`}
       ${pecShareRow()}`;
   } else body = `<div class="card mut" id="pecpickblk">${PEC.ei || (PEC.estTxt || '').trim() ? '屋邨已揀。請揀下一座（上一座草稿仍喺手機）。' : '揀一座。一版一棟，欄位跟滅火筒檢查及更換。'}</div>`;
   return `<div class="peck">${pecActs()}${sel}${body}</div>`;
@@ -7677,7 +7787,7 @@ async function pecPreview() {
   } catch (e) { toast('PDF 出錯：' + (e.message || '')); }
 }
 const svpTakeRaw_pecadd = svpTake;
-svpTake = function (o) { svpTakeRaw_pecadd(o); pecMergeAdded(); };
+svpTake = function (o) { svpTakeRaw_pecadd(o); pecMergeAdded(); try { pecReapplyLocalMeta(); } catch (e) {} };
 
 window.addEventListener('pagehide', () => { try { if (cur.view === 'pecheck' && PEC.mode !== 'old') pecSave(); } catch (e) {} });
 document.addEventListener('visibilitychange', () => { try { if (document.visibilityState === 'hidden' && cur.view === 'pecheck' && PEC.mode !== 'old') pecSave(); } catch (e) {} });
