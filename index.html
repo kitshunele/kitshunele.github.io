@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.30';
+const APP_VERSION = '0.6.31';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -6300,8 +6300,37 @@ function pecActs() {
   return `<div class="pecacts"><button class="btn pri" type="button" id="pecadd" data-pec="add">新增滅火筒檢查</button>${pecMgr() ? `<button class="btn" type="button" id="pecmgr" data-pec="mgr">修改之前嘅 PE 表</button>` : ''}</div>`;
 }
 function pecShareRow() {
-  if (pecBi() == null || PEC.mode === 'add' || PEC.mode === 'oldpick') return '';
+  if (pecBi() == null || PEC.mode === 'add' || PEC.mode === 'oldpick' || PEC.mode === 'review') return '';
   return `<div class="pecacts"><button class="btn" type="button" id="pecpdf" data-pec="pdf">PDF 預覽</button><button class="btn" type="button" id="pecshare" data-pec="share">共享</button></div>`;
+}
+function pecNavRow() {
+  if (pecBi() == null || PEC.mode === 'add' || PEC.mode === 'oldpick') return '';
+  if (PEC.mode === 'review') {
+    return `<div class="pecacts" id="pecnav"><button class="btn pri" type="button" id="peccont" data-pec="cont">繼續檢查</button><button class="btn" type="button" id="pecnext" data-pec="next">新增另一座</button></div>`;
+  }
+  return `<div class="pecacts" id="pecnav"><button class="btn" type="button" id="pecreview" data-pec="review">返回查看</button><button class="btn" type="button" id="pecnext" data-pec="next">新增另一座</button></div>`;
+}
+function pecReviewList() {
+  const d = SVP.doc, bi = pecBi(); if (!d || bi == null) return '';
+  const old = false;
+  const items = d.PE.map((r, i) => [r, i]).filter(([r]) => r[0] === bi);
+  const done = items.filter(([, i]) => pecMark((PEC.rows[i] || {}).res)).length;
+  const rows = items.map(([r, i]) => {
+    const st = PEC.rows[i] || {}, mark = pecMark(st.res);
+    const badge = mark === '✓' ? '<span class="pecbadge ok">✓ 合格</span>' : mark === '✗' ? '<span class="pecbadge bad">✗ 不合格</span>' : '<span class="pecbadge mute">未填</span>';
+    return `<button type="button" class="card peckrev" data-pec="goto" data-i="${i}"><div class="pecyl">${r[2] ? esc(r[2]) : '（冇筒身編號）'}</div><div class="pecmeta"><span>位置</span> ${esc(r[3] || '—')}</div><div class="pecmeta">${badge}${st.chips && st.chips.length ? ' · ' + esc(st.chips.join('、')) : ''}</div></button>`;
+  }).join('');
+  return `<div class="card peckhead" id="pecreviewbox"><b>返回查看</b><div class="mut">呢座已填 ${done}／${items.length}。草稿已喺手機，唔會冇咗。撳其中一支可以改。</div></div>
+    <div class="pecprog">已填 ${done}／${items.length}</div>${rows || '<div class="card mut">呢座冇滅火筒。</div>'}`;
+}
+function pecNextBlock() {
+  pecSave();
+  const keepEi = PEC.ei, keepEst = PEC.estTxt;
+  PEC.bi = ''; PEC.blkTxt = ''; PEC.rows = {}; PEC.rid = ''; PEC.only = null; PEC.old = null; PEC.mode = '';
+  PEC.ei = keepEi; PEC.estTxt = keepEst;
+  delete PK.open.pec_blk;
+  pecPaint();
+  toast('屋邨保留。揀下一座；上一座草稿仍喺手機。', 3000);
 }
 function pecInspItems() {
   return [{ v: 'year', t: '一年檢查一次' }, { v: 'extra', t: '額外檢查' }];
@@ -6393,6 +6422,7 @@ function pecBody() {
     <label>座${pkSel('pec_blk', bItems, PEC.bi || PEC.blkTxt, { all: blkOn ? (typedEst || !bItems.length ? '— 揀座／自己打 —' : '— 揀座 —') : '座：先揀屋邨', label: '座', id: 'pecblk', oph: '其他座名（自己打）', disabled: !blkOn })}</label></div>`;
   if (PEC.mode === 'add') return `<div class="peck">${sel}${pecAddForm()}</div>`;
   if (PEC.mode === 'oldpick') return `<div class="peck">${sel}${pecOldPick()}</div>`;
+  if (PEC.mode === 'review' && pecBi() != null) return `<div class="peck">${pecActs()}${sel}${pecNavRow()}${pecReviewList()}${pecShareRow()}</div>`;
   let body = '';
   if (pecBi() != null) {
     const bi = pecBi(), b = d.B[bi], E = d.E[b[0]], n251 = (d.PB || {})[bi] || '';
@@ -6408,12 +6438,13 @@ function pecBody() {
       <label class="pecnote">負責人<input id="pecwho" value="${esc(PEC.who)}" maxlength="40" placeholder="填名"></label>
       ${pinBox}
       </div>
-      ${PEC.only != null && !old ? `<button class="btn sm" type="button" data-pec="all">睇返成座</button>` : ''}
+      ${!old ? pecNavRow() : ''}
+      ${PEC.only != null && !old ? `<div class="mut" id="peconlytip">而家睇緊一支筒。撳「返回查看」睇返成座已填／未填。</div>` : ''}
       <div class="pecprog" id="pecprog">已填 ${done}／${items.length}</div>
       ${items.length ? items.map(([r, i]) => pecCard(r, i)).join('') : '<div class="card mut" id="pecempty">呢座冇滅火筒（0 支），冇要剔的項目。</div>'}
       ${old ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="upold">上傳呢期修改</button><div class="mut">只寫 ${esc(PEC.old.period)} 呢期嘅結果、問題、備註、日期、負責人同筒身資料。其他期數唔郁。</div>` : (items.length ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="up" ${done === items.length ? '' : 'disabled'}>上傳呢座檢查</button><div class="mut" id="pecdraft">做到一半可以返主頁或者關 App——每剔一次已存喺呢部手機，返嚟繼續填。撳「上傳呢座檢查」先寫公司 Excel／收件箱。</div>` : '')}
       ${pecShareRow()}`;
-  } else body = '<div class="card mut">揀一座。一版一棟，欄位跟滅火筒檢查記錄。</div>';
+  } else body = `<div class="card mut" id="pecpickblk">${PEC.ei || (PEC.estTxt || '').trim() ? '屋邨已揀。請揀下一座（上一座草稿仍喺手機）。' : '揀一座。一版一棟，欄位跟滅火筒檢查記錄。'}</div>`;
   return `<div class="peck">${pecActs()}${sel}${body}</div>`;
 }
 function viewPe() {
@@ -6494,7 +6525,10 @@ document.addEventListener('click', e => {
   if (a === 'addgo') return pecCommitAdd();
   if (a === 'mgr') { if (!pecMgr()) return; PEC.mode = 'oldpick'; PEC.only = null; PEC.old = null; return pecPaint(); }
   if (a === 'old') return pecOpenOld(b.dataset.p);
-  if (a === 'all') { PEC.only = null; return pecPaint(); }
+  if (a === 'all' || a === 'review') { pecSave(); PEC.only = null; PEC.mode = 'review'; return pecPaint(); }
+  if (a === 'cont') { PEC.mode = ''; PEC.only = null; return pecPaint(); }
+  if (a === 'next') return pecNextBlock();
+  if (a === 'goto') { PEC.mode = ''; PEC.only = +b.dataset.i; return pecPaint(); }
   if (a === 'pdf') return pecPreview();
   if (a === 'share') return pecShare();
   if (a === 'upold') return pecUploadOld(b);
@@ -6836,6 +6870,9 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '.pecchip.on{background:#fff7ed;border-color:#c2410c;font-weight:700}.pecnote{display:block;font-size:14px;color:#555;margin-top:8px}.pecnote input{width:100%;box-sizing:border-box;font-size:18px;min-height:44px;margin-top:2px;border:1px solid #d1d5db;border-radius:8px;padding:0 8px}' +
   '.pecam{margin:8px 0}.pecam .btn{flex:1}.pecacts{display:flex;gap:8px;margin:8px 0}.pecacts .btn{flex:1;min-height:52px;font-size:17px}' +
   '.pecprog{font-size:16px;font-weight:700;margin:8px 0}' +
+  '.pecrev{display:block;width:100%;text-align:left;margin:0 0 8px;cursor:pointer}.pecrev:active{background:#eef2ff}' +
+  '.pecbadge{display:inline-block;font-size:15px;font-weight:800;padding:2px 8px;border-radius:999px}.pecbadge.ok{background:#d1fae5;color:#047857}.pecbadge.bad{background:#fee2e2;color:#b91c1c}.pecbadge.mute{background:#f1f5f9;color:#64748b}' +
+
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
