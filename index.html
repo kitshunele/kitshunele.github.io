@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.40';
+const APP_VERSION = '0.6.41';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1773,7 +1773,7 @@ async function gasCall(body, ms, pinTry) { // pinTry：提交頁 PIN 框試緊�
 }
 const GAS_READS = new Set(['ping', 'access_status', 'app_data', 'ecall_reports', 'clock_status', 'clock_records', 'photo_search', 'photo_thumbs', 'photo_full', 'photo_places',
   'acc_list', 'acc_pending_count', 'list', 'get', 'photo', 'clock_staff', 'clock_today', 'clock_mine', 'data', 'wa_photos', 'wa_thumbs', 'wa_photo', 'bldg_list', 'bldg_thumbs', 'bldg_file',
-  'pending_confirms', 'pending_photo', 'ecall', 'svpe_data', 'kv_doc', 'bldg_notes', 'drive_doc']);
+  'pending_confirms', 'pending_photo', 'ecall', 'svpe_data', 'kv_doc', 'bldg_notes', 'drive_doc', 'pe_list', 'pe_next_251']);
 function upPending(r) { return !!(r && r.upload && r.updated <= r.upload.queuedAt); }
 function compactTs(d) { const p = hk(d); return `${p.y}${p.m}${p.d}${p.H}${p.M}${p.S}`; }
 function upProgress(r, msg) {
@@ -6363,6 +6363,7 @@ if (/^#\/svpe\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.38-test（FAN 2026-10-09）：離線暫存可查看／編輯／上傳到公司雲端。未 publish。
    v0.6.39（FAN 2026-10-09）：唔使重整／返回上一頁／紀錄列表；頁面加「更換」掣；離線暫存可查看／編輯／上傳。已 publish。
    v0.6.40（FAN 2026-10-09）：新增檢查滅火筒／新增更換滅火筒；置頂更換唔要；全部刪除暫存。已 publish。
+   v0.6.41（FAN 2026-10-09）：pe_list 公司列表 server_error 修復（inbox-only＋錯誤文案）。已 publish。
    剔號存手機（localStorage）。相片用現有 PhotoDB（IndexedDB），清單只記 id。
    上傳用現有 upload：相片同 JSON 一齊放公司收件箱同一個資料夾，舊伺服器都收得。
    Excel 冇相欄，格入面放唔到圖。v1.28 先喺今期備註後面加「相：」連結，而且唔會蓋過師傅寫嘅備註。 */
@@ -6579,7 +6580,7 @@ function pecListHtml() {
   };
   let coCards = '';
   if (coBusy) coCards = '<div class="card mut">讀緊公司雲端紀錄…</div>';
-  else if (co && co.error) coCards = `<div class="card mut">公司列表讀唔到（${esc(co.error)}）。要 GAS v1.34 先支援刪除。仍可新增後「儲存到公司」。</div>`;
+  else if (co && co.error) coCards = `<div class="card mut">公司列表讀唔到（${esc(co.error)}${co.detail ? '：' + esc(co.detail) : ''}）。仍可「新增檢查滅火筒」後「儲存到公司雲端」。若持續失敗要公司伺服器 v1.35。</div>`;
   else if (co && co.items && co.items.length) {
     const items = co.items.map((r, i) => ({ r, i })).filter(x => match(x.r));
     if (!items.length) coCards = `<div class="card mut">搵唔到「${esc(PEC.cloudFilter)}」。試下清篩選或重整。</div>`;
@@ -6629,10 +6630,11 @@ function pecListHtml() {
 async function pecFetchCompany() {
   PEC.companyBusy = true; pecPaint();
   try {
-    const o = await gasCall({ action: 'pe_list', limit: 150 }, 90000);
-    if (o && o.ok) PEC.company = { items: o.items || [], at: Date.now() };
-    else PEC.company = { error: (o && o.error) || 'bad_action', items: [] };
-  } catch (e) { PEC.company = { error: e.message || 'network', items: [] }; }
+    /* v0.6.41：唔掃 Excel 全簿（易 server_error）；只要收件箱雲端紀錄。GAS v1.35 預設 excel_skipped。 */
+    const o = await gasCall({ action: 'pe_list', limit: 150, include_excel: false }, 120000);
+    if (o && o.ok) PEC.company = { items: o.items || [], at: Date.now(), version: o.version || '', excel_skipped: !!o.excel_skipped };
+    else PEC.company = { error: (o && o.error) || 'bad_action', detail: (o && o.detail) || '', items: [] };
+  } catch (e) { PEC.company = { error: e.message || 'network', detail: '', items: [] }; }
   PEC.companyBusy = false; pecPaint();
 }
 function pecBack() {
