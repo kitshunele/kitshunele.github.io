@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.34';
+const APP_VERSION = '0.6.35';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -6357,6 +6357,7 @@ if (/^#\/svpe\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.33-test（FAN 2026-10-09）：UI 改名「滅火筒檢查及更換」；每筒加「更換」掣（toggle 需更換，備註寫換咗咩）。未 publish。
    v0.6.33-test＋251（FAN 2026-10-09）：新增檢查／更換要新 251（Excel「251 編號」右邊格，格式 000000000404 N）；師傅可確認／改。GAS 寫入要 v1.31。未 publish。
    v0.6.34-test（FAN 2026-10-09）：放棄／返回上一頁；多筆紀錄列表；pe_list／pe_save 公司可見（其他手機）。未 publish。
+   v0.6.35（FAN 2026-10-09）：更換改入檢查種類；筒卡冇更換掣；未全部剔完都可上傳。已 publish。
    剔號存手機（localStorage）。相片用現有 PhotoDB（IndexedDB），清單只記 id。
    上傳用現有 upload：相片同 JSON 一齊放公司收件箱同一個資料夾，舊伺服器都收得。
    Excel 冇相欄，格入面放唔到圖。v1.28 先喺今期備註後面加「相：」連結，而且唔會蓋過師傅寫嘅備註。 */
@@ -6425,16 +6426,29 @@ const pecSave = () => {
   if (!PEC.rid) { if (PEC.ei === '' || PEC.bi === '') return; PEC.rid = newId('pe'); }
   const place = pecPlaceNames();
   const all = pecRecsAll();
-  const done = Object.keys(PEC.rows).filter(k => pecMark((PEC.rows[k] || {}).res)).length;
+  /* 更換／額外（mode old）草稿：把 old.rows 同步去 rows 存手機 */
+  let rows = PEC.rows;
+  let sidePeriod = '';
+  if (PEC.mode === 'old' && PEC.old && PEC.old.rows) {
+    sidePeriod = String(PEC.old.period || '');
+    rows = {};
+    Object.keys(PEC.old.rows).forEach(k => {
+      const r = PEC.old.rows[k] || {};
+      rows[k] = { res: pecMark(r.res), chips: r.chips || [], note: r.note || '', photos: pecPh(r.photos), tank: r.tank || '', loc: r.loc || '', year: r.year || '', last: r.last || '', kind: r.kind || '' };
+    });
+    PEC.rows = rows;
+  }
+  const done = Object.keys(rows).filter(k => pecMark((rows[k] || {}).res)).length;
   all[PEC.rid] = {
     rid: PEC.rid, ei: PEC.ei, bi: PEC.bi, estate: place.estate, block: place.block,
-    date: PEC.date, who: PEC.who, n251: PEC.n251 || '', rows: PEC.rows, status: all[PEC.rid] && all[PEC.rid].status === 'uploaded' ? 'uploaded' : (all[PEC.rid] && all[PEC.rid].status === 'saved' ? 'saved' : 'draft'),
-    kind: PEC.inspKind || (all[PEC.rid] && all[PEC.rid].kind) || '', updated: Date.now(), done, total: pecBi() != null ? pecItems().length : Object.keys(PEC.rows).length
+    date: PEC.date, who: PEC.who, n251: PEC.n251 || '', rows: rows, status: all[PEC.rid] && all[PEC.rid].status === 'uploaded' ? 'uploaded' : (all[PEC.rid] && all[PEC.rid].status === 'saved' ? 'saved' : 'draft'),
+    kind: PEC.inspKind || (all[PEC.rid] && all[PEC.rid].kind) || '', sidePeriod: sidePeriod || (all[PEC.rid] && all[PEC.rid].sidePeriod) || '',
+    updated: Date.now(), done, total: pecBi() != null ? pecItems().length : Object.keys(rows).length
   };
   pecRecsWrite(all);
   /* 兼容舊鍵：同一座最新草稿 */
   if (PEC.ei && PEC.bi) {
-    const legacy = pecAll(); legacy[PEC.ei + '|' + PEC.bi] = { date: PEC.date, who: PEC.who, n251: PEC.n251 || '', rows: PEC.rows, rid: PEC.rid };
+    const legacy = pecAll(); legacy[PEC.ei + '|' + PEC.bi] = { date: PEC.date, who: PEC.who, n251: PEC.n251 || '', rows: rows, rid: PEC.rid };
     try { localStorage.setItem(PEC_LS, JSON.stringify(legacy)); } catch (e) {}
   }
 };
@@ -6458,8 +6472,18 @@ function pecOpenRec(rid) {
   PEC.n251 = pec251Ok(s.n251) ? String(s.n251).trim() : '';
   PEC.inspKind = s.kind || '';
   const rows = s.rows && typeof s.rows === 'object' ? s.rows : {};
-  PEC.rows = {}; Object.keys(rows).forEach(k => { const r = rows[k] || {}; PEC.rows[k] = { res: pecMark(r.res), chips: r.chips || [], note: r.note || '', photos: pecPh(r.photos) }; });
-  PEC.mode = ''; PEC.only = null; PEC.old = null; pecPaint();
+  PEC.rows = {}; Object.keys(rows).forEach(k => { const r = rows[k] || {}; PEC.rows[k] = { res: pecMark(r.res), chips: r.chips || [], note: r.note || '', photos: pecPh(r.photos), tank: r.tank || '', loc: r.loc || '', year: r.year || '', last: r.last || '', kind: r.kind || '' }; });
+  PEC.only = null;
+  const side = String(s.sidePeriod || '').trim();
+  if (side && side !== 'AM2026-10') {
+    PEC.old = { period: side, rows: {} };
+    Object.keys(PEC.rows).forEach(k => { PEC.old.rows[k] = Object.assign({}, PEC.rows[k]); });
+    PEC.mode = 'old';
+    if (/^Replace$/i.test(side)) { PEC.form.insp = 'replace'; }
+  } else {
+    PEC.mode = ''; PEC.old = null;
+  }
+  pecPaint();
 }
 function pecEi() { return /^e\d+$/.test(PEC.ei) ? +PEC.ei.slice(1) : null; }
 function pecBi() { return /^b\d+$/.test(PEC.bi) ? +PEC.bi.slice(1) : null; }
@@ -6618,18 +6642,22 @@ function pecNextBlock() {
   toast('屋邨保留。揀下一座；上一座草稿仍喺手機。', 3000);
 }
 function pecInspItems() {
-  return [{ v: 'year', t: '一年檢查一次' }, { v: 'extra', t: '額外檢查' }];
+  return [{ v: 'year', t: '一年檢查一次' }, { v: 'extra', t: '額外檢查' }, { v: 'replace', t: '更換' }];
 }
 function pecInspLabel() {
   const f = PEC.form || {}, v = f.insp || '';
   if (v === 'year') return 'AM2026-10';
   if (v === 'extra') return '額外檢查';
-  if (v === 'other' || (v && v !== 'year' && v !== 'extra')) return String(f.inspTxt || v || '').trim();
+  if (v === 'replace') return 'Replace';
+  if (v === 'other' || (v && v !== 'year' && v !== 'extra' && v !== 'replace')) return String(f.inspTxt || v || '').trim();
   return '';
+}
+function pecIsReplaceKind() {
+  return (PEC.form && PEC.form.insp === 'replace') || PEC.inspKind === 'Replace' || /^Replace$/i.test(String(PEC.inspKind || ''));
 }
 function pecAddForm() {
   const f = PEC.form, bi = pecBi(), ready = bi != null || !!(PEC.blkTxt || '').trim();
-  const inspVal = (f.insp === 'other' || (f.insp && f.insp !== 'year' && f.insp !== 'extra')) ? (f.inspTxt || f.insp) : (f.insp || '');
+  const inspVal = (f.insp === 'other' || (f.insp && f.insp !== 'year' && f.insp !== 'extra' && f.insp !== 'replace')) ? (f.inspTxt || f.insp) : (f.insp || '');
   const hasPrev = ready && pecBi() != null && pecSrcPeriod(pecBi());
   const tip = !ready
     ? '屋邨唔喺名單可以揀「其他（自己打）」；座亦都可以自己打。再揀檢查種類。'
@@ -6637,15 +6665,17 @@ function pecAddForm() {
       ? '呢座未有舊檢查：會開新 Excel 頁（跟滅火筒檢查及更換版面），唔會亂加筒；之後再加筒。'
       : (f.insp === 'year'
         ? '會抄呢座上一次檢查嘅筒身資料，開／入今期 AM2026-10；結果留空。'
-        : (f.insp === 'extra' || (inspVal && f.insp !== 'year' && f.insp !== ''))
-          ? '會抄呢座上一次檢查嘅筒身資料，喺 Excel 旁邊開一欄「' + (pecInspLabel() || '額外檢查') + '」；唔會改 AM2026-10。'
-          : '再揀檢查種類。'));
+        : (f.insp === 'replace'
+          ? '會抄呢座上一次檢查嘅筒身，喺 Excel 旁邊開「Replace」欄（要新 251）。筒卡用 ✓／✗；要標缺陷可撳「需更換」chip。'
+          : (f.insp === 'extra' || (inspVal && f.insp !== 'year' && f.insp !== 'replace' && f.insp !== ''))
+            ? '會抄呢座上一次檢查嘅筒身資料，喺 Excel 旁邊開一欄「' + (pecInspLabel() || '額外檢查') + '」；唔會改 AM2026-10。'
+            : '再揀檢查種類。')));
   const n251 = pec251Ok(PEC.form.n251) ? PEC.form.n251 : (PEC.n251 || '');
   return `<div class="card peckhead" id="pecaddform"><b>新增滅火筒檢查及更換</b>
     <label class="pecnote" style="display:block;margin-top:8px">檢查種類${pkSel('pec_insp', pecInspItems(), inspVal, { ph: '— 揀檢查種類 —', label: '檢查種類', id: 'pecinsp', oph: '其他額外嘅地方（自己打）', disabled: !ready })}</label>
     <label class="pecnote" style="display:block;margin-top:8px">新 251 編號（跟 Excel「251 編號」格）<input id="pecadd251" value="${esc(n251)}" maxlength="32" placeholder="例：000000000404 400703" inputmode="text"><button class="btn" type="button" data-pec="251next" style="margin-top:6px">攞下一個號碼</button></label>
     <div class="mut" id="pecinsptip">${esc(tip)}</div>
-    <div class="mut">有舊檢查就抄上期筒身編號、位置、出廠年份、上次試壓、種類（結果留空）。一年檢查一次入今期；額外／自己打地方係旁邊多一欄，唔會蓋今期。全新屋邨／座只開空白表。每次新增／更換都要用<strong>新</strong> 251。</div>
+    <div class="mut">有舊檢查就抄上期筒身。一年檢查一次入今期；額外／自己打／<strong>更換</strong>係旁邊多一欄（更換＝Replace＋新 251）。全新屋邨／座只開空白表。每次新增／更換都要用<strong>新</strong> 251。未全部剔完都可以上傳已填嘅。</div>
     <button class="btn pri" style="width:100%;margin-top:8px" type="button" data-pec="addgo" ${ready && pecInspLabel() ? '' : 'disabled'}>開始檢查</button>
     <button class="btn" style="width:100%;margin-top:8px" type="button" data-pec="addx">取消</button></div>`;
 }
@@ -6674,15 +6704,16 @@ function pecOpenOld(period) {
 }
 function pecCardOld(r, i) {
   const st = (PEC.old && PEC.old.rows[i]) || { res: '', chips: [], note: '', photos: [], tank: '', loc: '', year: '', last: '', kind: '' };
-  const mark = pecMark(st.res), replOn = pecHasRepl(st);
+  const mark = pecMark(st.res), replOn = pecHasRepl(st), kindRepl = pecIsReplaceKind() || (PEC.old && /^Replace/i.test(String(PEC.old.period || '')));
   const res = v => `<button type="button" class="pecmk ${mark === v ? 'on' : ''}" data-pec="res" data-i="${i}" data-v="${v}">${v === '✓' ? '✓ 合格' : '✗ 不合格'}</button>`;
-  const repl = `<button type="button" class="pecmk pecrepl ${replOn ? 'on' : ''}" data-pec="repl" data-i="${i}">更換</button>`;
   const fld = (k, lab) => `<label class="pecnote">${lab}<input class="pecold" data-i="${i}" data-f="${k}" value="${esc(st[k] || '')}" maxlength="80"></label>`;
   const fail = mark === '✗' ? `<div class="pecchips">${PEC_CHIPS.map(c => `<button type="button" class="pecchip ${(st.chips || []).includes(c) ? 'on' : ''}" data-pec="chip" data-i="${i}" data-k="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : '';
-  const note = `<label class="pecnote">${replOn ? '更換說明' : '備註（可選）'}<input class="pecold" data-i="${i}" data-f="note" value="${esc(st.note || '')}" maxlength="80" placeholder="${replOn ? '換咗咩（例如新筒身編號／種類）' : '可留空'}"></label>`;
+  const notePh = kindRepl || replOn ? '換咗咩（例如新筒身編號／種類）' : '可留空';
+  const noteLab = kindRepl || replOn ? '更換說明' : '備註（可選）';
+  const note = `<label class="pecnote">${noteLab}<input class="pecold" data-i="${i}" data-f="note" value="${esc(st.note || '')}" maxlength="80" placeholder="${notePh}"></label>`;
   const ph = pecPh(st.photos), full = ph.length >= PEC_PH_MAX;
   const cams = `<div class="row pecam"><label class="btn">📷 影相<input type="file" class="peccam" data-i="${i}" accept="image/*" capture="environment" hidden ${full ? 'disabled' : ''}></label></div>${ph.length ? `<div class="thumbs">${ph.map(p => `<div class="thumb"><img data-photo="${esc(p.id)}" alt="相"><button type="button" class="del" data-pec="delph" data-i="${i}" data-id="${esc(p.id)}" aria-label="刪相">✕</button></div>`).join('')}</div>` : ''}`;
-  return `<div class="card peckrow" data-i="${i}">${fld('tank', '筒身編號')}${fld('loc', '位置')}${fld('year', '出廠年份')}${fld('last', '上次試壓')}${fld('kind', '種類')}${cams}<div class="pecres">${res('✓')}${res('✗')}${repl}</div>${fail}${note}</div>`;
+  return `<div class="card peckrow" data-i="${i}">${fld('tank', '筒身編號')}${fld('loc', '位置')}${fld('year', '出廠年份')}${fld('last', '上次試壓')}${fld('kind', '種類')}${cams}<div class="pecres">${res('✓')}${res('✗')}</div>${fail}${note}</div>`;
 }
 
 async function pecOpenCompany(i) {
@@ -6751,11 +6782,12 @@ function pecOpenAdd() {
 
 function pecCard(r, i) {
   if (PEC.mode === 'old' && PEC.old) return pecCardOld(r, i);
-  const st = PEC.rows[i] || { res: '', chips: [], note: '', photos: [] }; const mark = pecMark(st.res), replOn = pecHasRepl(st);
+  const st = PEC.rows[i] || { res: '', chips: [], note: '', photos: [] }; const mark = pecMark(st.res), replOn = pecHasRepl(st), kindRepl = pecIsReplaceKind();
   const res = v => `<button type="button" class="pecmk ${mark === v ? 'on' : ''}" data-pec="res" data-i="${i}" data-v="${v}">${v === '✓' ? '✓ 合格' : '✗ 不合格'}</button>`;
-  const repl = `<button type="button" class="pecmk pecrepl ${replOn ? 'on' : ''}" data-pec="repl" data-i="${i}">更換</button>`;
   const fail = mark === '✗' ? `<div class="pecchips">${PEC_CHIPS.map(c => `<button type="button" class="pecchip ${(st.chips || []).includes(c) ? 'on' : ''}" data-pec="chip" data-i="${i}" data-k="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : '';
-  const note = st.res ? `<label class="pecnote">${replOn ? '更換說明' : '備註（可選）'}<input class="pecni" data-i="${i}" value="${esc(st.note || '')}" maxlength="80" placeholder="${replOn ? '換咗咩（例如新筒身編號／種類）' : '可留空'}"></label>` : '';
+  const notePh = kindRepl || replOn ? '換咗咩（例如新筒身編號／種類）' : '可留空';
+  const noteLab = kindRepl || replOn ? '更換說明' : '備註（可選）';
+  const note = st.res ? `<label class="pecnote">${noteLab}<input class="pecni" data-i="${i}" value="${esc(st.note || '')}" maxlength="80" placeholder="${notePh}"></label>` : '';
   const ph = pecPh(st.photos), full = ph.length >= PEC_PH_MAX;
   const cams = `<div class="row pecam"><label class="btn">📷 影相<input type="file" class="peccam" data-i="${i}" accept="image/*" capture="environment" hidden ${full ? 'disabled' : ''}></label></div>${ph.length ? `<div class="thumbs">${ph.map(p => `<div class="thumb"><img data-photo="${esc(p.id)}" alt="相"><button type="button" class="del" data-pec="delph" data-i="${i}" data-id="${esc(p.id)}" aria-label="刪相">✕</button></div>`).join('')}</div>` : ''}`;
   return `<div class="card peckrow" data-i="${i}">
@@ -6763,7 +6795,7 @@ function pecCard(r, i) {
     <div class="pecmeta"><span>位置</span> ${esc(r[3] || '—')}</div>
     <div class="pecmeta"><span>出廠年份</span> ${esc(r[4] || '—')} · <span>上次試壓</span> ${esc(r[5] || '—')}</div>
     <div class="peckind">${esc(r[6] || '—')}</div>
-    ${cams}<div class="pecres">${res('✓')}${res('✗')}${repl}</div>${fail}${note}</div>`;
+    ${cams}<div class="pecres">${res('✓')}${res('✗')}</div>${fail}${note}</div>`;
 }
 function pecBody() {
   if (!SVP.doc) return PEC.err ? `<div class="errbox">${esc(PEC.err)}</div><button class="btn" style="width:100%" data-pec="retry">🔄 再試</button>` : '<div class="card mut">讀緊滅火筒資料…</div>';
@@ -6784,8 +6816,8 @@ function pecBody() {
     const bi = pecBi(), b = d.B[bi], E = d.E[b[0]];
     const items = pecItems(), done = pecDone();
     const old = PEC.mode === 'old' && PEC.old;
-    const hasRepl = !old && items.some(([, i]) => pecHasRepl(PEC.rows[i]));
-    const need251 = hasRepl || !pecPb251(bi);
+    const hasRepl = !old && (pecIsReplaceKind() || items.some(([, i]) => pecHasRepl(PEC.rows[i])));
+    const need251 = hasRepl || pecIsReplaceKind() || !pecPb251(bi);
     if (hasRepl && PEC.n251 && PEC.n251 === pecPb251(bi)) PEC.n251 = ''; /* 更換唔重用舊號 */
     if (!PEC.n251 && !hasRepl) PEC.n251 = pecPb251(bi) || '';
     const pinBox = old && !(typeof ACC !== 'undefined' && ACC.mgrPin) ? `<label class="pecnote">主管密碼<input id="pecmpin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼"></label>` : '';
@@ -6802,7 +6834,7 @@ function pecBody() {
       ${PEC.only != null && !old ? `<div class="mut" id="peconlytip">而家睇緊一支筒。撳「返回查看」睇返成座已填／未填。</div>` : ''}
       <div class="pecprog" id="pecprog">已填 ${done}／${items.length}</div>
       ${items.length ? items.map(([r, i]) => pecCard(r, i)).join('') : '<div class="card mut" id="pecempty">呢座冇滅火筒（0 支），冇要剔的項目。</div>'}
-      ${old ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="upold">上傳呢期修改</button><div class="mut">只寫 ${esc(PEC.old.period)} 呢期嘅結果、問題、備註、日期、負責人同筒身資料。其他期數唔郁。</div>` : (items.length ? `<div class="pecacts"><button class="btn pri" type="button" data-pec="up" ${done === items.length ? '' : 'disabled'}>上傳呢座檢查</button><button class="btn" type="button" data-pec="saveco">儲存到公司</button></div><div class="mut" id="pecdraft">做到一半可以返主頁——草稿喺手機。撳「儲存到公司」其他手機都睇到摘要；「上傳」先寫 Excel／收件箱全文。</div>` : '')}
+      ${old ? `<button class="btn pri" style="width:100%;margin:8px 0" data-pec="upold" ${done > 0 ? '' : 'disabled'}>上傳呢期修改</button><div class="mut">只寫 ${esc(PEC.old.period)} 已剔嘅結果（未剔唔寫）。其他期數唔郁。做到一半可以返主頁——草稿喺手機。</div>` : (items.length ? `<div class="pecacts"><button class="btn pri" type="button" data-pec="up" ${done > 0 ? '' : 'disabled'}>上傳呢座檢查</button><button class="btn" type="button" data-pec="saveco">儲存到公司</button></div><div class="mut" id="pecdraft">做到一半可以返主頁——草稿喺手機。未全部剔完都可以上傳已填嘅。撳「儲存到公司」其他手機都睇到摘要。</div>` : '')}
       ${pecShareRow()}`;
   } else body = `<div class="card mut" id="pecpickblk">${PEC.ei || (PEC.estTxt || '').trim() ? '屋邨已揀。請揀下一座（上一座草稿仍喺手機）。' : '揀一座。一版一棟，欄位跟滅火筒檢查及更換。'}</div>`;
   return `<div class="peck">${pecActs()}${sel}${body}</div>`;
@@ -6870,6 +6902,7 @@ PKH.pec_insp = (v, how) => {
   if (how === 'other') { PEC.form.insp = 'other'; PEC.form.inspTxt = ''; return pecPaint(); }
   if (how === 'done') { PEC.form.insp = 'other'; PEC.form.inspTxt = (v || '').trim(); return pecPaint(); }
   PEC.form.insp = v || ''; PEC.form.inspTxt = '';
+  if (v === 'replace') { PEC.n251 = ''; PEC.form.n251 = ''; pecEnsure251(true).then(() => { PEC.form.n251 = PEC.n251; pecPaint(); }); }
   pecPaint();
 };
 document.addEventListener('input', e => {
@@ -6916,18 +6949,11 @@ document.addEventListener('click', e => {
   if (a === 'share') return pecShare();
   if (a === 'upold') return pecUploadOld(b);
   if (a === 'res') {
-    if (PEC.mode === 'old' && PEC.old) { const r = PEC.old.rows[+b.dataset.i]; if (!r) return; r.res = b.dataset.v; r.chips = b.dataset.v === '✓' ? [] : (r.chips || []); return pecPaint(); }
+    if (PEC.mode === 'old' && PEC.old) { const r = PEC.old.rows[+b.dataset.i]; if (!r) return; r.res = b.dataset.v; r.chips = b.dataset.v === '✓' ? [] : (r.chips || []); pecSave(); return pecPaint(); }
     const r = pecRow(+b.dataset.i); r.res = b.dataset.v; r.chips = b.dataset.v === '✓' ? [] : (r.chips || []); pecSave(); return pecPaint();
   }
-  if (a === 'repl') {
-    if (PEC.mode === 'old' && PEC.old) { const r = PEC.old.rows[+b.dataset.i]; if (!r) return; pecToggleRepl(r); return pecPaint(); }
-    const r = pecRow(+b.dataset.i); const was = pecHasRepl(r);
-    pecToggleRepl(r); pecSave();
-    if (pecHasRepl(r) && !was) { /* 轉做更換：派新 251（唔用舊 PB） */ return pecFetch251(); }
-    return pecPaint();
-  }
   if (a === 'chip') {
-    if (PEC.mode === 'old' && PEC.old) { const r = PEC.old.rows[+b.dataset.i]; if (!r) return; const k = b.dataset.k; r.chips = r.chips || []; r.chips = r.chips.includes(k) ? r.chips.filter(x => x !== k) : r.chips.concat(k); return pecPaint(); }
+    if (PEC.mode === 'old' && PEC.old) { const r = PEC.old.rows[+b.dataset.i]; if (!r) return; const k = b.dataset.k; r.chips = r.chips || []; r.chips = r.chips.includes(k) ? r.chips.filter(x => x !== k) : r.chips.concat(k); pecSave(); return pecPaint(); }
     const r = pecRow(+b.dataset.i); const k = b.dataset.k; r.chips = r.chips || []; r.chips = r.chips.includes(k) ? r.chips.filter(x => x !== k) : r.chips.concat(k); pecSave(); return pecPaint();
   }
   if (a === 'delph') {
@@ -6938,7 +6964,9 @@ document.addEventListener('click', e => {
 });
 async function pecUpload(btn) {
   const d = SVP.doc, bi = pecBi(); if (!d || bi == null || btn.disabled) return;
-  const items = pecItems(); if (pecDone() !== items.length) return;
+  const items = pecItems();
+  const filled = items.filter(([, i]) => pecMark((PEC.rows[i] || {}).res));
+  if (!filled.length) return toast('最少剔一支筒先上傳');
   const bld = d.B[bi], E = d.E[bld[0]], who = (PEC.who || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(PEC.date || '')) { toast('請填日期'); return; }
   if (!PEC.rid) PEC.rid = newId('pe'); pecSave();
@@ -6971,30 +6999,41 @@ async function pecUpload(btn) {
   const link = folder ? ('https://drive.google.com/drive/folders/' + folder) : '';
   const typed251 = (document.getElementById('pecn251') && document.getElementById('pecn251').value.trim()) || PEC.n251 || '';
   if (pec251Ok(typed251)) { PEC.n251 = typed251; pecSave(); }
-  const replItems = items.filter(([, i]) => pecHasRepl(PEC.rows[i]));
-  if (replItems.length && !pec251Ok(PEC.n251)) {
+  const kindRepl = pecIsReplaceKind() || (PEC.mode === 'old' && PEC.old && /^Replace/i.test(String(PEC.old.period || '')));
+  const replItems = kindRepl ? filled : filled.filter(([, i]) => pecHasRepl(PEC.rows[i]));
+  if ((kindRepl || replItems.length) && !pec251Ok(PEC.n251)) {
     await pecEnsure251(true);
-    if (!pec251Ok(PEC.n251)) { btn.disabled = false; btn.textContent = '上傳呢座檢查'; return toast('有更換：請填／確認新 251 編號'); }
+    if (!pec251Ok(PEC.n251)) { btn.disabled = false; btn.textContent = '上傳呢座檢查'; return toast('更換紀錄要新 251 編號'); }
   }
   try {
-    if (replItems.length) {
-      const replRows = replItems.map(([r, i]) => {
+    if (kindRepl && filled.length) {
+      const replRows = filled.map(([r, i]) => {
         const st = PEC.rows[i];
-        return { tank: r[2] || '', loc: r[3] || '', year: String(r[4] == null ? '' : r[4]), last: String(r[5] == null ? '' : r[5]), kind: r[6] || '', res: '✓', chips: st.chips || [], note: st.note || ('已於' + (PEC.date || '').slice(8, 10) + '.' + (PEC.date || '').slice(5, 7) + '.' + (PEC.date || '').slice(0, 4) + '更換') };
+        const chips = st.chips || [];
+        return { tank: r[2] || '', loc: r[3] || '', year: String(r[4] == null ? '' : r[4]), last: String(r[5] == null ? '' : r[5]), kind: r[6] || '', res: st.res || '✓', chips: chips, note: st.note || ('已於' + (PEC.date || '').slice(8, 10) + '.' + (PEC.date || '').slice(5, 7) + '.' + (PEC.date || '').slice(0, 4) + '更換') };
       });
       const rx = await gasCall({ action: 'pe_add', sheets: E.s && E.s.length ? E.s : [E.n], estate: E.n, building: svpBName(bi), inspect_kind: 'replace', label: 'Replace', rows: replRows, n251: PEC.n251, date: PEC.date, who: who }, 90000);
       if (rx && rx.ok && pec251Ok(rx.n251)) { PEC.n251 = rx.n251; pecSave(); }
-      if (rx && rx.ok) excel = '已開 Replace 欄（251 ' + (rx.n251 || PEC.n251) + '）。';
+      if (rx && rx.ok) excel = '已開 Replace 欄（251 ' + (rx.n251 || PEC.n251) + '，已填 ' + filled.length + ' 支）。';
       else if (rx && rx.error === 'bad_action') excel = '公司伺服器未到 v1.31，更換欄未寫。';
+      else if (rx && rx.error === 'label_exists') excel = 'Replace 欄已有，請改 251／標籤後再試。';
       else excel = (excel ? excel + ' ' : '') + '更換欄未寫到。';
     }
-    const px = await gasCall({ action: 'pe_check', sheets: E.s && E.s.length ? E.s : [E.n], building: svpBName(bi), date: PEC.date, who: who, n251: PEC.n251 || '', rows: rows.map(r => { const o = { tank: r['筒身編號'], res: r['結果'], chips: r['問題'], note: r['備註'] }; if (link && (r['相片'] || []).length) o.photo = link; return o; }) }, 90000);
-    if (px && px.ok) excel = (excel ? excel + ' ' : '') + '已寫入今期 AM2026-10（冇改舊期數，冇改屋邨標題）。';
-    else if (px && px.error === 'no_current_period') excel = (excel ? excel + ' ' : '') + '呢張表未有今期 AM2026-10，冇寫入舊期數。';
-    else if (px && px.error === 'bad_action') excel = (excel ? excel + ' ' : '') + '公司伺服器未到 v1.28，Excel 未寫。' + (shots.length ? '相連結要等 v1.28 先寫入備註。' : '紀錄已留喺手機。');
-    else excel = (excel ? excel + ' ' : '') + 'Excel 未寫到。';
+    /* 今期 AM2026-10：只送已剔結果（未剔唔寫）；更換種類唔強制改今期 */
+    const checkRows = (kindRepl ? [] : rows).filter(r => pecMark(r['結果'])).map(r => { const o = { tank: r['筒身編號'], res: r['結果'], chips: r['問題'], note: r['備註'] }; if (link && (r['相片'] || []).length) o.photo = link; return o; });
+    let px = null;
+    if (checkRows.length) {
+      px = await gasCall({ action: 'pe_check', sheets: E.s && E.s.length ? E.s : [E.n], building: svpBName(bi), date: PEC.date, who: who, n251: PEC.n251 || '', rows: checkRows }, 90000);
+    }
+    if (checkRows.length) {
+      if (px && px.ok) excel = (excel ? excel + ' ' : '') + '已寫入今期 AM2026-10（已填 ' + checkRows.length + ' 支；未剔唔寫）。';
+      else if (px && px.error === 'no_current_period') excel = (excel ? excel + ' ' : '') + '呢張表未有今期 AM2026-10，冇寫入舊期數。';
+      else if (px && px.error === 'bad_action') excel = (excel ? excel + ' ' : '') + '公司伺服器未到 v1.28，Excel 未寫。' + (shots.length ? '相連結要等 v1.28 先寫入備註。' : '紀錄已留喺手機。');
+      else excel = (excel ? excel + ' ' : '') + 'Excel 未寫到。';
+    } else if (kindRepl && !excel) excel = (excel ? excel + ' ' : '') + '（更換只寫 Replace 欄）';
   } catch (e) { excel = (inbox ? '' : excel + ' ') + 'Excel 未寫到。'; }
-  btn.textContent = inbox || (excel.indexOf('已寫入') === 0) ? '已上傳' : '上傳呢座檢查';
+  const okUp = inbox || /已寫入|已開 Replace/.test(excel);
+  btn.textContent = okUp ? '已上傳' : '上傳呢座檢查';
   btn.disabled = false;
   if (inbox || (excel && excel.indexOf('已寫入') >= 0)) {
     const a = pecRecsAll(); if (a[PEC.rid]) { a[PEC.rid].status = 'uploaded'; pecRecsWrite(a); }
@@ -7068,10 +7107,10 @@ async function pecCommitAdd() {
   pecResolvePlace();
   const bi = pecBi(), ei = pecEi();
   if (bi == null || ei == null || !SVP.doc) return toast('請揀屋邨同座');
-  const label = pecInspLabel(), yearly = PEC.form.insp === 'year';
+  const label = pecInspLabel(), yearly = PEC.form.insp === 'year', isRepl = PEC.form.insp === 'replace';
   if (!label) return toast('請揀檢查種類');
   if (PEC.form.insp === 'other' && label.length < 2) return toast('請填其他額外嘅地方');
-  if (!yearly && label === 'AM2026-10') return toast('額外檢查唔可以叫 AM2026-10');
+  if (!yearly && !isRepl && label === 'AM2026-10') return toast('額外檢查唔可以叫 AM2026-10');
   const typed251 = (document.getElementById('pecadd251') && document.getElementById('pecadd251').value.trim()) || PEC.form.n251 || PEC.n251 || '';
   if (pec251Ok(typed251)) { PEC.n251 = typed251; PEC.form.n251 = typed251; }
   else await pecEnsure251(true);
@@ -7093,6 +7132,7 @@ async function pecCommitAdd() {
       if (!PEC.old.rows[i]) PEC.old.rows[i] = { res: '', chips: [], note: '', photos: [], tank: r[2] || '', loc: r[3] || '', year: String(r[4] == null ? '' : r[4]), last: String(r[5] == null ? '' : r[5]), kind: r[6] || '' };
     });
     PEC.mode = 'old';
+    pecSave();
   }
   pecPaint();
   pecServerAdd({ bn: svpBName(bi), label: label, yearly: yearly, src: pecSrcPeriod(bi), n: n }, E, bi);
@@ -7101,7 +7141,8 @@ async function pecServerAdd(rec, E, bi) {
   const d = SVP.doc;
   const rows = d.PE.filter(r => r[0] === bi).map(r => ({ tank: r[2] || '', loc: r[3] || '', year: String(r[4] == null ? '' : r[4]), last: String(r[5] == null ? '' : r[5]), kind: r[6] || '' }));
   try {
-    const o = await gasCall({ action: 'pe_add', sheets: E.s && E.s.length ? E.s : [E.n], estate: E.n, building: rec.bn, inspect_kind: rec.yearly ? 'year' : (PEC.form.insp === 'extra' ? 'extra' : 'other'), label: rec.label, src_period: rec.src || '', rows: rows, n251: PEC.n251 || '', date: PEC.date, who: (PEC.who || '').trim() }, 90000);
+    const ik = rec.yearly ? 'year' : (PEC.form.insp === 'replace' ? 'replace' : (PEC.form.insp === 'extra' ? 'extra' : 'other'));
+    const o = await gasCall({ action: 'pe_add', sheets: E.s && E.s.length ? E.s : [E.n], estate: E.n, building: rec.bn, inspect_kind: ik, label: rec.label, src_period: rec.src || '', rows: rows, n251: PEC.n251 || '', date: PEC.date, who: (PEC.who || '').trim() }, 90000);
     if (o && o.ok && pec251Ok(o.n251)) { PEC.n251 = o.n251; pecSave(); }
     if (o && o.ok && o.mode === 'sheet' && !(rec.n > 0)) toast('Excel 已開新頁（' + rec.label + '，251 ' + (o.n251 || PEC.n251) + '）。可以再加筒。');
     else if (o && o.ok && o.mode === 'sheet') toast('Excel 已開新頁（' + rec.label + '，251 ' + (o.n251 || PEC.n251) + '）。結果未填。');
@@ -7118,11 +7159,13 @@ async function pecUploadOld(btn) {
   if (!pin) return toast('請輸入主管密碼');
   if (typeof ACC !== 'undefined') ACC.mgrPin = pin;
   const bld = d.B[bi], E = d.E[bld[0]], who = (PEC.who || '').trim();
-  const rows = pecItems().map(([r, i]) => { const st = PEC.old.rows[i] || {}; return { tank: r[2] || '', tankNew: st.tank && st.tank !== r[2] ? st.tank : '', loc: st.loc, year: st.year, last: st.last, kind: st.kind, res: st.res, chips: st.chips || [], note: st.note || '' }; });
+  const filled = pecItems().filter(([, i]) => pecMark((PEC.old.rows[i] || {}).res));
+  if (!filled.length) return toast('最少剔一支筒先上傳');
+  const rows = filled.map(([r, i]) => { const st = PEC.old.rows[i] || {}; return { tank: r[2] || '', tankNew: st.tank && st.tank !== r[2] ? st.tank : '', loc: st.loc, year: st.year, last: st.last, kind: st.kind, res: st.res, chips: st.chips || [], note: st.note || '' }; });
   btn.disabled = true; btn.textContent = '上傳緊…';
   try {
     const o = await gasCall({ action: 'pe_prev', manager_pin: pin, period: PEC.old.period, sheets: E.s && E.s.length ? E.s : [E.n], building: svpBName(bi), date: PEC.date, who: who, rows: rows }, 90000);
-    if (o && o.ok) toast('已寫入 ' + PEC.old.period + '。冇改其他期數。');
+    if (o && o.ok) toast('已寫入 ' + PEC.old.period + '（已填 ' + filled.length + ' 支；未剔唔寫）。冇改其他期數。');
     else if (o && (o.error === 'bad_manager_pin' || o.error === 'manager_locked' || o.error === 'not_manager')) { if (typeof ACC !== 'undefined') ACC.mgrPin = ''; toast(o.error === 'manager_locked' ? '主管密碼錯太多次，鎖咗 15 分鐘' : '主管密碼唔啱'); }
     else if (o && o.error === 'bad_action') toast('公司伺服器未到 v1.29（未部署），舊期未寫。', 4000);
     else if (o && o.error === 'not_old_period') toast('呢期唔係舊期，冇寫。');
