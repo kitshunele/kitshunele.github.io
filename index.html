@@ -380,7 +380,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.44';
+const APP_VERSION = '0.6.46';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -3565,7 +3565,7 @@ async function scClear() {
 
 /* ---------- v0.6.11 📷 當日照片：按樓名篩選 ＋ 按相片說明（檔名）自動分配 TR-G2／TR-H2 位置 ----------
    全部喺手機（App）度做，唔使改公司伺服器：只用 Apps Script v1.6 已有嘅 wa_photos（日／資料夾）同 ai_read。
-   真相命名（「杰信工程部 WhatsApp 相片」/日期/屋邨/座）：WhatsApp 機械人用相片說明做檔名「<說明>_NN(_6位hex).jpeg」，
+   真相命名（「杰信工程部 WhatsApp 相片」：新樹 屋邨/座/日期；舊樹 日期/屋邨/座 仍 dual-read）：WhatsApp 機械人用相片說明做檔名「<說明>_NN(_6位hex).jpeg」，
    冇說明 =「uncaptioned_…」；說明係師傅自己打，例如「彩湖樓一座天台磅錶7.5，一泵」「彩湖1 1號泵水尺15 flow」「彩湖樓2座地下死磅10.5bar」。
    同一座 Triple H（彩湖樓 1／2／3座）啲相會擺埋同一個「彩湖樓」資料夾，所以要逐張睇說明入面嘅座號。
    說明入面嘅數字係師傅自己寫嘅讀數 → 只當「建議」，要師傅「✓ 採用」先會填；冇寫 = 唔會估數字。
@@ -3734,7 +3734,8 @@ if (typeof module !== 'undefined') module.exports = { pmCap, pmIdx, pmIndex, pmM
 /* ---------- v0.6.7 📷 睇相（只讀）：「杰信工程部 WhatsApp 相片」（公司 Drive）→ 經公司 Apps Script v1.4（要師傅 PIN）----------
    用喺：TR-G2／TR-H2 頁「📷 查看當日照片」（日期＋屋邨＋座）、E call 待跟進「📁 相片資料夾」（photo_url）。
    v0.6.25：相清單、縮圖、原相經 app_22cache 暫存喺手機（IndexedDB，按 PIN＋手機分開，30 日過期，未批准即清）；畫面用 object URL，閂咗就清走。
-   Apps Script 只讀 WhatsApp 相片資料夾入面嘅相；資料夾外面嘅連結會被拒（not_inside）。 */
+   Apps Script 只讀 WhatsApp 相片資料夾入面嘅相；資料夾外面嘅連結會被拒（not_inside）。
+   v0.6.46／GAS v1.39：當日相路徑改屋邨→樓→日期（伺服器 dual-read 舊樹）；App 仍傳 date+estate+block。 */
 const PH_BATCH = 12, PH_KEEP = 6;
 const PH_MSG = {
   bad_action: '公司伺服器（Apps Script）仲係舊版，未有「睇相」功能。要更新到 v1.5（重新部署）先用得；更新之後唔使改任何設定。',
@@ -4405,6 +4406,7 @@ document.addEventListener('change', e => { const el = e.target; if (el.dataset &
    顯示：頂部「即將到期」（now／soon／late，撳就篩選嗰座）、屋邨卡、揀咗大廈時嘅大廈卡、項目詳情。大廈名比對：去空格、去尾「樓」、鳯→鳳。冇 deadlines → 乜都唔顯示。
    v0.6.12.4（Apps Script v1.10）：相片改做可選（0–6 張）：剔「冇相，直接提交」→ no_photo:true ＋ photos:[]；冇相又冇剔 → 提示影相或者剔。
    伺服器版本用逐段比較（'1.10' > '1.9'）；伺服器 < 1.10（或者回 pending_no_photo）→ 冇相選項停用／講清楚要更新。v1.8 已經得；v1.9 伺服器再加 unconfirmed_by／unconfirmed_at／history 同試算表「取消完成」一行。
+   （v0.6.45／v1.38 完工相檔名加工作內容：held／未使；0.6.46 唔包。）
    v0.6.12.7（Apps Script v1.11）：清單改由 Google Sheet「待處理工作 list表」讀（伺服器做，JSON 格式一樣）；顯示「資料來源」（Sheet／讀唔到 → pending_work.json 加提示）；
    由第二個 App 返嚟（visibilitychange）超過 1 分鐘自動再讀。請求係 POST + no-store，Service Worker 唔快取，所以「🔄 重新載入」一定係最新。 */
 const LS_PW = 'fsapp20259005.pending.v1';
@@ -5518,10 +5520,11 @@ ehAuto = function () { ehAutoRaw_ecr(); if (cur.view === 'echist' && !ER.busy &&
   document.head.appendChild(st); } catch (e) { } })();
 
 /* ---------- v0.6.19 🔍 尋找相片（FAN 2026-10-04 22:33）----------
-   主頁格「🔍 尋找相片」（#/phsearch）：喺公司 Drive「杰信工程部 WhatsApp 相片」（yyyy-MM-dd / 屋邨 / 大廈）搵相同影片。
+   主頁格「🔍 尋找相片」（#/phsearch）：喺公司 Drive「杰信工程部 WhatsApp 相片」（屋邨 / 大廈 / yyyy-MM-dd；伺服器 v1.39+ dual-read 舊日期優先樹）搵相同影片。
    篩選：日期範圍（v0.6.32：預設近 30 日；chips 今日／近 7 日／近 30 日／全部 93 日）、屋邨／地方 → 大廈下拉（只列有相嘅地方；最尾「其他（自己打）」）、師傅、來源、檔名／資料夾關鍵字。
    伺服器 v1.19+：photo_search／photo_thumbs／photo_full；v1.30（staged）：關鍵字對檔名＋路徑、include_estate 連未分座。
-   v0.6.25：手機緩存（app_22cache）。v0.6.32（FAN 2026-10-09 搵唔到相／加快）：預設放寬、主題夾、空結果清除；首頁 24 張快出、背景再載、跳過 v1.30 雙重後備、spinner 計時、縮圖先 6 張。FAN 2026-10-09 12:05 批准 publish。 */
+   v0.6.25：手機緩存（app_22cache）。v0.6.32（FAN 2026-10-09 搵唔到相／加快）：預設放寬、主題夾、空結果清除；首頁 24 張快出、背景再載、跳過 v1.30 雙重後備、spinner 計時、縮圖先 6 張。FAN 2026-10-09 12:05 批准 publish。
+   v0.6.46（GAS v1.39）：Drive 樹改屋邨／樓／日期；App 只改註解／版本（路徑由伺服器決定）。 */
 const PS_PAGE = 60, PS_FIRST = 24, PS_THB = 12, PS_THB0 = 6, PS_KEEP = 6, PS_MAXD = 93; /* PS_FIRST：第一頁細啲快出；再載入用 PS_PAGE */
 const PS = { f: null, items: [], next: null, busy: false, err: '', errCode: '', old: false, done: false, thumbs: {}, full: new Map(), urls: [], tok: 0, from: '', to: '', idx: -1, hist: false, more: false, places: null, placesBusy: false, placesOld: false, placesErr: '', placesStale: false, fb: null, waitAt: 0, pref: false, ver: '', pageN: PS_FIRST }; /* v0.6.21-test7：places 有結果就唔退回合約全表；fb＝成邨後備 */
 const PS_MSG = {
