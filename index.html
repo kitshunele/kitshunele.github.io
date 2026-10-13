@@ -140,6 +140,12 @@ h3 .revtag{display:inline;font-size:13px}
 .ehloc{font-size:13px;margin:2px 0 4px}.ehm{font-size:14px;color:#334155;margin:4px 0}.ehdmo{display:inline-block;background:#e0e7ff;color:#3730a3;border-radius:6px;padding:1px 6px;font-weight:800;font-size:12px}
 .ehr{font-size:15px;margin:3px 0;line-height:1.4}.ehr span{display:inline-block;min-width:36px;color:#64748b;font-size:13px;font-weight:700;margin-right:6px}
 .ehk{font-size:14px;margin:6px 0 4px}.ehfu{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:10px;padding:6px 8px;font-size:14px;margin:6px 0}.ehnote{font-size:12px;margin:4px 0}.ehc .ecphs{margin-top:8px}
+.ehc{cursor:pointer}.ehdet .ehfiles{margin-top:10px}.ehflab{display:inline-block;background:#e0f2fe;color:#075985;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:700;margin-left:6px}
+.ehflab.wo{background:#fef3c7;color:#92400e}.ehflab.paper{background:#fce7f3;color:#9d174d}.ehflab.done{background:#dcfce7;color:#166534}.ehflab.fs{background:#ede9fe;color:#5b21b6}.ehflab.bill{background:#ffedd5;color:#9a3412}
+.ehflist{display:flex;flex-direction:column;gap:8px;margin-top:8px}.ehfrow{display:flex;gap:10px;align-items:center;text-align:left;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px;font:inherit;color:inherit;width:100%}
+.ehfth{width:56px;height:56px;flex:none;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;overflow:hidden}.ehfth img{width:100%;height:100%;object-fit:cover}.ehfth i{font-style:normal;font-size:26px}
+.ehfn{flex:1;min-width:0}.ehfn b{display:block;word-break:break-all;font-size:14px}.ehfn small{display:block;color:#666;font-size:12px;margin-top:2px}.ehhint{font-size:13px;color:#64748b;margin-top:6px}
+
 .lkf .row2{display:flex;gap:8px;margin:4px 0}.lkf input{flex:1;min-width:0;font-size:16px;padding:10px;border:1px solid var(--line);border-radius:10px}
 .lkd summary{font-weight:800;font-size:17px;cursor:pointer}
 .lkd h4{margin:10px 0 4px;font-size:15px}
@@ -380,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.46';
+const APP_VERSION = '0.6.47';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1141,6 +1147,7 @@ function parseHash() {
   const lk = location.hash.match(/^#\/records(?:\/([^/]+))?/);
   if (m && Store.get(m[1])) cur = { view: 'rec', id: m[1], step: decodeURIComponent(m[2] || 'basic') };
   else if (/^#\/ecall\b/.test(location.hash)) cur = { view: 'ecall', id: null, step: null };
+  else if (/^#\/echist\/d\/([^/?#]+)/.test(location.hash)) { const m = location.hash.match(/^#\/echist\/d\/([^/?#]+)/); cur = { view: 'echist', id: decodeURIComponent(m[1]), step: 'detail' }; }
   else if (/^#\/echist\b/.test(location.hash)) cur = { view: 'echist', id: null, step: null };
   else if (/^#\/wo\b/.test(location.hash)) cur = { view: 'wo', id: null, step: null };
   else if (/^#\/sched\b/.test(location.hash)) cur = { view: 'sched', id: null, step: null };
@@ -1154,7 +1161,7 @@ function parseHash() {
   else cur = { view: 'grid', id: null, step: null }; /* v0.6.4 KitShun 主頁（功能格） */
   if (cur.view !== 'lookup') lkReset(); // 查閱紀錄只留喺記憶體，離開就清
 }
-window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cur.view !== 'ecall') { EC.live = false; EC.err = ''; } if (cur.view !== 'wo') { WO.live = false; WO.err = ''; WO.perr = ''; WO.show = WO_PAGE; woPriceOff(); } if (cur.view !== 'clock') ckReset(); if (cur.view !== 'sched') { SC.live = false; SC.err = ''; } if (cur.view !== 'echist') { EH.err = ''; EH.show = EH_PAGE; } if (cur.view !== 'pend') { PW.live = false; PW.err = ''; } render(true); if ((typeof accLocked === 'function' && accLocked()) || (typeof APPD !== 'undefined' && !APPD.ready)) return; lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); });
+window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cur.view !== 'ecall') { EC.live = false; EC.err = ''; } if (cur.view !== 'wo') { WO.live = false; WO.err = ''; WO.perr = ''; WO.show = WO_PAGE; woPriceOff(); } if (cur.view !== 'clock') ckReset(); if (cur.view !== 'sched') { SC.live = false; SC.err = ''; } if (cur.view !== 'echist') { EH.err = ''; EH.show = EH_PAGE; if (typeof EH !== 'undefined') { EH.det = null; EH.fold = null; EH.ferr = ''; EH.ferrCode = ''; EH.thumbs = {}; } } if (cur.view !== 'pend') { PW.live = false; PW.err = ''; } render(true); if ((typeof accLocked === 'function' && accLocked()) || (typeof APPD !== 'undefined' && !APPD.ready)) return; lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); });
 
 /* ---------- render ---------- */
 function render(toTop) {
@@ -1772,7 +1779,7 @@ async function gasCall(body, ms, pinTry) { // pinTry：提交頁 PIN 框試緊�
   throw upErr('http', '伺服器出錯（HTTP ' + lastHttp + '）');
 }
 const GAS_READS = new Set(['ping', 'access_status', 'app_data', 'ecall_reports', 'clock_status', 'clock_records', 'photo_search', 'photo_thumbs', 'photo_full', 'photo_places',
-  'acc_list', 'acc_pending_count', 'list', 'get', 'photo', 'clock_staff', 'clock_today', 'clock_mine', 'data', 'wa_photos', 'wa_thumbs', 'wa_photo', 'bldg_list', 'bldg_thumbs', 'bldg_file',
+  'acc_list', 'acc_pending_count', 'list', 'get', 'photo', 'clock_staff', 'clock_today', 'clock_mine', 'data', 'wa_photos', 'wa_thumbs', 'wa_photo', 'bldg_list', 'bldg_thumbs', 'bldg_file', 'ecall_folder', 'ecall_thumbs', 'ecall_file',
   'pending_confirms', 'pending_photo', 'ecall', 'svpe_data', 'kv_doc', 'bldg_notes', 'drive_doc', 'pe_list', 'pe_next_251', 'pe_building']);
 function upPending(r) { return !!(r && r.upload && r.updated <= r.upload.queuedAt); }
 function compactTs(d) { const p = hk(d); return `${p.y}${p.m}${p.d}${p.H}${p.M}${p.S}`; }
@@ -4206,19 +4213,32 @@ async function plUndo(id) {
   Store.touch(r); Store.flush(); render(); aiPaint(); toast(`已撤回 ${e.place}${has(e.replaced) ? '（變返 ' + show1(e.replaced) + '）' : '（清空）'}`);
 }
 
-/* ---------- v0.6.9 📞 E call 紀錄（只讀，最近 6 個月）----------
+/* ---------- v0.6.9／v0.6.47 📞 E call 紀錄（只讀，最近 6 個月）----------
+   v0.6.47：撳一筆 → #/echist/d/<id> 詳情；列 photo_url 資料夾檔案（相／Ecall 紙／251／WO PDF 捷徑等；GAS v1.46 ecall_folder）。
    資料：TNS Ecall bot → ecall_history.json（公司 Drive「TNS Ecall report」，同名只留最新一個）→ Apps Script action 'data' name 'ecall_history'
    （伺服器用 Script Property DATA_SOURCES_EXTRA 加呢個名；按檔名讀最新、冇掉垃圾桶嗰個，唔寫死檔案 id）。要師傅 PIN；冇價錢資料。
    格式：apps_script/E_call紀錄資料格式.md。資料只放記憶體（約 0.9 MB，唔存手機）；每次開 App 第一次入嚟先讀。
    只顯示最近 6 個月（date；冇 date 用 report_month）。搜尋：日期範圍、屋邨／大廈下拉（v0.6.10；由資料整，中英合併，見下面 ehPlace）、
    地區（dmo）、K 號（ref，部分都得；v0.6.13 都搵 wo＝WO 號）、關鍵字（都包 wo）。每次顯示 40 筆，「再顯示」加 40 筆。 */
 const EH_PAGE = 40;
-let EH = { data: null, loading: false, err: '', errCode: '', live: false, show: EH_PAGE, f: { from: '', to: '', est: '', bld: '', dmo: '', k: '', q: '', fu: false } };
+let EH = { data: null, loading: false, err: '', errCode: '', live: false, show: EH_PAGE, f: { from: '', to: '', est: '', bld: '', dmo: '', k: '', q: '', fu: false }, det: null, fold: null, foldStack: [], ferr: '', ferrCode: '', floading: false, thumbs: {}, opening: '' };
 const EH_MSG = {
   bad_action: '公司伺服器未開「E call 紀錄」資料（Apps Script 要加 Script Property「DATA_SOURCES_EXTRA」嘅 ecall_history）。請通知公司。',
   not_found: '公司 Drive「TNS Ecall report」未有 ecall_history.json。',
   no_access: 'Apps Script 讀唔到「TNS Ecall report」資料夾。',
   bad_json: 'E call 紀錄資料格式錯（ecall_history.json 唔係正確 JSON）。'
+};
+const EH_FMSG = {
+  bad_action: '公司伺服器未更新到 v1.46，未有「E call 資料夾」入面睇檔。可以用下面「喺 Google Drive 開」。',
+  not_inside: '呢個資料夾唔喺公司允許範圍（WhatsApp 相片／額外相片／AI 處理）。請用 Google Drive 開。',
+  not_found: '搵唔到呢個資料夾（可能已刪／搬走）。',
+  bad_folder: '相片資料夾連結唔啱。',
+  ecall_no_root: '伺服器未設定 E call 資料夾根。請通知公司。',
+  ecall_too_big: '檔案太大（上限 15 MB），App 開唔到；請用 Google Drive。',
+  ecall_unsupported: '呢種檔案 App 開唔到；請用 Google Drive。',
+  ecall_export_fail: 'Google 文件轉 PDF 失敗，請遲啲再試或用 Drive 開。',
+  offline: '冇網／連唔到公司伺服器',
+  need_approval: '呢部手機未批准。'
 };
 const ehN = s => String(s == null ? '' : s).toLowerCase().replace(/[\s\u3000,，、.\-()（）]+/g, '');
 const ehS = v => v == null ? '' : String(v).trim();
@@ -4338,7 +4358,7 @@ function ehCard(x) {
   const title = zh || zz || x.loc || '（冇地址）';
   const times = [['報告', x.rt], ['到場', x.at], ['恢復', x.rs]].filter(t => t[1]).map(t => `${t[0]} ${esc(t[1])}`).join(' · ');
   const row = (l, v) => v ? `<div class="ehr"><span>${l}</span>${esc(v)}</div>` : '';
-  return `<div class="card ehc${x.fu ? ' fu' : ''}" data-ehid="${esc(x.id)}">
+  return `<div class="card ehc${x.fu ? ' fu' : ''}" data-act="ehopen" data-ehid="${esc(x.id)}" role="button" tabindex="0">
     <div class="eht"><b>${esc(title)}</b>${x.fu ? '<span class="badge pend">待跟進</span>' : ''}</div>
     ${zh && x.loc ? `<div class="mut ehloc">${esc(x.loc)}</div>` : !zh && zz ? `<div class="mut ehloc">${esc(x.loc)}<br><small>（中文名係 App 對照英文地址得出）</small></div>` : ''}
     <div class="ehm"><span class="ehdmo">${esc(x.dmo || '—')}</span> ${esc(x.date || x.month + '（冇日期）')}${times ? ' · ' + times : ''}</div>
@@ -4346,7 +4366,7 @@ function ehCard(x) {
     <div class="ehk">${x.ref ? `K 號 <b>${esc(x.ref)}</b>` : '<span class="mut">冇 K 號</span>'}${x.wo ? ` · WO <b class="ehwo">${esc(x.wo)}</b>` : ''}${x.fs251 ? ` · FS251 ${esc(x.fs251)}` : ''}</div>
     ${x.fu ? `<div class="ehfu">📌 待跟進：${esc(x.fuNote || '（冇跟進內容）')}</div>` : ''}
     ${x.notes ? `<div class="mut ehnote">備註：${esc(x.notes)}</div>` : ''}
-    ${x.photo ? `<div class="ecphs"><button class="btn ecph" data-act="ecphotos" data-url="${esc(x.photo)}" data-t="${esc(x.building || x.zhBlk || x.loc || 'E call')}" data-s="${esc([x.estate || x.zhEst, x.date, x.ref].filter(Boolean).join(' · '))}">📁 相片資料夾</button><a class="lnk" href="${esc(x.photo)}" target="_blank" rel="noopener noreferrer">喺 Google Drive 開 ↗</a></div>` : ''}</div>`;
+    <div class="ehhint">${x.photo ? '📁 有相片資料夾 · 撳入去睇相／Ecall 紙／報告' : '撳入去睇詳情'}</div></div>`;
 }
 function ehListHtml() {
   const L = ehFiltered(), all = ehRecs(), f = EH.f;
@@ -4356,6 +4376,7 @@ function ehListHtml() {
     + (L.length > EH.show ? `<button class="btn" style="width:100%" data-act="ehmore" id="ehmore">再顯示 ${Math.min(EH_PAGE, L.length - EH.show)} 筆（仲有 ${L.length - EH.show} 筆）</button>` : '');
 }
 function viewEchist() {
+  if (cur.step === 'detail' && cur.id) return viewEhDetail(cur.id);
   const c = upCfg(), top = `<div class="top"><div class="bar"><button data-act="home" aria-label="返主頁">‹ 主頁</button><div class="ttl">E call 紀錄<small>最近 6 個月 · 只讀 · 經公司 Apps Script（要 PIN）</small></div></div></div>`;
   if (!c.url || !c.pin) return top + `<main><div class="warnbox">未設定上傳網址／PIN。請喺 ☰ 選單 →「⚙️ 上傳設定」填好先。</div><button class="btn pri" style="width:100%" data-act="settings">⚙️ 上傳設定</button></main>`;
   const msg = EH.loading ? '<div class="card mut" id="ehload">載入緊 E call 紀錄…</div>'
@@ -4385,6 +4406,171 @@ function ehSet(el, now) {
 }
 document.addEventListener('input', e => { const el = e.target; if (el.dataset && el.dataset.eh) ehSet(el, false); });
 document.addEventListener('change', e => { const el = e.target; if (el.dataset && el.dataset.eh) ehSet(el, true); });
+
+/* ----- v0.6.47 詳情：紀錄欄位 ＋ photo_url 資料夾檔案（GAS ecall_folder） ----- */
+function ehFind(id) { return ehRecs().find(x => x.id === id) || null; }
+function ehOpen(id) {
+  if (!id) return;
+  EH.det = id; EH.fold = null; EH.foldStack = []; EH.ferr = ''; EH.ferrCode = ''; EH.thumbs = {};
+  go('#/echist/d/' + encodeURIComponent(id));
+}
+function ehBack() {
+  if (EH.foldStack && EH.foldStack.length) return ehFoldBack();
+  EH.det = null; EH.fold = null; EH.ferr = ''; go('#/echist');
+}
+function ehSoftLabel(name) {
+  const n = String(name || '');
+  if (/ecall\s*紙|e[\s_-]?call\s*紙|ecall紙/i.test(n)) return ['paper', 'Ecall 紙'];
+  if (/(^|[^a-z0-9])ecall([^a-z0-9]|$)/i.test(n) && /\.pdf$/i.test(n)) return ['paper', 'Ecall 紙'];
+  if (/完工畫面|完工|app_.*(done|complete)|completion\s*screen/i.test(n)) return ['done', '完工畫面'];
+  if (/現場相|現場/i.test(n)) return ['', '現場相'];
+  if (/dimbook/i.test(n)) return ['bill', 'Dimbook'];
+  if (/上單|code\s*sheet|bsmw/i.test(n)) return ['bill', '上單'];
+  if (/fs\s*251|fs251|(^|[^0-9])251([^0-9]|$)/i.test(n) && /pdf|report|紙/i.test(n)) return ['fs', 'FS251'];
+  if (/\btns\b.*report|tns\s*report/i.test(n)) return ['fs', 'TNS'];
+  if (/\bwo\b|work\s*order|工單|(^|[^0-9])902\d{7}([^0-9]|$)/i.test(n)) return ['wo', 'WO PDF'];
+  if (/\.pdf$/i.test(n)) return ['', 'PDF'];
+  return null;
+}
+function ehFileIcon(f) {
+  if (f.kind === 'image') return '🖼️';
+  if (f.kind === 'pdf' || f.kind === 'gdoc' || f.kind === 'gsheet' || f.kind === 'gslides' || f.kind === 'gdraw') return '📄';
+  if (f.shortcut) return '🔗';
+  return '📎';
+}
+function ehSize(n) { n = Number(n) || 0; if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(0) + ' KB'; return (n / 1048576).toFixed(1) + ' MB'; }
+async function ehCall(body, ms) {
+  const o = await gasCall(body, ms || 60000);
+  if (!o || !o.ok) { const e = upErr(o && o.error || 'bad_reply'); e.o = o; throw e; }
+  return o;
+}
+function ehFoldLoad(force) {
+  const x = ehFind(EH.det || cur.id); if (!x) return;
+  const folder = (EH.fold && EH.fold.id) || (x.photo && (x.photo.match(/\/folders\/([\w-]{10,})/) || [])[1]) || '';
+  if (!folder && !x.photo) return;
+  return ehFoldFetch(x.photo && !EH.fold ? x.photo : folder, force);
+}
+async function ehFoldFetch(folder, force) {
+  if (!folder) return;
+  if (EH.floading && !force) return;
+  EH.floading = true; EH.ferr = ''; EH.ferrCode = ''; if (cur.view === 'echist' && cur.step === 'detail') render();
+  try {
+    const o = await ehCall({ action: 'ecall_folder', folder: folder }, 90000);
+    EH.fold = o; EH.ferr = ''; EH.ferrCode = '';
+    const ids = (o.files || []).filter(f => f.thumb && f.kind === 'image').slice(0, 24).map(f => f.id);
+    if (ids.length) ehThumbs(ids);
+  } catch (e) {
+    EH.ferrCode = e.code || '';
+    EH.ferr = EH_FMSG[e.code] || (e.code === 'offline' || e.code === 'network' || e.code === 'timeout' ? EH_FMSG.offline : (e.message || upErrText(e.code)));
+    if (e.code === 'bad_action') EH.fold = { old: true, files: [], subs: [] };
+  }
+  EH.floading = false; if (cur.view === 'echist' && cur.step === 'detail') render();
+}
+async function ehThumbs(ids) {
+  const need = ids.filter(id => EH.thumbs[id] === undefined); if (!need.length) return;
+  need.forEach(id => { EH.thumbs[id] = ''; });
+  for (let i = 0; i < need.length; i += 12) {
+    const part = need.slice(i, i + 12);
+    try {
+      const o = await ehCall({ action: 'ecall_thumbs', ids: part }, 60000);
+      (o.items || []).forEach(t => { EH.thumbs[t.id] = t.base64 ? `data:${t.mime || 'image/jpeg'};base64,${t.base64}` : ''; });
+    } catch (e) { part.forEach(id => { EH.thumbs[id] = ''; }); }
+    if (cur.view === 'echist' && cur.step === 'detail') {
+      const box = document.getElementById('ehflist'); if (box) box.outerHTML = ehFilesHtml();
+    }
+  }
+}
+function ehFoldOpen(id, name) {
+  if (!id) return;
+  if (EH.fold && EH.fold.folder) EH.foldStack.push({ id: EH.fold.folder.id, name: EH.fold.folder.name });
+  EH.fold = null; EH.thumbs = {};
+  ehFoldFetch(id);
+}
+function ehFoldBack() {
+  const p = EH.foldStack.pop(); if (!p) return;
+  EH.fold = null; EH.thumbs = {};
+  ehFoldFetch(p.id);
+}
+function ehFilesHtml() {
+  const x = ehFind(EH.det || cur.id);
+  if (!x) return '';
+  if (!x.photo) return `<div class="card mut">冇相片資料夾（呢筆 E call 未有 photo_url）。</div>`;
+  const drive = `<a class="lnk" href="${esc(x.photo)}" target="_blank" rel="noopener noreferrer">喺 Google Drive 開 ↗</a>`;
+  if (EH.floading && !EH.fold) return `<div class="card mut">載入緊資料夾檔案…</div><div class="ecphs" style="margin-top:8px">${drive}</div>`;
+  if (EH.ferr && (!EH.fold || EH.fold.old || !(EH.fold.files || []).length)) {
+    return `<div class="${EH.ferrCode === 'bad_action' || EH.ferrCode === 'not_inside' ? 'warnbox' : 'errbox'}">${esc(EH.ferr)}</div>
+      <div class="ecphs" style="margin-top:8px"><a class="btn pri" style="display:flex;justify-content:center;text-decoration:none" href="${esc(x.photo)}" target="_blank" rel="noopener noreferrer">喺 Google Drive 開</a>
+      ${EH.ferrCode === 'bad_action' ? '' : `<button class="btn" data-act="ehfoldreload">🔄 再試</button>`}</div>`;
+  }
+  const F = EH.fold || { files: [], subs: [], more: 0 };
+  const path = EH.foldStack.length ? `<button class="btn sm" data-act="ehfoldback">‹ 返回上層</button> <span class="mut">${esc((F.folder && F.folder.name) || '')}</span>` : `<div class="mut">資料夾：${esc((F.folder && F.folder.name) || '相片資料夾')} · ${(F.files || []).length} 個檔${F.more ? `（仲有 ${F.more} 個未列）` : ''}</div>`;
+  const subs = (F.subs || []).map(s => `<button class="btn sm" data-act="ehfold" data-id="${esc(s.id)}" data-n="${esc(s.name)}">📁 ${esc(s.name)}</button>`).join('');
+  const rows = (F.files || []).map(f => {
+    const lab = ehSoftLabel(f.name);
+    const th = EH.thumbs[f.id];
+    const thumb = f.kind === 'image' && th ? `<img src="${th}" alt="">` : `<i>${ehFileIcon(f)}</i>`;
+    const meta = [f.shortcut ? '捷徑' : '', f.hkt || '', f.size ? ehSize(f.size) : ''].filter(Boolean).join(' · ');
+    const dis = f.view ? '' : ' aria-disabled="true"';
+    return `<button class="ehfrow" data-act="ehfile" data-id="${esc(f.id)}"${dis}>
+      <span class="ehfth">${thumb}</span><span class="ehfn"><b>${esc(f.name)}${lab ? `<span class="ehflab ${lab[0]}">${esc(lab[1])}</span>` : ''}</b>
+      <small>${esc(meta || (f.view ? '撳開' : 'App 開唔到 · 用 Drive'))}</small></span></button>`;
+  }).join('');
+  return `<div id="ehflist">${path}
+    ${subs ? `<div class="bdsubs" style="margin:8px 0">${subs}</div>` : ''}
+    ${rows ? `<div class="ehflist">${rows}</div>` : '<div class="card mut">呢個資料夾冇可顯示嘅檔案。</div>'}
+    <div class="ecphs" style="margin-top:10px">${drive}<button class="btn sm" data-act="ehfoldreload" ${EH.floading ? 'disabled' : ''}>🔄</button></div></div>`;
+}
+async function ehFileOpen(id) {
+  if (!id || EH.opening) return;
+  const F = EH.fold && EH.fold.files || [];
+  const f = F.find(x => x.id === id) || { id, name: '', view: true };
+  if (!f.view) {
+    const x = ehFind(EH.det || cur.id);
+    return toast('呢種檔案 App 開唔到；請用 Google Drive。', 3500);
+  }
+  if (typeof bdViewer !== 'function') return toast('檢視器未載入', 2500);
+  EH.opening = id;
+  bdViewer({ name: f.name || '檔案', loading: true });
+  try {
+    const o = await ehCall({ action: 'ecall_file', id }, 180000);
+    const bin = atob(o.base64), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    const blob = new Blob([a], { type: o.mime });
+    const kind = o.kind === 'image' ? 'image' : 'pdf';
+    bdViewer({ name: o.name || f.name, blob, kind, saved: false });
+  } catch (e) {
+    const msg = e.code === 'ecall_too_big' && e.o ? `檔案太大（${ehSize(e.o.size)}，上限 ${ehSize(e.o.limit || 15 * 1024 * 1024)}）` : (EH_FMSG[e.code] || e.message || upErrText(e.code));
+    bdViewer({ name: f.name, err: msg });
+  } finally { EH.opening = ''; }
+}
+function viewEhDetail(id) {
+  const c = upCfg();
+  const top = `<div class="top"><div class="bar"><button data-act="ehback" aria-label="返回">‹ 返回</button><div class="ttl">E call 詳情<small>只讀</small></div></div></div>`;
+  if (!c.url || !c.pin) return top + `<main><div class="warnbox">未設定上傳網址／PIN。</div></main>`;
+  if (!EH.data && !EH.loading) { setTimeout(() => ehLoad(), 0); return top + `<main><div class="card mut">載入緊 E call 紀錄…</div></main>`; }
+  if (EH.loading && !EH.data) return top + `<main><div class="card mut">載入緊 E call 紀錄…</div></main>`;
+  const x = ehFind(id);
+  if (!x) return top + `<main><div class="warnbox">搵唔到呢筆紀錄（可能已被篩走／過咗 6 個月）。</div><button class="btn" style="width:100%" data-act="ehback">返回列表</button></main>`;
+  EH.det = id;
+  if (x.photo && !EH.fold && !EH.floading && !EH.ferr) setTimeout(() => ehFoldLoad(false), 0);
+  const zh = [x.estate, x.building].filter(Boolean).join(' '), zz = [x.zhEst, x.zhBlk].filter(Boolean).join(' ');
+  const title = zh || zz || x.loc || '（冇地址）';
+  const row = (l, v) => v ? `<div class="ehr"><span>${l}</span>${esc(v)}</div>` : '';
+  const times = [['報告', x.rt], ['到場', x.at], ['恢復', x.rs]].filter(t => t[1]).map(t => `${t[0]} ${esc(t[1])}`).join(' · ');
+  return top + `<main class="ehdet">
+    <div class="card ehc${x.fu ? ' fu' : ''}">
+      <div class="eht"><b>${esc(title)}</b>${x.fu ? '<span class="badge pend">待跟進</span>' : ''}</div>
+      ${x.loc ? `<div class="mut ehloc">${esc(x.loc)}${!zh && zz ? '<br><small>（中文名係 App 對照英文地址得出）</small>' : ''}</div>` : ''}
+      <div class="ehm"><span class="ehdmo">${esc(x.dmo || '—')}</span> ${esc(x.date || x.month + '（冇日期）')}${times ? ' · ' + times : ''}</div>
+      ${row('故障', x.nature)}${row('原因', x.cause)}${row('維修', x.desc)}
+      <div class="ehk">${x.ref ? `K 號 <b>${esc(x.ref)}</b>` : '<span class="mut">冇 K 號</span>'}${x.wo ? ` · WO <b class="ehwo">${esc(x.wo)}</b>` : ''}${x.fs251 ? ` · FS251 ${esc(x.fs251)}` : ''}</div>
+      ${x.fu ? `<div class="ehfu">📌 待跟進：${esc(x.fuNote || '（冇跟進內容）')}</div>` : ''}
+      ${x.notes ? `<div class="mut ehnote">備註：${esc(x.notes)}</div>` : ''}
+    </div>
+    <h2 class="bdh" style="margin:14px 2px 6px">相關檔案</h2>
+    <div class="ehfiles">${ehFilesHtml()}</div>
+  </main>`;
+}
+
 
 /* ---------- v0.6.10.1 🛠️ 待處理工作（只讀）----------
    資料：「Defects List.xlsx／.pdf」（SUMMARY OF DEFECTS FOR FIRE SERVICES INSPECTION，一個屋邨一頁）
@@ -5889,7 +6075,7 @@ if (/^#\/phsearch\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    list／get／clock_today（上傳／打卡流程用嚟判斷，唔可以用舊資料）、acc_list（主管批准頁一定要即時）。
    畫面底「已更新 HH:mm／更新緊…」細提示（#swrhint）。 */
 const SWR_DB = 'fsapp20259005.swr', SWR_CAP = 150 * 1048576, SWR_MAXAGE = 30 * 864e5, SWR_FRESH = 15e3, SWR_ITEM_MAX = 12 * 1048576;
-const SWR_ACTS = new Set(['clock_staff', 'clock_mine', 'clock_status', 'clock_records', 'pending_confirms', 'data', 'ecall', 'bldg_list', 'wa_photos', 'photo_search', 'acc_pending_count', 'kv_doc', 'bldg_notes']);
+const SWR_ACTS = new Set(['clock_staff', 'clock_mine', 'clock_status', 'clock_records', 'pending_confirms', 'data', 'ecall', 'bldg_list', 'wa_photos', 'ecall_folder', 'photo_search', 'acc_pending_count', 'kv_doc', 'bldg_notes']);
 /* 用家撳「🔄 重新載入／再試」→ 之後 4 秒內嘅讀取唔用存低嘅（一定攞最新） */
 document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('button,a,[role=button]'); if (!t) return;
   const ds = Object.values(t.dataset || {}).join(' '); if (/reload|retry|refresh/i.test(ds) || /🔄|再試|重新載入/.test(t.textContent || '')) SWR.force = Date.now(); }, true);
@@ -8261,6 +8447,12 @@ document.addEventListener('click', async e => {
     case 'bldg': $('#modal').classList.remove('show'); return go('#/bldg'); /* v0.6.14 🏢 樓宇資料 */
     case 'echist': $('#modal').classList.remove('show'); return go('#/echist');
     case 'ehreload': return ehLoad();
+    case 'ehopen': return ehOpen(el.dataset.ehid);
+    case 'ehback': return ehBack();
+    case 'ehfold': return ehFoldOpen(el.dataset.id, el.dataset.n);
+    case 'ehfoldback': return ehFoldBack();
+    case 'ehfile': return ehFileOpen(el.dataset.id);
+    case 'ehfoldreload': return ehFoldLoad(true);
     case 'ehmore': EH.show += EH_PAGE; { const l = $('#ehlist'); if (l) l.innerHTML = ehListHtml(); } return;
     case 'ehfu': EH.f.fu = !EH.f.fu; EH.show = EH_PAGE; return render();
     case 'ehclear': EH.f = { from: '', to: '', est: '', bld: '', dmo: '', k: '', q: '', fu: false }; EH.show = EH_PAGE; return render();
