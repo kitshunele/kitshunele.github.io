@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.47';
+const APP_VERSION = '0.6.48';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8089,6 +8089,293 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
 
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
+
+/* ---------- v0.6.48 📏 度數（師傅揀 ss item＋數量 → 交 Dimbook 出 Dimbook）----------
+   價目底：合約 20259005 ss＋Rate Book 合併表（dev/ss_items_20259005.json；Sheet 1sRKNp608…）。
+   師傅：中文搜 → 加項目 → 填數量（預設 1）→ 填 job_ref／屋邨／樓／工作說明／E-call → 送出。
+   唔填單價；供應／安裝／維修／拆除／BC＋Bonus 由 Dimbook 跟 Rate Book 處理。
+   提交：App 只組 JSON，經 gasCall action `dimbook_measure`（GAS v1.59+）轉發去 Dimbook routine「App 度數清單 → Dimbook」（folder id app-dimbook）。
+   Webhook URL／key／Authorization header 放 Script Properties（DIMBOOK_MEASURE_WEBHOOK_*），唔 hardcode 入前端。
+   未 deploy GAS／未設 Script Property → 提交會回 dm_not_configured 或 bad_action；畫面仍可組／預覽 JSON。 */
+const DS_ITEMS_URL = 'ss_items.json'; /* 同 PWA 目錄一齊上；stage／Pages 相對路徑 */
+const DS = {
+  q: '', show: 40, items: null, err: '', busy: false,
+  job_ref: '', estate: '', estateTxt: '', building: '', buildingTxt: '',
+  work_desc: '', is_ecall: false, ecallTouched: false,
+  lines: [], /* {code, qty, search, desc} */
+  lastPayload: null, lastReply: null, submitting: false
+};
+function dsEstName() {
+  if (DS.estateTxt) return DS.estateTxt.trim();
+  const ed = DS.estate ? pkEstDef(DS.estate) : null;
+  return ed ? (ed.zh || ed.en || DS.estate) : String(DS.estate || '').trim();
+}
+function dsBldName() {
+  if (DS.buildingTxt) return DS.buildingTxt.trim();
+  if (!DS.building) return '';
+  const ed = DS.estate ? pkEstDef(DS.estate) : null;
+  if (ed) {
+    const b = ed.blocks.find(x => x.code === DS.building || x.zh === DS.building || x.en === DS.building);
+    if (b) return b.zh || b.en || DS.building;
+  }
+  return String(DS.building || '').trim();
+}
+function dsIsEcall() {
+  if (DS.ecallTouched) return !!DS.is_ecall;
+  return /^K/i.test(String(DS.job_ref || '').trim());
+}
+function dsPayload() {
+  const lines = DS.lines.filter(l => l && l.code && Number(l.qty) > 0).map(l => ({ code: l.code, qty: Number(l.qty) }));
+  const o = {
+    job_ref: String(DS.job_ref || '').trim(),
+    estate: dsEstName(),
+    building: dsBldName(),
+    work_desc: String(DS.work_desc || '').trim(),
+    is_ecall: dsIsEcall(),
+    lines
+  };
+  return o;
+}
+function dsValidate(p) {
+  if (!p.job_ref) return '請填工作參考（job_ref：K…／DL-…／資料夾名）';
+  if (!p.lines.length) return '請至少加一個項目（數量 > 0）';
+  for (const l of p.lines) {
+    if (!l.code) return '有項目缺 code';
+    if (!(Number(l.qty) > 0)) return '數量要大於 0';
+  }
+  return '';
+}
+function dsNorm(s) { return String(s || '').normalize('NFKC').toLowerCase().replace(/[\s\u3000]+/g, ''); }
+function dsSearchHits(q) {
+  const items = (DS.items && DS.items.items) || [];
+  const n = dsNorm(q);
+  if (!n) return items.slice(0, DS.show);
+  const out = [];
+  for (let i = 0; i < items.length && out.length < DS.show; i++) {
+    const it = items[i];
+    const hay = dsNorm((it.search || '') + ' ' + (it.code || '') + ' ' + (it.desc || ''));
+    if (hay.indexOf(n) >= 0) out.push(it);
+  }
+  return out;
+}
+function dsPriceTxt(it) {
+  const bits = [];
+  if (it.a != null) bits.push('供應 ' + it.a);
+  if (it.b != null) bits.push('安裝 ' + it.b);
+  if (it.c != null) bits.push('維修 ' + it.c);
+  if (it.d != null) bits.push('拆除 ' + it.d);
+  return bits.length ? bits.join(' · ') : '';
+}
+async function dsLoadItems(force) {
+  if (DS.items && !force) return DS.items;
+  if (DS.busy) return DS.items;
+  DS.busy = true; DS.err = ''; dsPaint();
+  try {
+    const r = await fetch(DS_ITEMS_URL, { cache: 'no-cache', credentials: 'same-origin' });
+    if (!r.ok) throw new Error('讀唔到價目表（HTTP ' + r.status + '）');
+    const j = await r.json();
+    if (!j || !Array.isArray(j.items) || !j.items.length) throw new Error('價目表格式錯');
+    DS.items = j; DS.err = '';
+  } catch (e) {
+    DS.err = (e && e.message) || '讀唔到價目表';
+  } finally { DS.busy = false; dsPaint(); }
+  return DS.items;
+}
+function dsAddLine(it) {
+  if (!it || !it.code) return;
+  const ex = DS.lines.find(l => l.code === it.code);
+  if (ex) { ex.qty = Number(ex.qty || 0) + 1; toast('已加數量：' + it.code); }
+  else DS.lines.push({ code: it.code, qty: 1, search: it.search || '', desc: it.desc || '' });
+  dsPaint();
+}
+function dsSetQty(i, v) {
+  const l = DS.lines[i]; if (!l) return;
+  const n = Number(v);
+  if (!isFinite(n) || n <= 0) { DS.lines.splice(i, 1); }
+  else l.qty = Math.round(n * 1000) / 1000;
+  dsPaint();
+}
+function dsFormHtml() {
+  const ed = DS.estate && !PK.open.ds_est ? pkEstDef(DS.estate) : null;
+  const eOther = !ed && (!!DS.estateTxt || !!PK.open.ds_est || (!!DS.estate && !pkEstDef(DS.estate)));
+  const eVal = ed ? ed.code : (DS.estateTxt || DS.estate || '');
+  const bVal = DS.buildingTxt || DS.building || '';
+  const ecall = dsIsEcall();
+  return `<div class="card dsform">
+    <h3>工作資料</h3>
+    <label class="dslbl">工作參考（必填）<input class="inp" id="ds_job" value="${esc(DS.job_ref)}" placeholder="K…／DL-…／資料夾名" autocomplete="off"></label>
+    <div class="pkrow">
+      <label>屋邨${pkSel('ds_est', pkEstItems(true), eVal, { ph: '— 揀屋邨 —', label: '屋邨', id: 'dsest', oph: '自己打屋邨名' })}</label>
+      <label>樓名${pkSel('ds_blk', ed ? pkBldItems(ed, true) : [], bVal, { ph: ed ? '— 揀樓名 —' : eOther ? '屋邨唔喺清單：自己打' : '— 先揀屋邨 —', label: '樓名', id: 'dsblk', oph: '自己打樓名', disabled: !ed && !eOther })}</label>
+    </div>
+    <label class="dslbl">工作說明<input class="inp" id="ds_wd" value="${esc(DS.work_desc)}" placeholder="一句說明（建議）" autocomplete="off"></label>
+    <label class="dscheck"><input type="checkbox" id="ds_ecall" ${ecall ? 'checked' : ''}> E-call（唔剔時：job_ref 以 K 開頭當 E-call）</label>
+  </div>`;
+}
+function dsLinesHtml() {
+  if (!DS.lines.length) return '<div class="card mut">未揀項目。下面搜中文俗稱／code，撳「加」。</div>';
+  return `<div class="card"><h3>已揀（${DS.lines.length}）</h3>` + DS.lines.map((l, i) => {
+    return `<div class="dsline" data-i="${i}">
+      <div class="dslineh"><b>${esc(l.search || l.code)}</b><button type="button" class="lnk" data-ds="rm" data-i="${i}" aria-label="刪">✕</button></div>
+      <div class="mut">${esc(l.code)}${l.desc ? ' · ' + esc(l.desc) : ''}</div>
+      <label class="dsqty">數量 <input type="number" min="0.001" step="any" value="${esc(l.qty)}" data-ds="qty" data-i="${i}" inputmode="decimal"></label>
+    </div>`;
+  }).join('') + '</div>';
+}
+function dsHitsHtml() {
+  if (DS.busy && !DS.items) return '<div class="card mut">載入價目表中…</div>';
+  if (DS.err && !DS.items) return `<div class="errbox">${esc(DS.err)}<br><button class="btn" data-ds="reload">再試</button></div>`;
+  const hits = dsSearchHits(DS.q);
+  const n = (DS.items && DS.items.count) || ((DS.items && DS.items.items) || []).length;
+  const head = `<div class="mut" style="margin:4px 2px 8px">價目 ${n} 項 · 顯示 ${hits.length}${DS.q ? '（搜「' + esc(DS.q) + '」）' : '（打字搜中文／code）'}</div>`;
+  if (!hits.length) return head + '<div class="card mut">搵唔到。試少幾個字。</div>';
+  return head + hits.map(it => {
+    const pr = dsPriceTxt(it);
+    return `<button type="button" class="cpcard dsitem" data-ds="add" data-code="${esc(it.code)}">
+      <div class="cpt">${esc(it.search || it.code)}</div>
+      <div class="mut">${esc(it.code)}${it.desc ? ' · ' + esc(it.desc) : ''}</div>
+      ${pr ? `<div class="mut dsprice">參考：${esc(pr)}（師傅唔使填價）</div>` : ''}
+      <div class="dsadd">＋ 加入</div></button>`;
+  }).join('');
+}
+function dsPreviewHtml() {
+  const p = dsPayload();
+  const bad = dsValidate(p);
+  DS.lastPayload = p;
+  return `<div class="card"><h3>送出預覽</h3>
+    ${bad ? `<div class="warnbox">${esc(bad)}</div>` : '<div class="mut">格式跟 Dimbook：lines 只有 code＋qty</div>'}
+    <pre class="dspre">${esc(JSON.stringify(p, null, 2))}</pre>
+    <button class="btn pri" style="width:100%" data-ds="submit" ${bad || DS.submitting ? 'disabled' : ''}>${DS.submitting ? '送緊…' : '送去 Dimbook（經公司伺服器）'}</button>
+    ${DS.lastReply ? `<div class="mut" style="margin-top:8px">上次回覆：<pre class="dspre">${esc(JSON.stringify(DS.lastReply, null, 2))}</pre></div>` : ''}
+    <div class="mut" style="margin-top:8px">⚠️ Webhook key 唔喺 App；要 GAS v1.59＋ Script Properties <code>DIMBOOK_MEASURE_WEBHOOK_URL</code>／<code>_KEY</code>／可選 <code>_AUTH</code>。</div>
+  </div>`;
+}
+function dsBody() {
+  return dsFormHtml()
+    + dsLinesHtml()
+    + `<div class="card"><label class="dslbl">搜項目（中文俗稱／code）<input class="inp" id="ds_q" value="${esc(DS.q)}" placeholder="例：火警、泵、喉轆、FE-ALAM" autocomplete="off" enterkeyhint="search"></label></div>`
+    + dsHitsHtml()
+    + dsPreviewHtml();
+}
+function viewDosu() {
+  if (!DS.items && !DS.busy && !DS.err) setTimeout(() => { if (cur.view === 'dosu') dsLoadItems(); }, 0);
+  return `<div class="top"><div class="bar"><button data-act="home" aria-label="返主頁">‹ 主頁</button><div class="ttl">📏 度數<small>ss 價目 · 交 Dimbook · v${APP_VERSION}</small></div></div></div>
+  <main id="dsmain">${dsBody()}</main>`;
+}
+function dsPaint() {
+  if (cur.view !== 'dosu') return;
+  const m = $('#dsmain'); if (!m) return;
+  const y = window.scrollY;
+  const ae = document.activeElement;
+  const id = ae && ae.id;
+  const ss = ae && typeof ae.selectionStart === 'number' ? ae.selectionStart : null;
+  m.innerHTML = dsBody();
+  window.scrollTo(0, y);
+  if (id) {
+    const el = document.getElementById(id);
+    if (el) { el.focus(); try { if (ss != null && el.setSelectionRange) el.setSelectionRange(ss, ss); } catch (e) {} }
+  }
+}
+PKH.ds_est = (v, how) => {
+  if (how === 'type') return;
+  if (how === 'other' || how === 'done') { DS.estate = ''; DS.estateTxt = v || ''; }
+  else { DS.estate = v; DS.estateTxt = ''; }
+  DS.building = ''; DS.buildingTxt = '';
+  delete PK.open.ds_blk;
+  dsPaint();
+};
+PKH.ds_blk = (v, how) => {
+  if (how === 'type') return;
+  if (how === 'other' || how === 'done') { DS.building = ''; DS.buildingTxt = v || ''; }
+  else { DS.building = v; DS.buildingTxt = ''; }
+  dsPaint();
+};
+let dsQT = null;
+document.addEventListener('input', e => {
+  const t = e.target; if (!t || cur.view !== 'dosu') return;
+  if (t.id === 'ds_q') { DS.q = t.value; clearTimeout(dsQT); dsQT = setTimeout(() => dsPaint(), 200); return; }
+  if (t.id === 'ds_job') { DS.job_ref = t.value; if (!DS.ecallTouched) dsPaint(); else { /* keep checkbox */ const p = $('#dsmain .dspre'); if (p) p.textContent = JSON.stringify(dsPayload(), null, 2); } return; }
+  if (t.id === 'ds_wd') { DS.work_desc = t.value; return; }
+  if (t.matches && t.matches('input[data-ds="qty"]')) {
+    const i = +t.dataset.i; const l = DS.lines[i]; if (!l) return;
+    const n = Number(t.value);
+    if (isFinite(n) && n > 0) l.qty = n;
+    /* 唔即刻刪／重畫，等 blur／change */
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target; if (!t || cur.view !== 'dosu') return;
+  if (t.id === 'ds_ecall') { DS.ecallTouched = true; DS.is_ecall = !!t.checked; dsPaint(); return; }
+  if (t.matches && t.matches('input[data-ds="qty"]')) { dsSetQty(+t.dataset.i, t.value); }
+});
+document.addEventListener('click', e => {
+  const tile = e.target.closest('[data-act="dosu"]');
+  if (tile && !tile.disabled) { const m = $('#modal'); if (m) m.classList.remove('show'); return go('#/dosu'); }
+  const b = e.target.closest('[data-ds]'); if (!b || cur.view !== 'dosu') return;
+  const a = b.dataset.ds;
+  if (a === 'reload') return dsLoadItems(true);
+  if (a === 'add') {
+    const code = b.dataset.code;
+    const it = ((DS.items && DS.items.items) || []).find(x => x.code === code);
+    if (it) dsAddLine(it);
+    return;
+  }
+  if (a === 'rm') { DS.lines.splice(+b.dataset.i, 1); return dsPaint(); }
+  if (a === 'submit') return dsSubmit();
+});
+async function dsSubmit() {
+  const p = dsPayload();
+  const bad = dsValidate(p);
+  if (bad) { toast(bad); return; }
+  if (DS.submitting) return;
+  DS.submitting = true; dsPaint();
+  try {
+    const body = Object.assign({ action: 'dimbook_measure', app_version: APP_VERSION }, p);
+    const nm = (typeof Store !== 'undefined' && Store.prefs && Store.prefs.ckName) || '';
+    if (nm) body.name = nm;
+    const o = await gasCall(body, 60000);
+    DS.lastReply = o || { ok: false, error: 'no_reply' };
+    if (o && o.ok) {
+      toast('已交 Dimbook' + (o.dimbook_id ? ' · ' + o.dimbook_id : ''), 3500);
+      DS.lines = [];
+    } else {
+      const err = (o && o.error) || 'bad_reply';
+      const msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.59 dimbook_measure）'
+        : err === 'dm_not_configured' ? '伺服器未設 Dimbook webhook（Script Properties）'
+        : err === 'dm_http' ? 'Dimbook webhook 回覆失敗'
+        : upErrText(err);
+      toast(msg, 4500);
+    }
+  } catch (ex) {
+    DS.lastReply = { ok: false, error: String(ex && ex.message || ex) };
+    toast(ex.message || '送唔到');
+  } finally { DS.submitting = false; dsPaint(); }
+}
+(function () {
+  const k = TILES.findIndex(t => t.act === 'pecheck');
+  TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'dosu', icon: '📏', name: '度數', sub: '揀 ss 項目＋數量 → Dimbook' });
+})();
+const parseHashRaw_ds = parseHash;
+parseHash = function () {
+  if (/^#\/dosu\b/.test(location.hash)) { cur = { view: 'dosu', id: null, step: null }; lkReset(); return; }
+  parseHashRaw_ds();
+};
+const viewGridRaw_ds = viewGrid;
+viewGrid = function () { return cur.view === 'dosu' ? viewDosu() : viewGridRaw_ds(); };
+if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
+(function () {
+  try {
+    const s = document.createElement('style');
+    s.textContent =
+      '.dsform .dslbl,.dslbl{display:block;font-size:13px;color:#555;margin:8px 0 0}.dsform .inp,#ds_q,#ds_job,#ds_wd{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
+      '.dscheck{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:16px}.dscheck input{width:20px;height:20px}' +
+      '.dsline{border-top:1px solid #eee;padding:10px 0}.dsline:first-of-type{border-top:0}.dslineh{display:flex;justify-content:space-between;align-items:center;gap:8px}' +
+      '.dsqty{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:15px}.dsqty input{width:96px;font-size:18px;min-height:40px;padding:0 8px}' +
+      '.dsitem{text-align:left;width:100%}.dsadd{color:#1d4ed8;font-weight:700;margin-top:4px}.dsprice{font-size:12px}' +
+      '.dspre{white-space:pre-wrap;word-break:break-word;background:#f8fafc;border-radius:8px;padding:10px;font-size:12px;max-height:280px;overflow:auto}';
+    document.head.appendChild(s);
+  } catch (e) {}
+})();
 
 /* ---------- 樓層 /F ---------- */
 function floorSync(r) { // 記錄 + 畫面上嘅樓層欄位一齊整理（下一頁／提交前）
