@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.57';
+const APP_VERSION = '0.6.58';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8124,8 +8124,22 @@ const DS_CATS = [
     { id: '線碼', label: '線碼（EL）' }
   ]}
 ];
+/* GI喉再分：跟 PI-*-GI-* 第二段 token */
+const DS_GI_KINDS = [
+  { id: '喉', label: '喉（直喉／短喉／內膠喉）', toks: ['SCPI', 'SSHL', 'LPIP'] },
+  { id: '力古', label: '力古', toks: ['NIPP', 'LINI'] },
+  { id: '刁士', label: '刁士', toks: ['SCRD'] },
+  { id: '彎曲', label: '彎曲', toks: ['SCBE', 'LIEW'] },
+  { id: '曲尺', label: '曲尺', toks: ['SCEW'] },
+  { id: '三叉', label: '三叉', toks: ['SCTE', 'LITE'] },
+  { id: '十字', label: '十字', toks: ['LICS'] },
+  { id: '腰潤', label: '腰潤', toks: ['SCJO'] },
+  { id: '法蘭', label: '法蘭', toks: ['SCFL', 'SFLI'] },
+  { id: '駁頭', label: '駁頭', toks: ['CONN'] },
+  { id: '內膠梳杰', label: '內膠梳杰', toks: ['LISK'] }
+];
 const DS = {
-  q: '', cat: '', sub: '', show: 40, items: null, err: '', busy: false,
+  q: '', cat: '', sub: '', sub2: '', show: 40, items: null, err: '', busy: false,
   job_ref: '', estate: '', estateTxt: '', building: '', buildingTxt: '',
   work_desc: '', is_ecall: false, ecallTouched: false,
   lines: [], /* {code, qty, search, desc} */
@@ -8180,6 +8194,11 @@ function dsCatDef(id) { return DS_CATS.find(c => c.id === id) || null; }
 function dsPipeFittingCode(code) {
   return /^PI-SCSK-/i.test(code) || /^PI-SCBU-/i.test(code) || /^PI-RCAM-/i.test(code) || /^PI-BRAK-/i.test(code);
 }
+function dsCodeMid(code) {
+  const p = String(code || '').split('-');
+  return (p.length > 1 ? p[1] : '').toUpperCase();
+}
+function dsGiKindDef(id) { return DS_GI_KINDS.find(k => k.id === id) || null; }
 function dsPipeSub(it, sub) {
   const code = String(it.code || '');
   if (!( /^PI-/i.test(code) || /^BG-PIPE-/i.test(code) )) return false;
@@ -8187,9 +8206,15 @@ function dsPipeSub(it, sub) {
     case 'DI喉':
       if (dsPipeFittingCode(code)) return false;
       return /[-_]DI[-_]/i.test(code);
-    case 'GI喉':
+    case 'GI喉': {
       if (dsPipeFittingCode(code)) return false;
-      return /[-_]GI[-_]/i.test(code);
+      if (!/[-_]GI[-_]/i.test(code)) return false;
+      const k = String(DS.sub2 || '');
+      if (!k) return false;
+      const def = dsGiKindDef(k);
+      if (!def) return false;
+      return def.toks.indexOf(dsCodeMid(code)) >= 0;
+    }
     case '梳':
       return /^PI-SCSK-/i.test(code);
     case '夾':
@@ -8368,6 +8393,9 @@ function dsHitsHtml() {
   if (defNeed && defNeed.subs && defNeed.subs.length && !DS.sub) {
     return '<div class="card mut">請再揀細分類（' + esc(defNeed.subs.map(s => s.id).join('／')) + '）。</div>';
   }
+  if (DS.cat === '水喉' && DS.sub === 'GI喉' && !DS.sub2) {
+    return '<div class="card mut">GI喉請再揀種類（喉／力古／曲尺／法蘭等）。</div>';
+  }
   if (!hits.length) return head + '<div class="card mut">呢分類暫時冇項目。試第二個分類，或者改搜尋字。</div>';
   return head + hits.map(it => {
     const pr = dsPriceTxt(it);
@@ -8397,8 +8425,14 @@ function dsCatSelHtml() {
     ? ['<option value="">' + esc(subPh) + '</option>'].concat(def.subs.map(s =>
       `<option value="${esc(s.id)}" ${DS.sub === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`))
     : [];
-  const ready = DS.cat && (!needSub || DS.sub);
+  const needSub2 = DS.cat === '水喉' && DS.sub === 'GI喉';
+  const sub2Opts = needSub2
+    ? ['<option value="">— 揀 GI 種類 —</option>'].concat(DS_GI_KINDS.map(k =>
+      `<option value="${esc(k.id)}" ${DS.sub2 === k.id ? 'selected' : ''}>${esc(k.label || k.id)}</option>`))
+    : [];
+  const ready = DS.cat && (!needSub || DS.sub) && (!needSub2 || DS.sub2);
   const subLbl = (DS.cat === '水喉' || DS.cat === '燈喉／過路箱／電配件' || DS.cat === '閘掣／銅掣／波子掣') ? '再分類' : '細分類';
+  const path = [DS.cat, DS.sub, needSub2 ? DS.sub2 : ''].filter(Boolean).join(' · ');
   return `<div class="card"><h3>項目種類（下拉）</h3>
     <label class="dslbl">一般要度數：水喉（含梳夾杯臣喉碼）／螺絲／喉轆／電線；掣同電配件撳入再分（電只 EL）
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
@@ -8406,7 +8440,10 @@ function dsCatSelHtml() {
     ${needSub ? `<label class="dslbl">${esc(subLbl)}
       <select class="inp" id="ds_sub" aria-label="細分類">${subOpts.join('')}</select>
     </label>` : ''}
-    ${ready ? `<label class="dslbl">喺「${esc(DS.cat)}${DS.sub ? ' · ' + esc(DS.sub) : ''}」入面再搜（可留空）<input class="inp" id="ds_q" value="${esc(DS.q)}" placeholder="例：100mm、法蘭" autocomplete="off" enterkeyhint="search"></label>` : ''}
+    ${needSub2 ? `<label class="dslbl">GI喉種類
+      <select class="inp" id="ds_sub2" aria-label="GI喉種類">${sub2Opts.join('')}</select>
+    </label>` : ''}
+    ${ready ? `<label class="dslbl">喺「${esc(path)}」入面再搜（可留空）<input class="inp" id="ds_q" value="${esc(DS.q)}" placeholder="例：100mm、法蘭" autocomplete="off" enterkeyhint="search"></label>` : ''}
   </div>`;
 }
 function dsBody() {
@@ -8464,8 +8501,9 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target; if (!t || cur.view !== 'dosu') return;
-  if (t.id === 'ds_cat') { DS.cat = t.value || ''; DS.sub = ''; DS.q = ''; dsPaint(); return; }
-  if (t.id === 'ds_sub') { DS.sub = t.value || ''; DS.q = ''; dsPaint(); return; }
+  if (t.id === 'ds_cat') { DS.cat = t.value || ''; DS.sub = ''; DS.sub2 = ''; DS.q = ''; dsPaint(); return; }
+  if (t.id === 'ds_sub') { DS.sub = t.value || ''; DS.sub2 = ''; DS.q = ''; dsPaint(); return; }
+  if (t.id === 'ds_sub2') { DS.sub2 = t.value || ''; DS.q = ''; dsPaint(); return; }
   if (t.id === 'ds_ecall') { DS.ecallTouched = true; DS.is_ecall = !!t.checked; dsPaint(); return; }
   if (t.matches && t.matches('input[data-ds="qty"]')) { dsSetQty(+t.dataset.i, t.value); }
 });
@@ -8528,7 +8566,7 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   try {
     const s = document.createElement('style');
     s.textContent =
-      '.dsform .dslbl,.dslbl{display:block;font-size:13px;color:#555;margin:8px 0 0}.dsform .inp,#ds_q,#ds_job,#ds_wd,#ds_cat,#ds_sub{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
+      '.dsform .dslbl,.dslbl{display:block;font-size:13px;color:#555;margin:8px 0 0}.dsform .inp,#ds_q,#ds_job,#ds_wd,#ds_cat,#ds_sub,#ds_sub2{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
       '.dscheck{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:16px}.dscheck input{width:20px;height:20px}' +
       '.dsline{border-top:1px solid #eee;padding:10px 0}.dsline:first-of-type{border-top:0}.dslineh{display:flex;justify-content:space-between;align-items:center;gap:8px}' +
       '.dsqty{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:15px}.dsqty input{width:96px;font-size:18px;min-height:40px;padding:0 8px}' +
