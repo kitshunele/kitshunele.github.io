@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.81';
+const APP_VERSION = '0.6.82';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1182,7 +1182,7 @@ const TILES = [
   { act: 'fire', icon: '🧯', name: '消防檢查核對表', sub: '年檢／半年檢、PDF、上傳',
     note: () => { const n = Store.recs.filter(r => status(r) !== 'done').length; return n ? `${n} 份未完成／未上傳` : ''; } },
   { act: 'clock', icon: '⏱️', name: '打卡', sub: '上班／落班' },
-  { act: 'sched', icon: '📅', name: '消防檢日曆查詢', sub: '邊日去邊度、搵大廈日子' },
+  { act: 'sched', icon: '📅', name: '消防檢日曆查詢', sub: 'Link／季檢／半年／年檢 · 唔顯示過期' },
   { act: 'wo', icon: '📑', name: 'Work Order 查詢', sub: '搵 WO、帳單狀態' },
   { act: 'pend', icon: '🛠️', name: '待處理工作', sub: 'Defect list、按屋邨睇',
     note: () => { const n = pwCount(pwCache()); return n ? `${n} 項未處理／跟進中` : ''; } },
@@ -3442,13 +3442,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target &&
 window.addEventListener('hashchange', () => { if (cur.view !== 'clock') { cksReset(); if (CK.step === 'stat') CK.step = 'home'; } });
 (function () { try { const st = document.createElement('style'); st.textContent = '.cksbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.cksbar input[type=date]{font-size:17px;padding:6px;border:1px solid var(--line);border-radius:8px}.cksbar #cksreload{margin-left:auto}.ckscnt{margin:6px 0 10px;font-size:15px}.cksc-none{color:#6b7280}.cksc-open{color:#b45309}.cksc-done{color:#15803d}.cksrow .t{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}.cksl{margin:2px 0}.cksl .ckin,.cksl .ckout{display:inline-block;min-width:38px;font-weight:700}.cksb-none{background:#f3f4f6;color:#374151}.cksb-open{background:#fef3c7;color:#92400e}.cksb-done{background:#dcfce7;color:#166534}.cksrow.cks-open{border:2px solid #f59e0b;background:#fffbeb}.cksmiss{color:#b91c1c;font-weight:700}.cksdet{margin-top:4px;font-size:14px}'; document.head.appendChild(st); } catch (e) {} })();
 
-/* ---------- v0.6.5 📅 消防檢日曆查詢（只讀）----------
-   資料：RM Schedule Link (FS) - NT Region xlsx → dev/make_fs_schedule.py → fs_schedule.json（放喺公司 Drive「TNS」資料夾）
-   → Apps Script v1.4 action 'data' name 'fs_schedule'（要師傅 PIN）。唔放喺公開網址；最後一次讀到嘅日曆存喺手機（冇網都睇得）。
-   格式：apps_script/消防檢日曆資料格式.md。每條消防直線（Link No.）一行：屋邨、位置、全年日子（yyyy-mm-dd）。
-   月曆：揀月份（預設今個月 HKT）列出每日要做嘅屋邨／位置；搜尋：屋邨／大廈／Link No.（中英文都得）→ 全年日子。 */
+/* ---------- v0.6.82 📅 消防檢日曆查詢（只讀）----------
+   資料：RM Schedule Link (FS) + Kit Fax → fs_schedule.json（TNS）；Apps Script data/fs_schedule。
+   v0.6.82：過期日子唔顯示；頂部分類 Link test／季檢／半年檢／年檢（KitFax kind；RM 直線＝Link test）。 */
 const LS_SC = 'fsapp20259005.sched.v1', SC_MAX = 60;
-let SC = { loading: false, err: '', errCode: '', live: false, m: '', q: '', g: '', est: '', loc: '' }; /* v0.6.14：est／loc = 屋邨／大廈下拉；q 淨係搵 Link No. */
+let SC = { loading: false, err: '', errCode: '', live: false, m: '', q: '', g: '', est: '', loc: '', typ: 'link' }; /* typ: ''全部 | link | quarter | half | annual */
 const SC_MSG = {
   bad_action: '公司伺服器（Apps Script）仲係舊版，未有「消防檢日曆查詢」功能。要更新到 v1.5（重新部署）先用得；更新之後唔使改任何設定。',
   not_found: '公司 Drive 未有消防檢日曆（fs_schedule.json 未上載）。',
@@ -3462,13 +3460,38 @@ const scWd = s => SC_WD[new Date(Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s
 const scMd = s => `${+s.slice(5, 7)}月${+s.slice(8, 10)}日（${scWd(s)}）`;
 const scMon = m => `${m.slice(0, 4)}年${+m.slice(5, 7)}月`;
 function scAddM(m, n) { let y = +m.slice(0, 4), k = +m.slice(5, 7) - 1 + n; y += Math.floor(k / 12); k = ((k % 12) + 12) % 12; return `${y}-${String(k + 1).padStart(2, '0')}`; }
+function scKindOf(o) {
+  const g = ecTxt(o.group), kind = ecTxt(o.kind), loc = ecTxt(o.location) + ecTxt(o.link_no);
+  const blob = kind || loc;
+  if (/^KitFax/i.test(g) || ecTxt(o.link_type) === 'KF') {
+    if (/半年/.test(blob)) return 'half';
+    if (/年檢/.test(blob)) return 'annual';
+    if (/季檢|功能測試/.test(blob)) return 'quarter';
+    return ''; /* 水缸等：只喺「全部」 */
+  }
+  return 'link'; /* RM 直線 Link test */
+}
 function scNorm(data) { /* 接受 {records:[…]} 或 array；只讀需要嘅欄（就算檔入面有其他欄都唔要） */
   const arr = Array.isArray(data) ? data : data && data.records || [];
   return (Array.isArray(arr) ? arr : []).filter(o => o && typeof o === 'object').map((o, i) => ({
     id: ecTxt(o.id) || String(i), g: ecTxt(o.group), est: ecTxt(o.estate), loc: ecTxt(o.location), link: ecTxt(o.link_no),
+    kind: ecTxt(o.kind), typ: scKindOf(o),
     cx: /cancel/i.test(ecTxt(o.status)), d: (Array.isArray(o.dates) ? o.dates : []).map(ecTxt).filter(scIso).sort()
   }));
 }
+const SC_TYPS = [
+  { v: 'link', t: 'Link test' },
+  { v: 'quarter', t: '季檢' },
+  { v: 'half', t: '半年檢' },
+  { v: 'annual', t: '年檢' },
+  { v: '', t: '全部' }
+];
+function scFutDates(d, today) { return (d || []).filter(s => s >= today); }
+function scType(x) {
+  if (x.typ === 'link' || x.typ === 'half' || x.typ === 'annual' || x.typ === 'quarter' || x.typ === '') return x.typ;
+  return scKindOf({ group: x.g, kind: x.kind, location: x.loc, link_no: x.link, link_type: /^KitFax/i.test(x.g || '') ? 'KF' : '' });
+}
+function scRecOk(x) { return (!SC.typ || scType(x) === SC.typ) && (!SC.g || x.g === SC.g); }
 /* 英文名：用 App 屋邨清單（同 Work Order 頁一樣）配屋邨＋大廈英文 → 中英文都搜得到 */
 let scEnMap = null;
 function scEn(x) {
@@ -3499,36 +3522,41 @@ const scQ = s => String(s || '').toLowerCase().replace(/[\s\-\/()（）.,·]/g, 
 function scMatch(x, q) { return (!SC.est || x.est === SC.est) && (!SC.loc || x.loc === SC.loc) && (!q || scQ(x.link).includes(q)); } /* v0.6.14 FAN：屋邨／大廈用下拉；文字格淨係 Link No. */
 const scAct = () => !!(SC.q.trim() || SC.est);
 function scMonthHtml(ca) {
-  const m = SC.m, today = hkDate(), L = ca.records.filter(x => !x.cx && (!SC.g || x.g === SC.g)), days = new Map();
-  for (const x of L) for (const s of x.d) if (s.startsWith(m)) { if (!days.has(s)) days.set(s, []); days.get(s).push(x); }
+  const m = SC.m, today = hkDate(), L = ca.records.filter(x => !x.cx && scRecOk(x)), days = new Map();
+  for (const x of L) for (const s of x.d) if (s.startsWith(m) && s >= today) { if (!days.has(s)) days.set(s, []); days.get(s).push(x); }
   const ks = [...days.keys()].sort(), r = scRange(ca);
-  if (!ks.length) return `<div class="card mut" id="scnone">${scMon(m)}冇排期${m < r.a || m > r.b ? `（日曆期 ${scMon(r.a)} – ${scMon(r.b)}）` : ''}</div>`;
+  const typT = (SC_TYPS.find(t => t.v === SC.typ) || {}).t || '';
+  if (!ks.length) return `<div class="card mut" id="scnone">${scMon(m)}${typT ? '（' + esc(typT) + '）' : ''}冇未過期排期${m < r.a || m > r.b ? `（日曆期 ${scMon(r.a)} – ${scMon(r.b)}）` : ''}</div>`;
   const n = ks.reduce((s, k) => s + days.get(k).length, 0);
-  return `<div class="mut" style="margin:6px 2px" id="sccount">${scMon(m)}：${ks.length} 日、共 ${n} 次（位置）</div>` + ks.map(k => {
+  return `<div class="mut" style="margin:6px 2px" id="sccount">${scMon(m)}：${ks.length} 日、共 ${n} 次（只顯示今日同之後）</div>` + ks.map(k => {
     const by = new Map(); days.get(k).forEach(x => { if (!by.has(x.est)) by.set(x.est, []); by.get(x.est).push(x); });
     const ests = pkSort([...by.keys()], 'estate');
-    return `<div class="card scday${k === today ? ' sctoday' : k < today ? ' scpast' : ''}" data-day="${k}">
+    return `<div class="card scday${k === today ? ' sctoday' : ''}" data-day="${k}">
       <div class="t"><span>${scMd(k)}${k === today ? ' <span class="badge pend">今日</span>' : ''}</span><span class="mut">${days.get(k).length} 個位置</span></div>
-      ${ests.map(e => { const en = scEn(by.get(e)[0]).est; return `<div class="scest"><b>${esc(e)}</b>${en ? ` <span class="mut">${esc(en)}</span>` : ''}<div class="scloc">${by.get(e).map(x => esc(x.loc || x.link || '—')).join('、')}</div></div>`; }).join('')}</div>`;
+      ${ests.map(e => { const en = scEn(by.get(e)[0]).est; return `<div class="scest"><b>${esc(e)}</b>${en ? ` <span class="mut">${esc(en)}</span>` : ''}<div class="scloc">${by.get(e).map(x => {
+        const tp = scType(x); const tag = tp === 'annual' ? '年檢' : tp === 'half' ? '半年檢' : tp === 'quarter' ? '季檢' : tp === 'link' ? 'Link' : '';
+        return esc(x.loc || x.link || '—') + (tag && SC.typ === '' ? ' <span class="mut">[' + tag + ']</span>' : '');
+      }).join('、')}</div></div>`; }).join('')}</div>`;
   }).join('');
 }
 function scSearchHtml(ca) {
-  const q = scQ(SC.q), today = hkDate(), L = ca.records.filter(x => (!SC.g || x.g === SC.g) && scMatch(x, q));
+  const q = scQ(SC.q), today = hkDate(), L = ca.records.filter(x => scRecOk(x) && scMatch(x, q));
   if (!L.length) return `<div class="card mut" id="scnone">搵唔到${SC.q.trim() ? `「${esc(SC.q)}」（呢格淨係搵 Link No.；屋邨／大廈請用上面下拉）` : '呢個屋邨／大廈嘅排期'}</div>`;
   const R = new Map(L.map(x => [x, [pkRank(x.est, 'estate'), pkRank(x.loc, 'block', x.est)]]));
   L.sort((a, b) => { const A = R.get(a), B = R.get(b); return A[0][0] - B[0][0] || a.est.localeCompare(b.est, 'zh-Hant') || A[1][1] - B[1][1] || String(A[1][2]).localeCompare(String(B[1][2]), 'en', { numeric: true }) || a.loc.localeCompare(b.loc, 'zh-Hant'); });
   const row = x => {
-    const en = scEn(x), nx = x.d.find(s => s >= today), bym = new Map();
-    x.d.forEach(s => { const k = s.slice(0, 7); if (!bym.has(k)) bym.set(k, []); bym.get(k).push(s); });
-    const r = scRange(ca), ms = []; for (let m = r.a; m && m <= r.b && ms.length < 24; m = scAddM(m, 1)) ms.push(m);
+    const en = scEn(x), fut = scFutDates(x.d, today), nx = fut[0], bym = new Map();
+    fut.forEach(s => { const k = s.slice(0, 7); if (!bym.has(k)) bym.set(k, []); bym.get(k).push(s); });
+    const r = scRange(ca), ms = []; for (let m = r.a; m && m <= r.b && ms.length < 24; m = scAddM(m, 1)) if (m >= today.slice(0, 7)) ms.push(m);
+    const tp = scType(x); const typBadge = tp === 'annual' ? '年檢' : tp === 'half' ? '半年檢' : tp === 'quarter' ? '季檢' : tp === 'link' ? 'Link test' : (x.kind || '');
     return `<div class="card scrow${x.cx ? ' sccx' : ''}">
-      <div class="t"><span>${esc(x.loc || '—')}</span>${x.cx ? '<span class="badge draft">已取消</span>' : x.g ? `<span class="badge wona">${esc(x.g)}</span>` : ''}</div>
+      <div class="t"><span>${esc(x.loc || '—')}</span>${x.cx ? '<span class="badge draft">已取消</span>' : typBadge ? `<span class="badge wona">${esc(typBadge)}</span>` : (x.g ? `<span class="badge wona">${esc(x.g)}</span>` : '')}</div>
       <div class="mut">${esc(x.est || '—')}${en.est ? ' · ' + esc(en.est) : ''}${en.loc ? ' · ' + esc(en.loc) : ''}</div>
-      <div class="mut">Link No. ${esc(x.link || '—')}</div>
-      ${x.cx ? '<div class="mut">呢條線已取消，冇排期。</div>' : `<div class="scnext">${nx ? `下次：<b>${scMd(nx)}</b>${nx === today ? ' <span class="badge pend">今日</span>' : ''}` : '今個日曆期已冇排期'}</div>
-      <div class="scyear">${ms.map(m => `<b>${+m.slice(5, 7)}月${m.slice(5, 7) === '01' || m === ms[0] ? `<small>${m.slice(2, 4)}</small>` : ''}</b><span>${(bym.get(m) || []).map(s => `<i class="${s === today ? 'td' : s < today ? 'ps' : ''}">${+s.slice(8, 10)}</i>`).join('') || '—'}</span>`).join('')}</div>`}</div>`;
+      <div class="mut">編號 ${esc(x.link || '—')}</div>
+      ${x.cx ? '<div class="mut">呢條線已取消，冇排期。</div>' : `<div class="scnext">${nx ? `下次：<b>${scMd(nx)}</b>${nx === today ? ' <span class="badge pend">今日</span>' : ''}` : '已冇未過期排期'}</div>
+      <div class="scyear">${ms.map(m => `<b>${+m.slice(5, 7)}月${m.slice(5, 7) === '01' || m === ms[0] ? `<small>${m.slice(2, 4)}</small>` : ''}</b><span>${(bym.get(m) || []).map(s => `<i class="${s === today ? 'td' : ''}">${+s.slice(8, 10)}</i>`).join('') || '—'}</span>`).join('')}</div>`}</div>`;
   };
-  return `<div class="mut" style="margin:6px 2px" id="sccount">搵到 ${L.length} 個位置${L.length > SC_MAX ? `（顯示頭 ${SC_MAX} 個，請打多啲字）` : ''}</div>` + L.slice(0, SC_MAX).map(row).join('');
+  return `<div class="mut" style="margin:6px 2px" id="sccount">搵到 ${L.length} 個位置（只顯示今日同之後日子）${L.length > SC_MAX ? ` · 顯示頭 ${SC_MAX} 個` : ''}</div>` + L.slice(0, SC_MAX).map(row).join('');
 }
 const scListHtml = () => { const ca = scCache(); return !ca ? '' : scAct() ? scSearchHtml(ca) : scMonthHtml(ca); };
 function viewSched() {
@@ -3538,23 +3566,26 @@ function viewSched() {
   const msg = SC.loading ? '<div class="card mut">載入緊…</div>'
     : SC.err ? `<div class="${SC.errCode === 'bad_action' || SC.errCode === 'not_found' ? 'warnbox' : 'errbox'}" id="scmsg">${esc(SC.err)}${ca ? '<br>下面係手機上次讀到嘅日曆（可能唔係最新）。' : ''}</div>` : '';
   if (!ca) return top + `<main>${msg}${SC.loading ? '' : '<button class="btn pri" style="width:100%" data-act="screload">🔄 重新載入</button>'}</main>`;
-  const tm = hkDate().slice(0, 7); if (!SC.m) SC.m = tm;
-  const r = scRange(ca), groups = [...new Set(ca.records.map(x => x.g).filter(Boolean))].sort();
+  const today = hkDate(), tm = today.slice(0, 7); if (!SC.m) SC.m = tm;
+  if (SC.m < tm) SC.m = tm; /* 唔俾睇成個月都過咗 */
+  const r = scRange(ca), groups = [...new Set(ca.records.filter(scRecOk).map(x => x.g).filter(Boolean))].sort();
   if (SC.g && !groups.includes(SC.g)) SC.g = '';
-  const eL = pkSort([...new Set(ca.records.map(x => x.est).filter(Boolean))], 'estate'); if (SC.est && !eL.includes(SC.est)) { SC.est = ''; SC.loc = ''; }
-  const lL = SC.est ? pkSort([...new Set(ca.records.filter(x => x.est === SC.est).map(x => x.loc).filter(Boolean))], 'block', SC.est) : []; if (SC.loc && !lL.includes(SC.loc)) SC.loc = '';
+  const eL = pkSort([...new Set(ca.records.filter(scRecOk).map(x => x.est).filter(Boolean))], 'estate'); if (SC.est && !eL.includes(SC.est)) { SC.est = ''; SC.loc = ''; }
+  const lL = SC.est ? pkSort([...new Set(ca.records.filter(x => scRecOk(x) && x.est === SC.est).map(x => x.loc).filter(Boolean))], 'block', SC.est) : []; if (SC.loc && !lL.includes(SC.loc)) SC.loc = '';
   const enOf = (k, v) => { const x = ca.records.find(r => (k === 'est' ? r.est : r.loc) === v), en = x ? scEn(x)[k] : ''; return en ? `${v}　${en}` : v; };
   const gBtn = (v, t) => `<button class="chip ${SC.g === v ? 'cur' : ''}" data-act="scgrp" data-v="${esc(v)}">${esc(t)}</button>`;
+  const tBtn = (v, t) => `<button class="chip ${SC.typ === v ? 'cur' : ''}" data-act="sctyp" data-v="${esc(v)}">${esc(t)}</button>`;
   const gen = ca.updated && !isNaN(new Date(ca.updated)) ? stamp(ca.updated) : (ca.file && ca.file.updated_hkt) || '';
   return top + `<main>${msg}
     <div class="card lkf">
+      <div class="ecst" style="margin-bottom:8px">${SC_TYPS.map(t => tBtn(t.v, t.t)).join('')}</div>
       <div class="pkrow"><label>屋邨${pkSel('sc_est', eL.map(v => ({ v, t: enOf('est', v) })), SC.est, { all: '全部屋邨（睇月曆）', other: false, label: '屋邨', id: 'scest' })}</label>
         <label>大廈${pkSel('sc_loc', lL.map(v => ({ v, t: enOf('loc', v) })), SC.loc, { all: SC.est ? '全部大廈' : '先揀屋邨', other: false, label: '大廈', id: 'scloc', disabled: !SC.est })}</label></div>
-      <input data-sc="q" type="search" placeholder="搵 Link No.（例：FT-1-90013）" value="${esc(SC.q)}" aria-label="搵 Link No." style="width:100%">
-      <div class="scnav"${scAct() ? ' hidden' : ''}><button class="btn" data-act="scprev" ${SC.m <= r.a ? 'disabled' : ''}>‹ 上個月</button><b id="scmon">${scMon(SC.m)}</b><button class="btn" data-act="scnext" ${SC.m >= r.b ? 'disabled' : ''}>下個月 ›</button></div>
+      <input data-sc="q" type="search" placeholder="搵編號（例：FT-1-90013／K-438）" value="${esc(SC.q)}" aria-label="搵編號" style="width:100%">
+      <div class="scnav"${scAct() ? ' hidden' : ''}><button class="btn" data-act="scprev" ${SC.m <= tm || SC.m <= r.a ? 'disabled' : ''}>‹ 上個月</button><b id="scmon">${scMon(SC.m)}</b><button class="btn" data-act="scnext" ${SC.m >= r.b ? 'disabled' : ''}>下個月 ›</button></div>
       ${SC.m !== tm && !scAct() ? '<button class="btn" style="width:100%;margin-top:6px" data-act="scthis">返今個月</button>' : ''}
       ${groups.length > 1 ? `<div class="ecst" style="margin-top:6px">${gBtn('', '全部組')}${groups.map(g => gBtn(g, g)).join('')}</div>` : ''}
-      <div class="mut">日曆期 ${scMon(r.a)} – ${scMon(r.b)} · 資料更新：${esc(gen)} HKT · 手機上次讀取 ${stamp(ca.at)}</div>
+      <div class="mut">只顯示今日同之後 · 日曆期 ${scMon(r.a)} – ${scMon(r.b)} · 資料更新：${esc(gen)} HKT · 手機上次讀取 ${stamp(ca.at)}</div>
       ${ca.note ? `<div class="mut" id="scnote">${/holiday/i.test(ca.note) ? '⚠ 如遇假期，順延至假期後一日（下面係原定日子）' : '⚠ ' + esc(ca.note)}</div>` : ''}
       <button class="btn" style="width:100%;margin-top:6px" data-act="screload">🔄 重新載入</button></div>
     <div id="sclist">${scListHtml()}</div>
@@ -9790,6 +9821,7 @@ document.addEventListener('click', async e => {
     case 'scnext': SC.m = scAddM(SC.m || hkDate().slice(0, 7), 1); return render();
     case 'scthis': SC.m = hkDate().slice(0, 7); return render();
     case 'scgrp': SC.g = el.dataset.v || ''; return render();
+    case 'sctyp': SC.typ = el.dataset.v || ''; SC.g = ''; return render();
     case 'scclear': return scClear();
     case 'ecreload': EC.live = false; EC.err = ''; return ecLoad();
     case 'ecst': EC.f.st = el.dataset.v || ''; return render();
