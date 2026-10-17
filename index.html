@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.73';
+const APP_VERSION = '0.6.74';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8090,7 +8090,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* ---------- v0.6.73 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+/* ---------- v0.6.74 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+   FAN（2026-10-17 App 群）：已揀 ✕ 驚誤按 → confirm「刪呢行？」先刪（同暫存刪確認風格）。
    FAN（2026-10-17 App 群）：消防檢唔使度數；一般要度數＝水喉／螺絲／閘掣／喉轆／電線／燈／喉／過路箱 → 做下拉。
    FAN（2026-10-17）：燈喉＋過路箱放埋一齊，加埋梳／夾／杯臣／喉碼；撳入去再分類。燈喉／梳結／過路箱用 EL-*；各類跟價目字頭（水喉 PI、掣 VA、電 EL、喉轆 FM）。
    FAN（2026-10-17）：水喉下一層用尺寸（Ømm，跟 ss search）；再淨係 GI／DI；揀完即出價目（*-GI-*／*-DI-*）；梳／夾／杯臣／喉碼收喺 GI 清單，唔再多一層下拉。
@@ -8830,7 +8831,12 @@ document.addEventListener('click', e => {
     if (it) dsAddLine(it);
     return;
   }
-  if (a === 'rm') { DS.lines.splice(+b.dataset.i, 1); return dsPaint(); }
+  if (a === 'rm') {
+    const i = +b.dataset.i, l = DS.lines[i];
+    const lab = (l && (l.search || l.code)) || '';
+    if (!confirm('刪呢行？' + (lab ? '\n' + lab : ''))) return;
+    DS.lines.splice(i, 1); return dsPaint();
+  }
   if (a === 'qtyadd') { dsAddQtyBox(+b.dataset.i); return; }
   if (a === 'qtyrm') { dsRmQtyBox(+b.dataset.i, +b.dataset.j); return; }
   if (a === 'savedraft') return dsSaveDraft(false);
