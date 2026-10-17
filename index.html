@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.75';
+const APP_VERSION = '0.6.76';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8090,7 +8090,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* ---------- v0.6.75 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+/* ---------- v0.6.76 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+   FAN（2026-10-17 App 群）：已選擇數量格淨係相機，唔使相簿（拎走 🖼；capture=environment）。
    FAN（2026-10-17 App 群）：已揀每格數量旁加影相，記呢個數量係咩位置；上雲時相一齊交（qty_slots）。
    注意：GAS dimbook_measure v1.62 而家只 forward lines[{code,qty}]——qty_slots／photos 要 WO 出 GAS 版先會到 Dimbook。
    FAN：上雲後開「度數」folder 放 JSON＋每格 qty 相——App 交 payload（folder_hint／qty_slots／photos）；建 folder 交 WO／Dimbook／GAS。未 publish。
@@ -8720,7 +8721,8 @@ async function dsRmQtyBox(i, j) {
   dsPaint();
 }
 let _dsPicTarget = null; /* {i,j} 影相目標格 */
-function dsPickQtyPhoto(i, j, src) {
+function dsPickQtyPhoto(i, j) {
+  /* 0.6.76：淨係相機（capture=environment），唔開相簿／gallery */
   const l = DS.lines[i]; if (!l) return;
   dsEnsureQtyPhotos(l);
   if (j < 0 || j >= l.qtys.length) return;
@@ -8728,7 +8730,7 @@ function dsPickQtyPhoto(i, j, src) {
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = 'image/*';
-  if (src === 'cam') inp.setAttribute('capture', 'environment');
+  inp.setAttribute('capture', 'environment');
   inp.style.display = 'none';
   document.body.appendChild(inp);
   inp.onchange = async () => {
@@ -8813,8 +8815,7 @@ function dsLinesHtml() {
         ? `<span class="dsqtyphwrap"><img class="dsqtyph" data-ds-photo="${esc(pid)}" alt="位置相" width="40" height="40"><button type="button" class="lnk dsqtyphrm" data-ds="qtyphrm" data-i="${i}" data-j="${j}" aria-label="刪相">✕相</button></span>`
         : '';
       return `<span class="dsqty1"><input type="number" min="0" step="any" value="${esc(v)}" data-ds="qty" data-i="${i}" data-j="${j}" inputmode="decimal">` +
-        `<button type="button" class="btn sm dsqtycam" data-ds="qtycam" data-i="${i}" data-j="${j}" aria-label="影相">${pid ? '📷' : '📷'}</button>` +
-        `<button type="button" class="btn sm dsqtygal" data-ds="qtygal" data-i="${i}" data-j="${j}" aria-label="揀相">🖼</button>` +
+        `<button type="button" class="btn sm dsqtycam" data-ds="qtycam" data-i="${i}" data-j="${j}" aria-label="影相">📷</button>` +
         `${ph}${rm}</span>`;
     }).join('');
     const tot = (l.qtys.length > 1 && Number(l.qty) > 0) ? `<span class="mut dsqtysum">合 ${esc(l.qty)}</span>` : '';
@@ -9014,8 +9015,7 @@ document.addEventListener('click', e => {
   }
   if (a === 'qtyadd') { dsAddQtyBox(+b.dataset.i); return; }
   if (a === 'qtyrm') { dsRmQtyBox(+b.dataset.i, +b.dataset.j); return; }
-  if (a === 'qtycam') { dsPickQtyPhoto(+b.dataset.i, +b.dataset.j, 'cam'); return; }
-  if (a === 'qtygal') { dsPickQtyPhoto(+b.dataset.i, +b.dataset.j, 'gal'); return; }
+  if (a === 'qtycam') { dsPickQtyPhoto(+b.dataset.i, +b.dataset.j); return; }
   if (a === 'qtyphrm') { dsRmQtyPhoto(+b.dataset.i, +b.dataset.j); return; }
   if (a === 'savedraft') return dsSaveDraft(false);
   if (a === 'newdraft') return dsNewDraft();
@@ -9077,7 +9077,7 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
       '.dsform .dslbl,.dslbl{display:block;font-size:13px;color:#555;margin:8px 0 0}.dsform .inp,#ds_q,#ds_job,#ds_wd,#ds_cat,#ds_sub,#ds_sub2,#ds_sub3{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
       '.dscheck{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:16px}.dscheck input{width:20px;height:20px}' +
       '.dsline{border-top:1px solid #eee;padding:10px 0}.dsline:first-of-type{border-top:0}.dslineh{display:flex;justify-content:space-between;align-items:center;gap:8px}' +
-      '.dsqty{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:15px}.dsqtylab{flex:0 0 auto;padding-top:10px}.dsqtyboxes{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;flex:1}.dsqty1{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa}.dsqty1 input{width:72px;font-size:18px;min-height:40px;padding:0 8px}.dsqtycam,.dsqtygal{min-height:36px;padding:0 8px;font-size:16px}.dsqtyphwrap{display:inline-flex;align-items:center;gap:2px}.dsqtyph{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;background:#eee}.dsqtyphrm{font-size:12px;padding:0 2px}.dsqtyadd{min-height:40px;padding:0 12px;font-size:18px;font-weight:700}.dsqtyrm{font-size:20px;padding:0 4px;line-height:1}.dsqtysum{margin-left:4px}' +
+      '.dsqty{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:15px}.dsqtylab{flex:0 0 auto;padding-top:10px}.dsqtyboxes{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;flex:1}.dsqty1{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa}.dsqty1 input{width:72px;font-size:18px;min-height:40px;padding:0 8px}.dsqtycam{min-height:36px;padding:0 8px;font-size:16px}.dsqtyphwrap{display:inline-flex;align-items:center;gap:2px}.dsqtyph{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;background:#eee}.dsqtyphrm{font-size:12px;padding:0 2px}.dsqtyadd{min-height:40px;padding:0 12px;font-size:18px;font-weight:700}.dsqtyrm{font-size:20px;padding:0 4px;line-height:1}.dsqtysum{margin-left:4px}' +
       '.dsitem{text-align:left;width:100%}.dsadd{color:#1d4ed8;font-weight:700;margin-top:4px}.dsprice{font-size:12px}' +
       '.dspre{white-space:pre-wrap;word-break:break-word;background:#f8fafc;border-radius:8px;padding:10px;font-size:12px;max-height:280px;overflow:auto}';
     document.head.appendChild(s);
