@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.80';
+const APP_VERSION = '0.6.81';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -9084,8 +9084,8 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   } catch (e) {}
 })();
 
-/* ---------- v0.6.80 單據報銷（FAN 2026-10-17：開頁出編號寫喺單上；影相→AI加總；Sheet＋Drive；撞單） ----------
-   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.67+ 認 claim_no）。 */
+/* ---------- v0.6.81 單據報銷（FAN 2026-10-17：開頁出編號寫喺單上；影相→AI加總；Sheet＋Drive；撞單） ----------
+   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.67+／v1.68 認 4 字 claim_no）。 */
 const EX_MAX_PHOTOS = 6;
 const EX = {
   claimNo: '', amount: '', purpose: '', date: '', photoIds: [],
@@ -9116,13 +9116,21 @@ function exResetForm() {
 function exEnsureDate() {
   if (!EX.date) EX.date = typeof hkDate === 'function' ? hkDate() : '';
 }
-/** 短編號：BX + YYMMDD + - + 4 字（易寫喺紙單）；開頁／送出後新一單先出；用 newId 產尾碼 */
+/** 短編號：淨 4 字（易寫喺紙單）；開頁／送出後新一單先出 */
 function exNewClaimNo() {
-  const d = (typeof hkDate === 'function' ? hkDate() : '').replace(/-/g, '');
-  const ymd = d.length === 8 ? d.slice(2) : String(Date.now()).slice(-6);
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const raw = (typeof newId === 'function' ? newId('bx') : ('bx' + Date.now())).toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const tail = (raw.slice(-4) || '0000').padStart(4, '0').slice(-4);
-  return 'BX' + ymd + '-' + tail;
+  let out = '';
+  for (let i = 0; i < raw.length && out.length < 4; i++) {
+    const c = raw[i];
+    if (alphabet.indexOf(c) >= 0) out += c;
+  }
+  while (out.length < 4) {
+    const n = String(Date.now() + out.length);
+    const c = alphabet[parseInt(n.slice(-2), 10) % alphabet.length];
+    out += c;
+  }
+  return out.slice(0, 4);
 }
 function exEnsureClaimNo() {
   if (!EX.claimNo) EX.claimNo = exNewClaimNo();
@@ -9153,7 +9161,7 @@ function viewExpense() {
   return `<div class="top"><div class="bar"><button data-act="grid" aria-label="返主頁">‹ 主頁</button><div class="ttl">🧾 單據報銷<small>測試版 v${APP_VERSION}</small></div><button data-act="menu" aria-label="選單">☰</button></div></div>
   <main class="exmain">
     <div class="card exclaim">
-      <div class="mut" style="margin-bottom:4px">先寫呢個編號喺張紙單（方便日後對原單）</div>
+      <div class="mut" style="margin-bottom:4px">先寫呢 4 個字喺張紙單（方便日後對原單）</div>
       <div class="exclaimno" id="ex_claim">${esc(EX.claimNo)}</div>
     </div>
     <div class="card">
