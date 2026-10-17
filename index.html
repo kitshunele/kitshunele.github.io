@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.84';
+const APP_VERSION = '0.6.85';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -3442,9 +3442,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target &&
 window.addEventListener('hashchange', () => { if (cur.view !== 'clock') { cksReset(); if (CK.step === 'stat') CK.step = 'home'; } });
 (function () { try { const st = document.createElement('style'); st.textContent = '.cksbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.cksbar input[type=date]{font-size:17px;padding:6px;border:1px solid var(--line);border-radius:8px}.cksbar #cksreload{margin-left:auto}.ckscnt{margin:6px 0 10px;font-size:15px}.cksc-none{color:#6b7280}.cksc-open{color:#b45309}.cksc-done{color:#15803d}.cksrow .t{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}.cksl{margin:2px 0}.cksl .ckin,.cksl .ckout{display:inline-block;min-width:38px;font-weight:700}.cksb-none{background:#f3f4f6;color:#374151}.cksb-open{background:#fef3c7;color:#92400e}.cksb-done{background:#dcfce7;color:#166534}.cksrow.cks-open{border:2px solid #f59e0b;background:#fffbeb}.cksmiss{color:#b91c1c;font-weight:700}.cksdet{margin-top:4px;font-size:14px}'; document.head.appendChild(st); } catch (e) {} })();
 
-/* ---------- v0.6.84 📅 消防檢日曆查詢（只讀）----------
+/* ---------- v0.6.85 📅 消防檢日曆查詢（只讀）----------
    資料：RM Schedule Link (FS) + Kit Fax → fs_schedule.json（TNS）；Apps Script data/fs_schedule。
-   v0.6.84：過期唔顯示；分類＋分色；拎走「組」篩選。 */
+   v0.6.85：Link test 淨顯示樓名＋直線號碼。 */
 const LS_SC = 'fsapp20259005.sched.v1', SC_MAX = 60;
 let SC = { loading: false, err: '', errCode: '', live: false, m: '', q: '', g: '', est: '', loc: '', typ: 'link' }; /* typ: ''全部 | link | quarter | half | annual */
 const SC_MSG = {
@@ -3490,6 +3490,16 @@ const SC_COL = { link: '#2563eb', quarter: '#7c3aed', half: '#ea580c', annual: '
 function scCol(tp) { return SC_COL[tp] || '#64748b'; }
 function scTypLabel(tp) {
   return tp === 'annual' ? '年檢' : tp === 'half' ? '半年檢' : tp === 'quarter' ? '季檢' : tp === 'link' ? 'Link test' : '';
+}
+/** Link test：淨樓名＋直線號碼；其他類型照 location */
+function scItemLabel(x) {
+  const tp = scType(x);
+  if (tp === 'link') {
+    const bldg = (x.loc || '').trim(), no = (x.link || '').trim();
+    if (bldg && no) return bldg + '　' + no;
+    return bldg || no || '—';
+  }
+  return (x.loc || x.link || '—').trim() || '—';
 }
 function scFutDates(d, today) { return (d || []).filter(s => s >= today); }
 function scType(x) {
@@ -3540,9 +3550,9 @@ function scMonthHtml(ca) {
       <div class="t"><span>${scMd(k)}${k === today ? ' <span class="badge pend">今日</span>' : ''}</span><span class="mut">${days.get(k).length} 個位置</span></div>
       ${ests.map(e => { const en = scEn(by.get(e)[0]).est; return `<div class="scest"><b>${esc(e)}</b>${en ? ` <span class="mut">${esc(en)}</span>` : ''}<div class="scloc">${by.get(e).map(x => {
         const tp = scType(x), lab = scTypLabel(tp), col = scCol(tp);
-        const name = esc(x.loc || x.link || '—');
+        const name = esc(scItemLabel(x));
         if (!lab) return name;
-        return `<span class="sctag" style="--sc:${col}"><i style="background:var(--sc)"></i>${name}${SC.typ === '' ? ` <b style="color:var(--sc)">${lab}</b>` : ''}</span>`;
+        return `<span class="sctag" style="--sc:${col}"><i style="background:var(--sc)"></i>${name}${SC.typ === '' && tp !== 'link' ? ` <b style="color:var(--sc)">${lab}</b>` : ''}</span>`;
       }).join('')}</div></div>`; }).join('')}</div>`;
   }).join('');
 }
@@ -3557,10 +3567,10 @@ function scSearchHtml(ca) {
     const r = scRange(ca), ms = []; for (let m = r.a; m && m <= r.b && ms.length < 24; m = scAddM(m, 1)) if (m >= today.slice(0, 7)) ms.push(m);
     const tp = scType(x); const typBadge = scTypLabel(tp) || (x.kind || '');
     const col = scCol(tp);
+    const isLink = tp === 'link';
     return `<div class="card scrow${x.cx ? ' sccx' : ''}" style="${x.cx ? '' : 'border-left:4px solid ' + col}">
-      <div class="t"><span>${esc(x.loc || '—')}</span>${x.cx ? '<span class="badge draft">已取消</span>' : typBadge ? `<span class="badge" style="background:${col};color:#fff;border:0">${esc(typBadge)}</span>` : (x.g ? `<span class="badge wona">${esc(x.g)}</span>` : '')}</div>
-      <div class="mut">${esc(x.est || '—')}${en.est ? ' · ' + esc(en.est) : ''}${en.loc ? ' · ' + esc(en.loc) : ''}</div>
-      <div class="mut">編號 ${esc(x.link || '—')}</div>
+      <div class="t"><span>${esc(isLink ? scItemLabel(x) : (x.loc || '—'))}</span>${x.cx ? '<span class="badge draft">已取消</span>' : (!isLink && typBadge) ? `<span class="badge" style="background:${col};color:#fff;border:0">${esc(typBadge)}</span>` : ''}</div>
+      ${isLink ? `<div class="mut">${esc(x.est || '—')}</div>` : `<div class="mut">${esc(x.est || '—')}${en.est ? ' · ' + esc(en.est) : ''}${en.loc ? ' · ' + esc(en.loc) : ''}</div><div class="mut">編號 ${esc(x.link || '—')}</div>`}
       ${x.cx ? '<div class="mut">呢條線已取消，冇排期。</div>' : `<div class="scnext">${nx ? `下次：<b>${scMd(nx)}</b>${nx === today ? ' <span class="badge pend">今日</span>' : ''}` : '已冇未過期排期'}</div>
       <div class="scyear">${ms.map(m => `<b>${+m.slice(5, 7)}月${m.slice(5, 7) === '01' || m === ms[0] ? `<small>${m.slice(2, 4)}</small>` : ''}</b><span>${(bym.get(m) || []).map(s => `<i class="${s === today ? 'td' : ''}">${+s.slice(8, 10)}</i>`).join('') || '—'}</span>`).join('')}</div>`}</div>`;
   };
