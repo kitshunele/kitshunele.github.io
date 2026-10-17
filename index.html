@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.68';
+const APP_VERSION = '0.6.69';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8143,13 +8143,115 @@ const DS_GI_KINDS = [
   { id: '駁頭', label: '駁頭', toks: ['CONN'] },
   { id: '內膠梳杰', label: '內膠梳杰', toks: ['LISK'] }
 ];
+const DS_DRAFT_LS = 'fsapp20259005.dosu.drafts.v1';
 const DS = {
   q: '', cat: '', sub: '', sub2: '', show: 100, items: null, err: '', busy: false,
   job_ref: '', estate: '', estateTxt: '', building: '', buildingTxt: '',
   work_desc: '', is_ecall: false, ecallTouched: false,
   lines: [], /* {code, qty, search, desc} */
-  lastPayload: null, lastReply: null, submitting: false
+  lastPayload: null, lastReply: null, submitting: false,
+  draftId: null, /* 而家編緊邊份手機暫存 */
+  showDrafts: true
 };
+function dsDraftsAll() {
+  try { return JSON.parse(localStorage.getItem(DS_DRAFT_LS) || '{}') || {}; }
+  catch (e) { return {}; }
+}
+function dsDraftsWrite(a) {
+  try { localStorage.setItem(DS_DRAFT_LS, JSON.stringify(a || {})); } catch (e) {}
+}
+function dsDraftLabel(d) {
+  const job = (d && d.job_ref) || '（未填 job）';
+  const place = [d && d.estate, d && d.building].filter(Boolean).join(' · ');
+  const n = (d && d.lines && d.lines.length) || 0;
+  return job + (place ? ' · ' + place : '') + ' · ' + n + ' 項';
+}
+function dsSnapDraft() {
+  return {
+    rid: DS.draftId || (typeof newId === 'function' ? newId('ds') : ('ds' + Date.now())),
+    job_ref: String(DS.job_ref || '').trim(),
+    estate: DS.estate || '',
+    estateTxt: DS.estateTxt || '',
+    building: DS.building || '',
+    buildingTxt: DS.buildingTxt || '',
+    work_desc: String(DS.work_desc || '').trim(),
+    is_ecall: !!DS.is_ecall,
+    ecallTouched: !!DS.ecallTouched,
+    lines: (DS.lines || []).map(l => ({ code: l.code, qty: l.qty, search: l.search || '', desc: l.desc || '' })),
+    updated: Date.now()
+  };
+}
+function dsSaveDraft(silent) {
+  const d = dsSnapDraft();
+  if (!d.job_ref && !(d.lines && d.lines.length) && !d.estate && !d.estateTxt && !d.work_desc) {
+    if (!silent) toast('未有內容可暫存（至少填 job 或加一個項目）');
+    return null;
+  }
+  DS.draftId = d.rid;
+  const all = dsDraftsAll();
+  all[d.rid] = d;
+  dsDraftsWrite(all);
+  if (!silent) toast('已暫存喺呢部手機（未上雲）', 2500);
+  dsPaint();
+  return d.rid;
+}
+function dsOpenDraft(rid) {
+  const d = dsDraftsAll()[rid];
+  if (!d) return toast('搵唔到呢份暫存');
+  DS.draftId = rid;
+  DS.job_ref = d.job_ref || '';
+  DS.estate = d.estate || '';
+  DS.estateTxt = d.estateTxt || '';
+  DS.building = d.building || '';
+  DS.buildingTxt = d.buildingTxt || '';
+  DS.work_desc = d.work_desc || '';
+  DS.is_ecall = !!d.is_ecall;
+  DS.ecallTouched = !!d.ecallTouched;
+  DS.lines = Array.isArray(d.lines) ? d.lines.map(l => Object.assign({}, l)) : [];
+  DS.cat = ''; DS.sub = ''; DS.sub2 = ''; DS.q = '';
+  toast('已開手機暫存——可改；撳「送去 Dimbook」先上雲', 3000);
+  dsPaint();
+}
+function dsDeleteDraft(rid) {
+  const all = dsDraftsAll();
+  const d = all[rid];
+  if (!d) return;
+  if (!confirm('刪呢份手機暫存？\n' + dsDraftLabel(d) + '\n（只刪呢部手機；已上雲嘅唔會刪）')) return;
+  delete all[rid];
+  dsDraftsWrite(all);
+  if (DS.draftId === rid) DS.draftId = null;
+  toast('已刪手機暫存');
+  dsPaint();
+}
+function dsClearFormKeepDraftFlag() {
+  DS.job_ref = ''; DS.estate = ''; DS.estateTxt = ''; DS.building = ''; DS.buildingTxt = '';
+  DS.work_desc = ''; DS.is_ecall = false; DS.ecallTouched = false;
+  DS.lines = []; DS.cat = ''; DS.sub = ''; DS.sub2 = ''; DS.q = '';
+  DS.draftId = null;
+}
+function dsDraftsHtml() {
+  const all = dsDraftsAll();
+  const list = Object.keys(all).map(k => all[k]).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const rows = list.length
+    ? list.map(d => {
+        const t = d.updated ? new Date(d.updated).toLocaleString('zh-HK', { hour12: false }) : '';
+        const cur = DS.draftId === d.rid ? ' · 編緊' : '';
+        return `<div class="dsdraft">
+          <div><b>${esc(dsDraftLabel(d))}</b>${cur ? `<span class="mut">${esc(cur)}</span>` : ''}</div>
+          <div class="mut">${esc(t)} · 未上雲</div>
+          <div class="dsdrafta">
+            <button type="button" class="btn" data-ds="opendraft" data-rid="${esc(d.rid)}">查閱／繼續</button>
+            <button type="button" class="btn" data-ds="deldraft" data-rid="${esc(d.rid)}" style="color:#b91c1c">刪</button>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="mut">未有手機暫存。度數未完可撳「暫存到手機」。上雲（送 Dimbook）後會自動清走呢份。</div>';
+  return `<div class="card"><h3>手機暫存</h3>
+    <div class="mut" style="margin-bottom:8px">未度完可暫存呢部手機；可查閱／繼續，直至送上雲端（Dimbook）。</div>
+    ${rows}
+    <button type="button" class="btn" style="width:100%;margin-top:8px" data-ds="savedraft">暫存到手機（未上雲）</button>
+  </div>`;
+}
 function dsEstName() {
   if (DS.estateTxt) return DS.estateTxt.trim();
   const ed = DS.estate ? pkEstDef(DS.estate) : null;
@@ -8457,8 +8559,9 @@ function dsPreviewHtml() {
   const bad = dsValidate(p);
   DS.lastPayload = p;
   return `<div class="card">
-    ${bad ? `<div class="warnbox">${esc(bad)}</div>` : ''}
-    <button class="btn pri" style="width:100%" data-ds="submit" ${bad || DS.submitting ? 'disabled' : ''}>${DS.submitting ? '送緊…' : '送去 Dimbook（經公司伺服器）'}</button>
+    ${bad ? `<div class="warnbox">${esc(bad)}<div class="mut" style="margin-top:6px">未齊都可以先「暫存到手機」。</div></div>` : ''}
+    <button class="btn pri" style="width:100%" data-ds="submit" ${bad || DS.submitting ? 'disabled' : ''}>${DS.submitting ? '送緊…' : '送去 Dimbook（上雲）'}</button>
+    <button type="button" class="btn" style="width:100%;margin-top:8px" data-ds="savedraft">暫存到手機（未上雲）</button>
   </div>`;
 }
 function dsCatSelHtml() {
@@ -8493,7 +8596,8 @@ function dsCatSelHtml() {
   </div>`;
 }
 function dsBody() {
-  return dsFormHtml()
+  return dsDraftsHtml()
+    + dsFormHtml()
     + dsLinesHtml()
     + dsCatSelHtml()
     + dsHitsHtml()
@@ -8566,6 +8670,9 @@ document.addEventListener('click', e => {
     return;
   }
   if (a === 'rm') { DS.lines.splice(+b.dataset.i, 1); return dsPaint(); }
+  if (a === 'savedraft') return dsSaveDraft(false);
+  if (a === 'opendraft') return dsOpenDraft(b.dataset.rid);
+  if (a === 'deldraft') return dsDeleteDraft(b.dataset.rid);
   if (a === 'submit') return dsSubmit();
 });
 async function dsSubmit() {
@@ -8581,8 +8688,13 @@ async function dsSubmit() {
     const o = await gasCall(body, 60000);
     DS.lastReply = o || { ok: false, error: 'no_reply' };
     if (o && o.ok) {
-      toast('已交 Dimbook' + (o.dimbook_id ? ' · ' + o.dimbook_id : ''), 3500);
-      DS.lines = [];
+      toast('已交 Dimbook（已上雲）' + (o.dimbook_id ? ' · ' + o.dimbook_id : ''), 3500);
+      if (DS.draftId) {
+        const all = dsDraftsAll();
+        delete all[DS.draftId];
+        dsDraftsWrite(all);
+      }
+      dsClearFormKeepDraftFlag();
     } else {
       const err = (o && o.error) || 'bad_reply';
       const msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.59 dimbook_measure）'
@@ -8598,7 +8710,7 @@ async function dsSubmit() {
 }
 (function () {
   const k = TILES.findIndex(t => t.act === 'pecheck');
-  TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'dosu', icon: '📏', name: '度數', sub: '下拉種類＋數量 → Dimbook（非消防檢）' });
+  TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'dosu', icon: '📏', name: '度數', sub: '手機暫存 → 送 Dimbook（非消防檢）' });
 })();
 const parseHashRaw_ds = parseHash;
 parseHash = function () {
