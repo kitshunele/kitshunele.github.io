@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.60';
+const APP_VERSION = '0.6.61';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8108,15 +8108,14 @@ const DS_CATS = [
     { id: '喉碼', label: '喉碼（PI）' }
   ]},
   { id: '螺絲', test: 'bolt' },
-  { id: '閘掣／銅掣／波子掣', test: 'valvegroup', subs: [
-    { id: '閘掣', label: '閘掣（生鐵閘掣等）' },
+  { id: '銅掣／波子掣', test: 'valvegroup', subs: [
     { id: '銅掣', label: '銅掣' },
-    { id: '波子掣', label: '波子掣／球掣' }
+    { id: '波子掣', label: '波子掣（含四分一吋）／銅球掣' }
   ]},
   { id: '喉轆', test: 'hosereel' },
   { id: '電線', test: 'cable', subs: [
     { id: '普通線', label: '普通線（EL-CABL／PVCA／潛水線）' },
-    { id: '防火線', label: '防火線（FE-CMI）' }
+    { id: '防火線', label: '防火線（FE-CMI／CFR；含1.5／2.5／4）' }
   ]},
   { id: '燈喉／過路箱／電配件', test: 'fitgroup', subs: [
     { id: '燈喉', label: '燈喉（EL-COND）' },
@@ -8259,13 +8258,11 @@ function dsValveSub(it, sub) {
   if (!/^VA-/i.test(code)) return false; /* 掣類一律 VA-* */
   const hay = String(it.search || '') + ' ' + String(it.desc || '');
   switch (sub) {
-    case '閘掣':
-      if (/^VA-SGAV-BR-/i.test(code) || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code) || /^VA-COCK-/i.test(code)) return false;
-      return /^VA-FGAV-/i.test(code) || /^VA-SGAV-/i.test(code) || (/閘掣/.test(hay) && !/銅掣|波子|球掣/.test(hay));
     case '銅掣':
       return /^VA-SGAV-BR-/i.test(code) || /銅掣/.test(hay);
     case '波子掣':
-      return /^VA-COCK-/i.test(code) || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code) || /波子掣|球掣/.test(hay);
+      /* 唔包生鐵閘掣／生鐵球掣；四分一吋＝VA-COCK-BS-0009（below 10mm） */
+      return /^VA-COCK-/i.test(code) || /^VA-SGBV-/i.test(code) || /波子掣|銅球掣/.test(hay);
     default:
       return false;
   }
@@ -8304,7 +8301,9 @@ function dsInCat(it, catId) {
         return /^EL-CABL-/i.test(code) || /^EL-PVCA-/i.test(code) || /^EL-SUBC-/i.test(code);
       }
       if (sub === '防火線') {
-        return /^FE-CMI-/i.test(code); /* Fire resistant／MI */
+        /* MI＋CFR／CFRF（含 1.5／2.5／4） */
+        return /^FE-CMI-/i.test(code) || /^FE-CFR-/i.test(code) || /^FE-CFRF-/i.test(code)
+          || /防火線/.test(String(it.search || ''));
       }
       return false;
     }
@@ -8402,7 +8401,7 @@ function dsHitsHtml() {
   const n = (DS.items && DS.items.count) || ((DS.items && DS.items.items) || []).length;
   const catN = DS.cat ? (' · 分類「' + esc(DS.cat) + '」') : '';
   const head = `<div class="mut" style="margin:4px 2px 8px">價目 ${n} 項${catN} · 顯示 ${hits.length}${DS.q ? '（再搜「' + esc(DS.q) + '」）' : ''}</div>`;
-  if (!DS.cat) return '<div class="card mut">先喺上面揀分類（水喉／螺絲／閘掣等）。</div>';
+  if (!DS.cat) return '<div class="card mut">先喺上面揀分類（水喉／螺絲／銅掣等）。</div>';
   const defNeed = dsCatDef(DS.cat);
   if (defNeed && defNeed.subs && defNeed.subs.length && !DS.sub) {
     return '<div class="card mut">請再揀細分類（' + esc(defNeed.subs.map(s => s.id).join('／')) + '）。</div>';
@@ -8445,10 +8444,10 @@ function dsCatSelHtml() {
       `<option value="${esc(k.id)}" ${DS.sub2 === k.id ? 'selected' : ''}>${esc(k.label || k.id)}</option>`))
     : [];
   const ready = DS.cat && (!needSub || DS.sub) && (!needSub2 || DS.sub2);
-  const subLbl = (DS.cat === '水喉' || DS.cat === '電線' || DS.cat === '燈喉／過路箱／電配件' || DS.cat === '閘掣／銅掣／波子掣') ? '再分類' : '細分類';
+  const subLbl = (DS.cat === '水喉' || DS.cat === '電線' || DS.cat === '燈喉／過路箱／電配件' || DS.cat === '銅掣／波子掣') ? '再分類' : '細分類';
   const path = [DS.cat, DS.sub, needSub2 ? DS.sub2 : ''].filter(Boolean).join(' · ');
   return `<div class="card"><h3>項目種類（下拉）</h3>
-    <label class="dslbl">一般要度數：水喉（含梳夾杯臣喉碼）／螺絲／喉轆／電線／Ziton；掣同電配件撳入再分（電只 EL）
+    <label class="dslbl">一般要度數：水喉（含梳夾杯臣喉碼）／螺絲／喉轆／電線／Ziton；銅掣／波子掣同電配件撳入再分（電只 EL；防火線含 CFR）
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
     ${needSub ? `<label class="dslbl">${esc(subLbl)}
