@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.76';
+const APP_VERSION = '0.6.77';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -9080,6 +9080,225 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
       '.dsqty{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:15px}.dsqtylab{flex:0 0 auto;padding-top:10px}.dsqtyboxes{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;flex:1}.dsqty1{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa}.dsqty1 input{width:72px;font-size:18px;min-height:40px;padding:0 8px}.dsqtycam{min-height:36px;padding:0 8px;font-size:16px}.dsqtyphwrap{display:inline-flex;align-items:center;gap:2px}.dsqtyph{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;background:#eee}.dsqtyphrm{font-size:12px;padding:0 2px}.dsqtyadd{min-height:40px;padding:0 12px;font-size:18px;font-weight:700}.dsqtyrm{font-size:20px;padding:0 4px;line-height:1}.dsqtysum{margin-left:4px}' +
       '.dsitem{text-align:left;width:100%}.dsadd{color:#1d4ed8;font-weight:700;margin-top:4px}.dsprice{font-size:12px}' +
       '.dspre{white-space:pre-wrap;word-break:break-word;background:#f8fafc;border-radius:8px;padding:10px;font-size:12px;max-height:280px;overflow:auto}';
+    document.head.appendChild(s);
+  } catch (e) {}
+})();
+
+/* ---------- v0.6.77 單據報銷（FAN 2026-10-17 App 群：Sheet 記數＋Drive 放相；表單極簡＝金額／用途／相） ----------
+   主頁格 → #/expense；影相淨相機；送 gasCall action `expense_claim`（GAS v1.64+）。 */
+const EX_MAX_PHOTOS = 6;
+const EX = {
+  amount: '', purpose: '', date: '', photoIds: [],
+  submitting: false, lastReply: null, msg: ''
+};
+function exTechName() {
+  return (typeof Store !== 'undefined' && Store.prefs && Store.prefs.ckName) || '';
+}
+function exResetForm() {
+  EX.amount = '';
+  EX.purpose = '';
+  EX.date = typeof hkDate === 'function' ? hkDate() : '';
+  EX.photoIds = [];
+  EX.lastReply = null;
+  EX.msg = '';
+}
+function exEnsureDate() {
+  if (!EX.date) EX.date = typeof hkDate === 'function' ? hkDate() : '';
+}
+async function exDelPhotoId(id) {
+  if (!id) return;
+  try { await PhotoDB.del(id); } catch (e) {}
+  try { thumbs.delete(id); } catch (e) {}
+}
+async function exClearPhotos() {
+  for (const id of EX.photoIds.slice()) await exDelPhotoId(id);
+  EX.photoIds = [];
+}
+function viewExpense() {
+  exEnsureDate();
+  const nm = exTechName();
+  const busy = !!EX.submitting;
+  const thumbsHtml = EX.photoIds.length
+    ? `<div class="thumbs exthumbs">${EX.photoIds.map(id =>
+        `<div class="thumb"><img data-ex-photo="${esc(id)}" alt="單據相"><button type="button" class="del" data-ex="delph" data-id="${esc(id)}" aria-label="刪相">✕</button></div>`
+      ).join('')}</div>`
+    : '<div class="mut">未有單據相。撳下面影相（淨相機）。</div>';
+  const camDis = EX.photoIds.length >= EX_MAX_PHOTOS || busy;
+  return `<div class="top"><div class="bar"><button data-act="grid" aria-label="返主頁">‹ 主頁</button><div class="ttl">🧾 單據報銷<small>測試版 v${APP_VERSION}</small></div><button data-act="menu" aria-label="選單">☰</button></div></div>
+  <main class="exmain">
+    <div class="card">
+      <h3>報銷資料</h3>
+      <div class="mut" style="margin-bottom:8px">師傅：<b>${esc(nm || '（未登記名）')}</b> · 送出後寫試算表＋Drive 放相</div>
+      <label class="exlbl">日期<input class="inp" type="date" id="ex_date" value="${esc(EX.date)}" ${busy ? 'disabled' : ''}></label>
+      <label class="exlbl">金額（港幣）<input class="inp" type="number" inputmode="decimal" step="0.01" min="0" id="ex_amt" value="${esc(EX.amount)}" placeholder="例如 128.5" ${busy ? 'disabled' : ''}></label>
+      <label class="exlbl">用途<input class="inp" id="ex_pur" value="${esc(EX.purpose)}" placeholder="買咗咩／點解報銷" maxlength="200" autocomplete="off" ${busy ? 'disabled' : ''}></label>
+    </div>
+    <div class="card">
+      <h3>單據相（${EX.photoIds.length}/${EX_MAX_PHOTOS}）</h3>
+      ${thumbsHtml}
+      <div class="row" style="margin-top:10px">
+        <button class="btn pri" type="button" data-ex="cam" ${camDis ? 'disabled' : ''}>📷 影單據相</button>
+      </div>
+    </div>
+    ${EX.msg ? `<div class="mut" style="margin:8px 0;text-align:center">${esc(EX.msg)}</div>` : ''}
+    <button class="btn pri" style="width:100%;min-height:56px;font-size:18px;margin-top:8px" data-ex="submit" ${busy ? 'disabled' : ''}>${busy ? '送緊…' : '送出報銷'}</button>
+  </main>`;
+}
+function exPaint() {
+  if (cur.view !== 'expense') return;
+  render();
+  exHydrateThumbs();
+}
+function exHydrateThumbs() {
+  if (cur.view !== 'expense') return;
+  $$('img[data-ex-photo]').forEach(async img => {
+    const id = img.getAttribute('data-ex-photo');
+    if (!id) return;
+    const u = await thumbOf(id);
+    if (u) img.src = u;
+  });
+}
+function exPickCam() {
+  if (EX.photoIds.length >= EX_MAX_PHOTOS) { toast('最多 ' + EX_MAX_PHOTOS + ' 張'); return; }
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.setAttribute('capture', 'environment');
+  inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0];
+    try { document.body.removeChild(inp); } catch (e) {}
+    if (!f) return;
+    await exOnPhotoFile(f);
+  };
+  inp.oncancel = () => { try { document.body.removeChild(inp); } catch (e) {} };
+  inp.click();
+}
+async function exOnPhotoFile(file) {
+  if (EX.photoIds.length >= EX_MAX_PHOTOS) return;
+  try {
+    toast('處理緊相片…', 1200);
+    if (typeof compress !== 'function') { toast('影相功能未載入'); return; }
+    const c = await compress(file);
+    const id = (typeof newId === 'function' ? newId('exp') : ('exp' + Date.now()));
+    await PhotoDB.put({ id: id, rec: 'expense', dataUrl: c.dataUrl, w: c.w, h: c.h });
+    thumbs.set(id, c.dataUrl);
+    EX.photoIds.push(id);
+    exPaint();
+    toast('已加單據相 ✓', 1200);
+  } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
+}
+async function exRmPhoto(id) {
+  if (!id || !EX.photoIds.includes(id)) return;
+  if (!confirm('刪呢張單據相？')) return;
+  EX.photoIds = EX.photoIds.filter(x => x !== id);
+  await exDelPhotoId(id);
+  exPaint();
+}
+function exReadForm() {
+  const d = $('#ex_date'), a = $('#ex_amt'), p = $('#ex_pur');
+  if (d) EX.date = d.value || '';
+  if (a) EX.amount = a.value || '';
+  if (p) EX.purpose = p.value || '';
+}
+function exValidate() {
+  exReadForm();
+  const amt = Number(EX.amount);
+  if (!(isFinite(amt) && amt > 0)) return '請填金額（大於 0）';
+  if (!String(EX.purpose || '').trim()) return '請填用途';
+  if (!EX.date || !/^\d{4}-\d{2}-\d{2}$/.test(EX.date)) return '請揀日期';
+  if (!EX.photoIds.length) return '請至少影一張單據相';
+  if (!exTechName()) return '請先喺設定登記師傅名';
+  return '';
+}
+async function exPayloadWithPhotos() {
+  const photos = [];
+  for (const id of EX.photoIds) {
+    try {
+      const ph = await PhotoDB.get(id);
+      if (ph && ph.dataUrl) {
+        const b64 = (ph.dataUrl.split(',')[1] || '');
+        if (b64) photos.push({ name: id + '.jpg', mime: 'image/jpeg', base64: b64 });
+      }
+    } catch (e) {}
+  }
+  return {
+    amount: Number(EX.amount),
+    purpose: String(EX.purpose || '').trim(),
+    date: EX.date,
+    technician: exTechName(),
+    name: exTechName(),
+    photos: photos,
+    photo_count: photos.length
+  };
+}
+async function exSubmit() {
+  const bad = exValidate();
+  if (bad) { toast(bad); return; }
+  if (EX.submitting) return;
+  EX.submitting = true; EX.msg = ''; exPaint();
+  try {
+    const p = await exPayloadWithPhotos();
+    if (!p.photos.length) { toast('單據相讀唔到，請再影'); return; }
+    const body = Object.assign({ action: 'expense_claim', app_version: APP_VERSION }, p);
+    const wait = 60000 + Math.min(120000, p.photos.length * 8000);
+    const o = await gasCall(body, wait);
+    EX.lastReply = o || { ok: false, error: 'no_reply' };
+    if (o && o.ok) {
+      toast('已送報銷' + (o.folder_id ? ' · Drive 已開夾' : '') + (p.photos.length ? ' · 相 ' + p.photos.length : ''), 3500);
+      await exClearPhotos();
+      exResetForm();
+      EX.msg = o.sheet_url ? '已寫入試算表' : '已送出';
+    } else {
+      const err = (o && o.error) || 'bad_reply';
+      const msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.64 expense_claim）'
+        : err === 'ex_no_amount' ? '金額無效'
+        : err === 'ex_no_purpose' ? '用途空白'
+        : err === 'ex_no_photos' ? '未有單據相'
+        : (typeof upErrText === 'function' ? upErrText(err) : err);
+      EX.msg = msg;
+      toast(msg, 4500);
+    }
+  } catch (ex) {
+    EX.lastReply = { ok: false, error: String(ex && ex.message || ex) };
+    EX.msg = ex.message || '送唔到';
+    toast(EX.msg);
+  } finally { EX.submitting = false; exPaint(); }
+}
+document.addEventListener('input', e => {
+  const t = e.target; if (!t || cur.view !== 'expense') return;
+  if (t.id === 'ex_date') EX.date = t.value || '';
+  if (t.id === 'ex_amt') EX.amount = t.value || '';
+  if (t.id === 'ex_pur') EX.purpose = t.value || '';
+});
+document.addEventListener('click', e => {
+  const tile = e.target.closest('[data-act="expense"]');
+  if (tile && !tile.disabled) { const m = $('#modal'); if (m) m.classList.remove('show'); return go('#/expense'); }
+  const b = e.target.closest('[data-ex]'); if (!b || cur.view !== 'expense') return;
+  const a = b.dataset.ex;
+  if (a === 'cam') return exPickCam();
+  if (a === 'delph') return exRmPhoto(b.dataset.id);
+  if (a === 'submit') return exSubmit();
+});
+(function () {
+  const k = TILES.findIndex(t => t.act === 'dosu');
+  TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'expense', icon: '🧾', name: '單據報銷', sub: '影單據 → Sheet＋Drive' });
+})();
+const parseHashRaw_ex = parseHash;
+parseHash = function () {
+  if (/^#\/expense\b/.test(location.hash)) { cur = { view: 'expense', id: null, step: null }; lkReset(); exEnsureDate(); return; }
+  parseHashRaw_ex();
+};
+const viewGridRaw_ex = viewGrid;
+viewGrid = function () { return cur.view === 'expense' ? viewExpense() : viewGridRaw_ex(); };
+if (/^#\/expense\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
+(function () {
+  try {
+    const s = document.createElement('style');
+    s.textContent =
+      '.exmain .exlbl{display:block;font-size:13px;color:#555;margin:10px 0 0}.exmain .inp{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
+      '.exthumbs{margin-top:8px}';
     document.head.appendChild(s);
   } catch (e) {}
 })();
