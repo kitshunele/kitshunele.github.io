@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.83';
+const APP_VERSION = '0.6.84';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -3442,9 +3442,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target &&
 window.addEventListener('hashchange', () => { if (cur.view !== 'clock') { cksReset(); if (CK.step === 'stat') CK.step = 'home'; } });
 (function () { try { const st = document.createElement('style'); st.textContent = '.cksbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.cksbar input[type=date]{font-size:17px;padding:6px;border:1px solid var(--line);border-radius:8px}.cksbar #cksreload{margin-left:auto}.ckscnt{margin:6px 0 10px;font-size:15px}.cksc-none{color:#6b7280}.cksc-open{color:#b45309}.cksc-done{color:#15803d}.cksrow .t{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}.cksl{margin:2px 0}.cksl .ckin,.cksl .ckout{display:inline-block;min-width:38px;font-weight:700}.cksb-none{background:#f3f4f6;color:#374151}.cksb-open{background:#fef3c7;color:#92400e}.cksb-done{background:#dcfce7;color:#166534}.cksrow.cks-open{border:2px solid #f59e0b;background:#fffbeb}.cksmiss{color:#b91c1c;font-weight:700}.cksdet{margin-top:4px;font-size:14px}'; document.head.appendChild(st); } catch (e) {} })();
 
-/* ---------- v0.6.83 📅 消防檢日曆查詢（只讀）----------
+/* ---------- v0.6.84 📅 消防檢日曆查詢（只讀）----------
    資料：RM Schedule Link (FS) + Kit Fax → fs_schedule.json（TNS）；Apps Script data/fs_schedule。
-   v0.6.83：過期唔顯示；分類＋分色（Link 藍／季檢紫／半年檢橙／年檢綠）。 */
+   v0.6.84：過期唔顯示；分類＋分色；拎走「組」篩選。 */
 const LS_SC = 'fsapp20259005.sched.v1', SC_MAX = 60;
 let SC = { loading: false, err: '', errCode: '', live: false, m: '', q: '', g: '', est: '', loc: '', typ: 'link' }; /* typ: ''全部 | link | quarter | half | annual */
 const SC_MSG = {
@@ -3496,7 +3496,7 @@ function scType(x) {
   if (x.typ === 'link' || x.typ === 'half' || x.typ === 'annual' || x.typ === 'quarter' || x.typ === '') return x.typ;
   return scKindOf({ group: x.g, kind: x.kind, location: x.loc, link_no: x.link, link_type: /^KitFax/i.test(x.g || '') ? 'KF' : '' });
 }
-function scRecOk(x) { return (!SC.typ || scType(x) === SC.typ) && (!SC.g || x.g === SC.g); }
+function scRecOk(x) { return !SC.typ || scType(x) === SC.typ; }
 /* 英文名：用 App 屋邨清單（同 Work Order 頁一樣）配屋邨＋大廈英文 → 中英文都搜得到 */
 let scEnMap = null;
 function scEn(x) {
@@ -3576,12 +3576,10 @@ function viewSched() {
   if (!ca) return top + `<main>${msg}${SC.loading ? '' : '<button class="btn pri" style="width:100%" data-act="screload">🔄 重新載入</button>'}</main>`;
   const today = hkDate(), tm = today.slice(0, 7); if (!SC.m) SC.m = tm;
   if (SC.m < tm) SC.m = tm; /* 唔俾睇成個月都過咗 */
-  const r = scRange(ca), groups = [...new Set(ca.records.filter(scRecOk).map(x => x.g).filter(Boolean))].sort();
-  if (SC.g && !groups.includes(SC.g)) SC.g = '';
+  const r = scRange(ca);
   const eL = pkSort([...new Set(ca.records.filter(scRecOk).map(x => x.est).filter(Boolean))], 'estate'); if (SC.est && !eL.includes(SC.est)) { SC.est = ''; SC.loc = ''; }
   const lL = SC.est ? pkSort([...new Set(ca.records.filter(x => scRecOk(x) && x.est === SC.est).map(x => x.loc).filter(Boolean))], 'block', SC.est) : []; if (SC.loc && !lL.includes(SC.loc)) SC.loc = '';
   const enOf = (k, v) => { const x = ca.records.find(r => (k === 'est' ? r.est : r.loc) === v), en = x ? scEn(x)[k] : ''; return en ? `${v}　${en}` : v; };
-  const gBtn = (v, t) => `<button class="chip ${SC.g === v ? 'cur' : ''}" data-act="scgrp" data-v="${esc(v)}">${esc(t)}</button>`;
   const tBtn = (v, t, c) => `<button class="chip sctypchip ${SC.typ === v ? 'cur' : ''}" data-act="sctyp" data-v="${esc(v)}" style="--sc:${c || '#64748b'};border-color:var(--sc);${SC.typ === v ? 'background:var(--sc);color:#fff' : 'color:var(--sc)'}">${esc(t)}</button>`;
   const gen = ca.updated && !isNaN(new Date(ca.updated)) ? stamp(ca.updated) : (ca.file && ca.file.updated_hkt) || '';
   return top + `<main>${msg}
@@ -3592,7 +3590,6 @@ function viewSched() {
       <input data-sc="q" type="search" placeholder="搵編號（例：FT-1-90013／K-438）" value="${esc(SC.q)}" aria-label="搵編號" style="width:100%">
       <div class="scnav"${scAct() ? ' hidden' : ''}><button class="btn" data-act="scprev" ${SC.m <= tm || SC.m <= r.a ? 'disabled' : ''}>‹ 上個月</button><b id="scmon">${scMon(SC.m)}</b><button class="btn" data-act="scnext" ${SC.m >= r.b ? 'disabled' : ''}>下個月 ›</button></div>
       ${SC.m !== tm && !scAct() ? '<button class="btn" style="width:100%;margin-top:6px" data-act="scthis">返今個月</button>' : ''}
-      ${groups.length > 1 ? `<div class="ecst" style="margin-top:6px">${gBtn('', '全部組')}${groups.map(g => gBtn(g, g)).join('')}</div>` : ''}
       <div class="mut">只顯示今日同之後 · 日曆期 ${scMon(r.a)} – ${scMon(r.b)} · 資料更新：${esc(gen)} HKT · 手機上次讀取 ${stamp(ca.at)}</div>
       ${ca.note ? `<div class="mut" id="scnote">${/holiday/i.test(ca.note) ? '⚠ 如遇假期，順延至假期後一日（下面係原定日子）' : '⚠ ' + esc(ca.note)}</div>` : ''}
       <button class="btn" style="width:100%;margin-top:6px" data-act="screload">🔄 重新載入</button></div>
@@ -9840,8 +9837,7 @@ document.addEventListener('click', async e => {
     case 'scprev': SC.m = scAddM(SC.m || hkDate().slice(0, 7), -1); return render();
     case 'scnext': SC.m = scAddM(SC.m || hkDate().slice(0, 7), 1); return render();
     case 'scthis': SC.m = hkDate().slice(0, 7); return render();
-    case 'scgrp': SC.g = el.dataset.v || ''; return render();
-    case 'sctyp': SC.typ = el.dataset.v || ''; SC.g = ''; return render();
+    case 'sctyp': SC.typ = el.dataset.v || ''; return render();
     case 'scclear': return scClear();
     case 'ecreload': EC.live = false; EC.err = ''; return ecLoad();
     case 'ecst': EC.f.st = el.dataset.v || ''; return render();
