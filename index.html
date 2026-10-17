@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.56';
+const APP_VERSION = '0.6.57';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8098,10 +8098,14 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    提交：gasCall `dimbook_measure`（GAS v1.59+）→ Dimbook webhook（Script Properties）。 */
 const DS_ITEMS_URL = 'ss_items.json'; /* 同 PWA 目錄一齊上；stage／Pages 相對路徑 */
 const DS_CATS = [
-  /* 跟 Rate Book code／中文俗稱；有 subs ＝撳入去再分類 */
+  /* 跟 Rate Book 字頭；有 subs ＝撳入去再分類 */
   { id: '水喉', test: 'pipe', subs: [
     { id: 'DI喉', label: 'DI喉（球墨／ductile）' },
-    { id: 'GI喉', label: 'GI喉（鉛水／鍍鋅）' }
+    { id: 'GI喉', label: 'GI喉（鉛水／鍍鋅）' },
+    { id: '梳', label: '梳（梳杰 PI）' },
+    { id: '夾', label: '夾（補漏夾 PI）' },
+    { id: '杯臣', label: '杯臣（PI）' },
+    { id: '喉碼', label: '喉碼（PI）' }
   ]},
   { id: '螺絲', test: 'bolt' },
   { id: '閘掣／銅掣／波子掣', test: 'valvegroup', subs: [
@@ -8111,13 +8115,13 @@ const DS_CATS = [
   ]},
   { id: '喉轆', test: 'hosereel' },
   { id: '電線', test: 'cable' },
-  { id: '燈喉／過路箱／配件', test: 'fitgroup', subs: [
-    { id: '燈喉', label: '燈喉／梳結（EL）' },
+  { id: '燈喉／過路箱／電配件', test: 'fitgroup', subs: [
+    { id: '燈喉', label: '燈喉（EL-COND）' },
     { id: '過路箱', label: '過路箱（EL）' },
-    { id: '梳', label: '梳（水喉梳杰）' },
-    { id: '夾', label: '夾（補漏夾）' },
-    { id: '杯臣', label: '杯臣（bushing）' },
-    { id: '喉碼', label: '喉碼' }
+    { id: '喉碼', label: '喉碼（EL-SADG）' },
+    { id: '軟喉', label: '軟喉（EL）' },
+    { id: '索咀', label: '索咀（EL）' },
+    { id: '線碼', label: '線碼（EL）' }
   ]}
 ];
 const DS = {
@@ -8174,30 +8178,49 @@ function dsIsFireInspItem(it) {
 }
 function dsCatDef(id) { return DS_CATS.find(c => c.id === id) || null; }
 function dsPipeFittingCode(code) {
-  /* 梳／夾／杯臣／喉碼：唔再歸入水喉（撳「燈喉／過路箱／配件」再分） */
   return /^PI-SCSK-/i.test(code) || /^PI-SCBU-/i.test(code) || /^PI-RCAM-/i.test(code) || /^PI-BRAK-/i.test(code);
 }
-function dsFitSub(it, sub) {
+function dsPipeSub(it, sub) {
   const code = String(it.code || '');
-  const search = String(it.search || '');
-  const hay = search + ' ' + String(it.desc || '');
+  if (!( /^PI-/i.test(code) || /^BG-PIPE-/i.test(code) )) return false;
   switch (sub) {
-    case '燈喉': /* EL-* 燈喉／電喉梳結 */
-      if (!/^EL-/i.test(code)) return false;
-      return /^EL-COND-/i.test(code) || /^EL-SADG-/i.test(code) || /^EL-ADAR-/i.test(code)
-        || /^EL-WFMC-/i.test(code) || /^EL-WFMA-/i.test(code) || /燈喉/.test(hay);
-    case '過路箱': /* EL-* 過路箱 */
-      if (!/^EL-/i.test(code)) return false;
-      return /^EL-ABOX-/i.test(code) || /^EL-CPSM-/i.test(code) || /^EL-JBOX-/i.test(code)
-        || /^EL-SUJB-/i.test(code) || /過路箱/.test(search);
-    case '梳': /* PI-* 梳杰 */
+    case 'DI喉':
+      if (dsPipeFittingCode(code)) return false;
+      return /[-_]DI[-_]/i.test(code);
+    case 'GI喉':
+      if (dsPipeFittingCode(code)) return false;
+      return /[-_]GI[-_]/i.test(code);
+    case '梳':
       return /^PI-SCSK-/i.test(code);
     case '夾':
       return /^PI-RCAM-/i.test(code);
     case '杯臣':
       return /^PI-SCBU-/i.test(code);
-    case '喉碼': /* PI-* 水喉喉碼；電喉 EL-SADG 歸燈喉 */
+    case '喉碼':
       return /^PI-BRAK-/i.test(code);
+    default:
+      return false;
+  }
+}
+function dsFitSub(it, sub) {
+  /* 燈喉／過路箱／電配件：只 EL-*，再分細類 */
+  const code = String(it.code || '');
+  if (!/^EL-/i.test(code)) return false;
+  const search = String(it.search || '');
+  switch (sub) {
+    case '燈喉':
+      return /^EL-COND-/i.test(code) || /燈喉/.test(search);
+    case '過路箱':
+      return /^EL-ABOX-/i.test(code) || /^EL-CPSM-/i.test(code) || /^EL-JBOX-/i.test(code)
+        || /^EL-SUJB-/i.test(code) || /過路箱/.test(search);
+    case '喉碼':
+      return /^EL-SADG-/i.test(code);
+    case '軟喉':
+      return /^EL-WFMC-/i.test(code) || /^EL-WFMA-/i.test(code);
+    case '索咀':
+      return /^EL-ADAR-/i.test(code) || /^EL-GLAN-/i.test(code);
+    case '線碼':
+      return /^EL-CLIP-/i.test(code) || /^EL-CLEA-/i.test(code);
     default:
       return false;
   }
@@ -8227,14 +8250,10 @@ function dsInCat(it, catId) {
   const desc = String(it.desc || '');
   const hay = search + ' ' + desc;
   switch (def.test) {
-    case 'pipe': { /* 水喉：PI-*／BG-PIPE-*；DI／GI 跟 code 物料位 */
-      if (!(/^PI-/i.test(code) || /^BG-PIPE-/i.test(code))) return false;
-      if (dsPipeFittingCode(code)) return false;
+    case 'pipe': {
       const sub = String(DS.sub || '');
       if (!sub) return false;
-      if (sub === 'DI喉') return /[-_]DI[-_]/i.test(code);
-      if (sub === 'GI喉') return /[-_]GI[-_]/i.test(code);
-      return false;
+      return dsPipeSub(it, sub);
     }
     case 'bolt': /* 螺絲：固定字頭 */
       return /^ML-BONU-/i.test(code) || /^ML-TDEX-/i.test(code)
@@ -8379,9 +8398,9 @@ function dsCatSelHtml() {
       `<option value="${esc(s.id)}" ${DS.sub === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`))
     : [];
   const ready = DS.cat && (!needSub || DS.sub);
-  const subLbl = DS.cat === '水喉' ? '水喉物料' : ((DS.cat === '燈喉／過路箱／配件' || DS.cat === '閘掣／銅掣／波子掣') ? '再分類' : '細分類');
+  const subLbl = (DS.cat === '水喉' || DS.cat === '燈喉／過路箱／電配件' || DS.cat === '閘掣／銅掣／波子掣') ? '再分類' : '細分類';
   return `<div class="card"><h3>項目種類（下拉）</h3>
-    <label class="dslbl">一般要度數：水喉／螺絲／喉轆／電線；閘掣銅掣波子掣、燈喉過路箱配件撳入再分
+    <label class="dslbl">一般要度數：水喉（含梳夾杯臣喉碼）／螺絲／喉轆／電線；掣同電配件撳入再分（電只 EL）
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
     ${needSub ? `<label class="dslbl">${esc(subLbl)}
