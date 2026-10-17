@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.51';
+const APP_VERSION = '0.6.52';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8281,7 +8281,7 @@ function dsHitsHtml() {
   if (DS.err && !DS.items) return `<div class="errbox">${esc(DS.err)}<br><button class="btn" data-ds="reload">再試</button></div>`;
   const hits = dsSearchHits(DS.q);
   const n = (DS.items && DS.items.count) || ((DS.items && DS.items.items) || []).length;
-  const catN = DS.cat ? (' · 分類「' + esc(DS.cat) + '」') : ' · 已唔顯示消防檢 FI-*';
+  const catN = DS.cat ? (' · 分類「' + esc(DS.cat) + '」') : '';
   const head = `<div class="mut" style="margin:4px 2px 8px">價目 ${n} 項${catN} · 顯示 ${hits.length}${DS.q ? '（再搜「' + esc(DS.q) + '」）' : ''}</div>`;
   if (!DS.cat) return '<div class="card mut">先喺上面揀分類（水喉／螺絲／閘掣等）。消防檢項目唔使度數。</div>';
   if (DS.cat === '水喉' && !DS.sub) return '<div class="card mut">水喉請再揀 DI喉 或 GI喉。</div>';
@@ -8299,12 +8299,9 @@ function dsPreviewHtml() {
   const p = dsPayload();
   const bad = dsValidate(p);
   DS.lastPayload = p;
-  return `<div class="card"><h3>送出預覽</h3>
-    ${bad ? `<div class="warnbox">${esc(bad)}</div>` : '<div class="mut">格式跟 Dimbook：lines 只有 code＋qty</div>'}
-    <pre class="dspre">${esc(JSON.stringify(p, null, 2))}</pre>
+  return `<div class="card">
+    ${bad ? `<div class="warnbox">${esc(bad)}</div>` : ''}
     <button class="btn pri" style="width:100%" data-ds="submit" ${bad || DS.submitting ? 'disabled' : ''}>${DS.submitting ? '送緊…' : '送去 Dimbook（經公司伺服器）'}</button>
-    ${DS.lastReply ? `<div class="mut" style="margin-top:8px">上次回覆：<pre class="dspre">${esc(JSON.stringify(DS.lastReply, null, 2))}</pre></div>` : ''}
-    <div class="mut" style="margin-top:8px">⚠️ Webhook key 唔喺 App；要 GAS v1.59＋ Script Properties <code>DIMBOOK_MEASURE_WEBHOOK_URL</code>／<code>_KEY</code>／可選 <code>_AUTH</code>。</div>
   </div>`;
 }
 function dsCatSelHtml() {
@@ -8322,7 +8319,6 @@ function dsCatSelHtml() {
     ${needSub ? `<label class="dslbl">水喉物料
       <select class="inp" id="ds_sub" aria-label="水喉 DI 或 GI">${subOpts.join('')}</select>
     </label>` : ''}
-    <div class="mut" style="margin-top:6px">消防檢唔使度數；清單已唔顯示 FI-*。</div>
     ${ready ? `<label class="dslbl">喺「${esc(DS.cat)}${DS.sub ? ' · ' + esc(DS.sub) : ''}」入面再搜（可留空）<input class="inp" id="ds_q" value="${esc(DS.q)}" placeholder="例：100mm、法蘭" autocomplete="off" enterkeyhint="search"></label>` : ''}
   </div>`;
 }
@@ -8370,7 +8366,7 @@ let dsQT = null;
 document.addEventListener('input', e => {
   const t = e.target; if (!t || cur.view !== 'dosu') return;
   if (t.id === 'ds_q') { DS.q = t.value; clearTimeout(dsQT); dsQT = setTimeout(() => dsPaint(), 200); return; }
-  if (t.id === 'ds_job') { DS.job_ref = t.value; if (!DS.ecallTouched) dsPaint(); else { /* keep checkbox */ const p = $('#dsmain .dspre'); if (p) p.textContent = JSON.stringify(dsPayload(), null, 2); } return; }
+  if (t.id === 'ds_job') { DS.job_ref = t.value; if (!DS.ecallTouched) dsPaint(); return; }
   if (t.id === 'ds_wd') { DS.work_desc = t.value; return; }
   if (t.matches && t.matches('input[data-ds="qty"]')) {
     const i = +t.dataset.i; const l = DS.lines[i]; if (!l) return;
