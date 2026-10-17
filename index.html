@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.65';
+const APP_VERSION = '0.6.66';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8143,7 +8143,7 @@ const DS_GI_KINDS = [
   { id: '內膠梳杰', label: '內膠梳杰', toks: ['LISK'] }
 ];
 const DS = {
-  q: '', cat: '', sub: '', sub2: '', show: 40, items: null, err: '', busy: false,
+  q: '', cat: '', sub: '', sub2: '', show: 100, items: null, err: '', busy: false,
   job_ref: '', estate: '', estateTxt: '', building: '', buildingTxt: '',
   work_desc: '', is_ecall: false, ecallTouched: false,
   lines: [], /* {code, qty, search, desc} */
@@ -8325,17 +8325,37 @@ function dsInCat(it, catId) {
       return false;
   }
 }
+function dsFireRank(it) {
+  /* 防火線：CFR／CFRF（名就叫防火線，含1.5）排前；再按截面積 code */
+  const code = String(it.code || '');
+  let fam = 2;
+  if (/^FE-CFR-/i.test(code) || /^FE-CFRF-/i.test(code)) fam = 0;
+  else if (/^FE-CMI-/i.test(code)) fam = 1;
+  const m = code.match(/-(\d+)$/);
+  const sz = m ? parseInt(m[1], 10) : 9999;
+  return [fam, sz, code];
+}
 function dsSearchHits(q) {
-  const items = ((DS.items && DS.items.items) || []).filter(it => dsInCat(it, DS.cat));
+  let items = ((DS.items && DS.items.items) || []).filter(it => dsInCat(it, DS.cat));
   const n = dsNorm(q);
-  const out = [];
-  for (let i = 0; i < items.length && out.length < DS.show; i++) {
-    const it = items[i];
-    if (!n) { out.push(it); continue; }
-    const hay = dsNorm((it.search || '') + ' ' + (it.code || '') + ' ' + (it.desc || ''));
-    if (hay.indexOf(n) >= 0) out.push(it);
+  if (n) {
+    items = items.filter(it => {
+      const hay = dsNorm((it.search || '') + ' ' + (it.code || '') + ' ' + (it.desc || ''));
+      return hay.indexOf(n) >= 0;
+    });
   }
-  return out;
+  /* 電線→防火線：細碼／CFR 排前，免 1.5 被 MI 大碼頂出首屏 */
+  if (DS.cat === '電線' && DS.sub === '防火線') {
+    items = items.slice().sort((a, b) => {
+      const ka = dsFireRank(a), kb = dsFireRank(b);
+      for (let i = 0; i < ka.length; i++) {
+        if (ka[i] < kb[i]) return -1;
+        if (ka[i] > kb[i]) return 1;
+      }
+      return 0;
+    });
+  }
+  return items.slice(0, DS.show);
 }
 function dsPriceTxt(it) {
   const bits = [];
