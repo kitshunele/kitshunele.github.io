@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.79';
+const APP_VERSION = '0.6.80';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -9084,11 +9084,11 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   } catch (e) {}
 })();
 
-/* ---------- v0.6.79 單據報銷（FAN 2026-10-17：影相→AI加總可改→送出；Sheet＋Drive；重複單 ex_dup_receipt） ----------
-   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.65+；v1.64 人手金額仍得）。 */
+/* ---------- v0.6.80 單據報銷（FAN 2026-10-17：開頁出編號寫喺單上；影相→AI加總；Sheet＋Drive；撞單） ----------
+   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.67+ 認 claim_no）。 */
 const EX_MAX_PHOTOS = 6;
 const EX = {
-  amount: '', purpose: '', date: '', photoIds: [],
+  claimNo: '', amount: '', purpose: '', date: '', photoIds: [],
   aiAmount: null, aiNote: '', aiBusy: false, aiPending: false, amountFromAi: false, aiPhotoN: 0,
   submitting: false, lastReply: null, msg: ''
 };
@@ -9097,6 +9097,7 @@ function exTechName() {
   return (typeof Store !== 'undefined' && Store.prefs && Store.prefs.ckName) || '';
 }
 function exResetForm() {
+  EX.claimNo = '';
   EX.amount = '';
   EX.purpose = '';
   EX.date = typeof hkDate === 'function' ? hkDate() : '';
@@ -9110,9 +9111,21 @@ function exResetForm() {
   EX.lastReply = null;
   EX.msg = '';
   if (_exAiTimer) { clearTimeout(_exAiTimer); _exAiTimer = null; }
+  exEnsureClaimNo();
 }
 function exEnsureDate() {
   if (!EX.date) EX.date = typeof hkDate === 'function' ? hkDate() : '';
+}
+/** 短編號：BX + YYMMDD + - + 4 字（易寫喺紙單）；開頁／送出後新一單先出；用 newId 產尾碼 */
+function exNewClaimNo() {
+  const d = (typeof hkDate === 'function' ? hkDate() : '').replace(/-/g, '');
+  const ymd = d.length === 8 ? d.slice(2) : String(Date.now()).slice(-6);
+  const raw = (typeof newId === 'function' ? newId('bx') : ('bx' + Date.now())).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const tail = (raw.slice(-4) || '0000').padStart(4, '0').slice(-4);
+  return 'BX' + ymd + '-' + tail;
+}
+function exEnsureClaimNo() {
+  if (!EX.claimNo) EX.claimNo = exNewClaimNo();
 }
 async function exDelPhotoId(id) {
   if (!id) return;
@@ -9125,6 +9138,7 @@ async function exClearPhotos() {
 }
 function viewExpense() {
   exEnsureDate();
+  exEnsureClaimNo();
   const nm = exTechName();
   const busy = !!EX.submitting || !!EX.aiBusy;
   const thumbsHtml = EX.photoIds.length
@@ -9138,6 +9152,10 @@ function viewExpense() {
       : (EX.photoIds.length ? '可人手填金額；有 AI 時會自動加總' : ''));
   return `<div class="top"><div class="bar"><button data-act="grid" aria-label="返主頁">‹ 主頁</button><div class="ttl">🧾 單據報銷<small>測試版 v${APP_VERSION}</small></div><button data-act="menu" aria-label="選單">☰</button></div></div>
   <main class="exmain">
+    <div class="card exclaim">
+      <div class="mut" style="margin-bottom:4px">先寫呢個編號喺張紙單（方便日後對原單）</div>
+      <div class="exclaimno" id="ex_claim">${esc(EX.claimNo)}</div>
+    </div>
     <div class="card">
       <h3>報銷資料</h3>
       <div class="mut" style="margin-bottom:8px">師傅：<b>${esc(nm || '（未登記名）')}</b> · 送出後寫試算表＋Drive「單據報銷」</div>
@@ -9297,6 +9315,7 @@ function exValidate() {
 async function exPayloadWithPhotos() {
   const photos = await exPhotosPayload();
   const o = {
+    claim_no: EX.claimNo || exNewClaimNo(),
     amount: Number(EX.amount),
     purpose: String(EX.purpose || '').trim(),
     date: EX.date,
@@ -9321,10 +9340,10 @@ async function exSubmit() {
     const o = await gasCall(body, wait);
     EX.lastReply = o || { ok: false, error: 'no_reply' };
     if (o && o.ok) {
-      toast('已送報銷' + (o.folder_id ? ' · Drive 已開夾' : '') + (p.photos.length ? ' · 相 ' + p.photos.length : ''), 3500);
+      toast('已送報銷 ' + (p.claim_no || '') + (o.folder_id ? ' · Drive 已開夾' : '') + (p.photos.length ? ' · 相 ' + p.photos.length : ''), 3500);
       await exClearPhotos();
       exResetForm();
-      EX.msg = o.sheet_url ? '已寫入試算表' : '已送出';
+      EX.msg = (p.claim_no ? ('編號 ' + p.claim_no + ' · ') : '') + (o.sheet_url ? '已寫入試算表' : '已送出');
     } else {
       const err = (o && o.error) || 'bad_reply';
       let msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.64+ expense_claim）'
@@ -9378,6 +9397,7 @@ if (/^#\/expense\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
     const s = document.createElement('style');
     s.textContent =
       '.exmain .exlbl{display:block;font-size:13px;color:#555;margin:10px 0 0}.exmain .inp{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
+      '.exclaim{text-align:center;padding:14px 12px}.exclaimno{font-size:28px;font-weight:700;letter-spacing:1px;font-family:ui-monospace,Menlo,Consolas,monospace;color:#0b5;margin-top:4px;user-select:all}' +
       '.exthumbs{margin-top:8px}';
     document.head.appendChild(s);
   } catch (e) {}
