@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.53';
+const APP_VERSION = '0.6.54';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8104,7 +8104,11 @@ const DS_CATS = [
     { id: 'GI喉', label: 'GI喉（鉛水／鍍鋅）' }
   ]},
   { id: '螺絲', test: 'bolt' },
-  { id: '閘掣', test: 'gate' },
+  { id: '閘掣／銅掣／波子掣', test: 'valvegroup', subs: [
+    { id: '閘掣', label: '閘掣（生鐵閘掣等）' },
+    { id: '銅掣', label: '銅掣' },
+    { id: '波子掣', label: '波子掣／球掣' }
+  ]},
   { id: '喉轆', test: 'hosereel' },
   { id: '電線', test: 'cable' },
   { id: '燈喉／過路箱／配件', test: 'fitgroup', subs: [
@@ -8195,6 +8199,25 @@ function dsFitSub(it, sub) {
       return false;
   }
 }
+function dsValveSub(it, sub) {
+  const code = String(it.code || '');
+  const search = String(it.search || '');
+  const desc = String(it.desc || '');
+  const hay = search + ' ' + desc;
+  switch (sub) {
+    case '閘掣': /* 生鐵閘掣等；唔包銅掣／波子／球掣 */
+      if (/銅掣|波子掣|球掣/.test(hay)) return false;
+      if (/^VA-SGAV-BR-/i.test(code) || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code) || /^VA-COCK-/i.test(code)) return false;
+      return /閘掣/.test(hay) || /^VA-FGAV-/i.test(code) || /^VA-SGAV-/i.test(code)
+        || (/GATE/i.test(code) && /^VA-/i.test(code));
+    case '銅掣':
+      return /銅掣/.test(hay) || /^VA-SGAV-BR-/i.test(code);
+    case '波子掣':
+      return /波子掣|球掣/.test(hay) || /^VA-COCK-/i.test(code) || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code);
+    default:
+      return false;
+  }
+}
 function dsInCat(it, catId) {
   if (!it || dsIsFireInspItem(it)) return false;
   if (!catId) return true;
@@ -8220,9 +8243,11 @@ function dsInCat(it, catId) {
     case 'bolt':
       return /螺絲/.test(hay) || /^ML-BONU-/i.test(code) || /^ML-TDEX-/i.test(code)
         || /^FM-SSBN-/i.test(code) || /^SP-STUD-/i.test(code);
-    case 'gate':
-      return /閘掣/.test(hay) || /^VA-FGAV-/i.test(code) || /^VA-SGAV-/i.test(code)
-        || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code) || (/GATE/i.test(code) && /^VA-/i.test(code));
+    case 'valvegroup': {
+      const sub = String(DS.sub || '');
+      if (!sub) return false;
+      return dsValveSub(it, sub);
+    }
     case 'hosereel':
       return /喉轆/.test(search) || /^FM-HR-/i.test(code) || /^FM-NOZZ-/i.test(code)
         || /^FM-CAP-NZ-/i.test(code) || /^FM-BRAC-HR-/i.test(code) || /^FM-TUBE-HR-/i.test(code)
@@ -8356,9 +8381,9 @@ function dsCatSelHtml() {
       `<option value="${esc(s.id)}" ${DS.sub === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`))
     : [];
   const ready = DS.cat && (!needSub || DS.sub);
-  const subLbl = DS.cat === '水喉' ? '水喉物料' : (DS.cat === '燈喉／過路箱／配件' ? '再分類' : '細分類');
+  const subLbl = DS.cat === '水喉' ? '水喉物料' : ((DS.cat === '燈喉／過路箱／配件' || DS.cat === '閘掣／銅掣／波子掣') ? '再分類' : '細分類');
   return `<div class="card"><h3>項目種類（下拉）</h3>
-    <label class="dslbl">一般要度數：水喉／螺絲／閘掣／喉轆／電線；燈喉／過路箱／梳夾杯臣喉碼撳入再分
+    <label class="dslbl">一般要度數：水喉／螺絲／喉轆／電線；閘掣銅掣波子掣、燈喉過路箱配件撳入再分
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
     ${needSub ? `<label class="dslbl">${esc(subLbl)}
