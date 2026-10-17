@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.58';
+const APP_VERSION = '0.6.59';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8114,7 +8114,10 @@ const DS_CATS = [
     { id: '波子掣', label: '波子掣／球掣' }
   ]},
   { id: '喉轆', test: 'hosereel' },
-  { id: '電線', test: 'cable' },
+  { id: '電線', test: 'cable', subs: [
+    { id: '普通線', label: '普通線（EL-CABL／PVCA／潛水線）' },
+    { id: '防火線', label: '防火線（FE-CMI）' }
+  ]},
   { id: '燈喉／過路箱／電配件', test: 'fitgroup', subs: [
     { id: '燈喉', label: '燈喉（EL-COND）' },
     { id: '過路箱', label: '過路箱（EL）' },
@@ -8293,9 +8296,17 @@ function dsInCat(it, catId) {
       return /^FM-HR-/i.test(code) || /^FM-HREL-/i.test(code) || /^FM-NOZZ-/i.test(code)
         || /^FM-CAP-NZ-/i.test(code) || /^FM-BRAC-HR-/i.test(code) || /^FM-TUBE-HR-/i.test(code)
         || /^FM-COCK-XX-/i.test(code) || /喉轆/.test(search);
-    case 'cable': /* 電線：EL-* */
-      if (!/^EL-/i.test(code)) return false;
-      return /^EL-CABL-/i.test(code) || /^EL-PVCA-/i.test(code) || /電線/.test(search);
+    case 'cable': {
+      const sub = String(DS.sub || '');
+      if (!sub) return false;
+      if (sub === '普通線') {
+        return /^EL-CABL-/i.test(code) || /^EL-PVCA-/i.test(code) || /^EL-SUBC-/i.test(code);
+      }
+      if (sub === '防火線') {
+        return /^FE-CMI-/i.test(code); /* Fire resistant／MI */
+      }
+      return false;
+    }
     case 'fitgroup': {
       const sub = String(DS.sub || '');
       if (!sub) return false;
@@ -8431,7 +8442,7 @@ function dsCatSelHtml() {
       `<option value="${esc(k.id)}" ${DS.sub2 === k.id ? 'selected' : ''}>${esc(k.label || k.id)}</option>`))
     : [];
   const ready = DS.cat && (!needSub || DS.sub) && (!needSub2 || DS.sub2);
-  const subLbl = (DS.cat === '水喉' || DS.cat === '燈喉／過路箱／電配件' || DS.cat === '閘掣／銅掣／波子掣') ? '再分類' : '細分類';
+  const subLbl = (DS.cat === '水喉' || DS.cat === '電線' || DS.cat === '燈喉／過路箱／電配件' || DS.cat === '閘掣／銅掣／波子掣') ? '再分類' : '細分類';
   const path = [DS.cat, DS.sub, needSub2 ? DS.sub2 : ''].filter(Boolean).join(' · ');
   return `<div class="card"><h3>項目種類（下拉）</h3>
     <label class="dslbl">一般要度數：水喉（含梳夾杯臣喉碼）／螺絲／喉轆／電線；掣同電配件撳入再分（電只 EL）
