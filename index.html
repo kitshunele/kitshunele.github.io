@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.55';
+const APP_VERSION = '0.6.56';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8092,7 +8092,7 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
 
 /* ---------- v0.6.49 📏 度數（下拉分類＋數量 → 交 Dimbook）----------
    FAN（2026-10-17 App 群）：消防檢唔使度數；一般要度數＝水喉／螺絲／閘掣／喉轆／電線／燈／喉／過路箱 → 做下拉。
-   FAN（2026-10-17）：燈喉＋過路箱放埋一齊，加埋梳／夾／杯臣／喉碼；撳入去再分類。燈喉／梳結／過路箱用 EL-*。
+   FAN（2026-10-17）：燈喉＋過路箱放埋一齊，加埋梳／夾／杯臣／喉碼；撳入去再分類。燈喉／梳結／過路箱用 EL-*；各類跟價目字頭（水喉 PI、掣 VA、電 EL、喉轆 FM）。
    價目底：合約 20259005 ss＋Rate Book（ss_items.json）。清單剔除 FI-*（消防檢／火警 panel 類），其餘用分類下拉篩。
    師傅：揀分類 →（可再分）→（可再搜）→ 加項目 → 填數量 → job_ref／屋邨／樓 → 送出。
    提交：gasCall `dimbook_measure`（GAS v1.59+）→ Dimbook webhook（Script Properties）。 */
@@ -8180,44 +8180,40 @@ function dsPipeFittingCode(code) {
 function dsFitSub(it, sub) {
   const code = String(it.code || '');
   const search = String(it.search || '');
-  const desc = String(it.desc || '');
-  const hay = search + ' ' + desc;
+  const hay = search + ' ' + String(it.desc || '');
   switch (sub) {
-    case '燈喉': /* FAN：燈喉／梳結用 EL-*（conduit＋電喉配件） */
+    case '燈喉': /* EL-* 燈喉／電喉梳結 */
       if (!/^EL-/i.test(code)) return false;
-      return /燈喉/.test(hay) || /^EL-COND-/i.test(code) || /^EL-SADG-/i.test(code)
-        || /^EL-ADAR-/i.test(code) || /^EL-WFMC-/i.test(code) || /^EL-WFMA-/i.test(code);
-    case '過路箱': /* 只 EL 過路箱／接線箱，唔撈 FM 燕梳臣 */
+      return /^EL-COND-/i.test(code) || /^EL-SADG-/i.test(code) || /^EL-ADAR-/i.test(code)
+        || /^EL-WFMC-/i.test(code) || /^EL-WFMA-/i.test(code) || /燈喉/.test(hay);
+    case '過路箱': /* EL-* 過路箱 */
       if (!/^EL-/i.test(code)) return false;
-      return /過路箱/.test(search) || /^EL-ABOX-/i.test(code) || /^EL-CPSM-/i.test(code)
-        || /^EL-JBOX-/i.test(code) || /^EL-SUJB-/i.test(code);
-    case '梳': /* 水喉梳杰 PI-* */
-      return /^PI-SCSK-/i.test(code) || /梳杰/.test(hay);
+      return /^EL-ABOX-/i.test(code) || /^EL-CPSM-/i.test(code) || /^EL-JBOX-/i.test(code)
+        || /^EL-SUJB-/i.test(code) || /過路箱/.test(search);
+    case '梳': /* PI-* 梳杰 */
+      return /^PI-SCSK-/i.test(code);
     case '夾':
-      return /^PI-RCAM-/i.test(code) || /補漏夾/.test(hay);
+      return /^PI-RCAM-/i.test(code);
     case '杯臣':
-      return /^PI-SCBU-/i.test(code) || /杯臣/.test(hay);
-    case '喉碼': /* 水喉喉碼 PI；電喉喉碼歸「燈喉」EL-SADG */
-      return /^PI-BRAK-/i.test(code) || (/喉碼/.test(search) && !/加喉碼/.test(search) && /^PI-/i.test(code));
+      return /^PI-SCBU-/i.test(code);
+    case '喉碼': /* PI-* 水喉喉碼；電喉 EL-SADG 歸燈喉 */
+      return /^PI-BRAK-/i.test(code);
     default:
       return false;
   }
 }
 function dsValveSub(it, sub) {
   const code = String(it.code || '');
-  const search = String(it.search || '');
-  const desc = String(it.desc || '');
-  const hay = search + ' ' + desc;
+  if (!/^VA-/i.test(code)) return false; /* 掣類一律 VA-* */
+  const hay = String(it.search || '') + ' ' + String(it.desc || '');
   switch (sub) {
-    case '閘掣': /* 生鐵閘掣等；唔包銅掣／波子／球掣 */
-      if (/銅掣|波子掣|球掣/.test(hay)) return false;
+    case '閘掣':
       if (/^VA-SGAV-BR-/i.test(code) || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code) || /^VA-COCK-/i.test(code)) return false;
-      return /閘掣/.test(hay) || /^VA-FGAV-/i.test(code) || /^VA-SGAV-/i.test(code)
-        || (/GATE/i.test(code) && /^VA-/i.test(code));
+      return /^VA-FGAV-/i.test(code) || /^VA-SGAV-/i.test(code) || (/閘掣/.test(hay) && !/銅掣|波子|球掣/.test(hay));
     case '銅掣':
-      return /銅掣/.test(hay) || /^VA-SGAV-BR-/i.test(code);
+      return /^VA-SGAV-BR-/i.test(code) || /銅掣/.test(hay);
     case '波子掣':
-      return /波子掣|球掣/.test(hay) || /^VA-COCK-/i.test(code) || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code);
+      return /^VA-COCK-/i.test(code) || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code) || /波子掣|球掣/.test(hay);
     default:
       return false;
   }
@@ -8231,33 +8227,31 @@ function dsInCat(it, catId) {
   const desc = String(it.desc || '');
   const hay = search + ' ' + desc;
   switch (def.test) {
-    case 'pipe': { /* 水喉：先 DI／GI；剔走梳／夾／杯臣／喉碼 */
+    case 'pipe': { /* 水喉：PI-*／BG-PIPE-*；DI／GI 跟 code 物料位 */
       if (!(/^PI-/i.test(code) || /^BG-PIPE-/i.test(code))) return false;
-      if (dsPipeFittingCode(code) || /梳杰|杯臣|補漏夾/.test(hay) || (/喉碼/.test(search) && !/加喉碼/.test(search))) return false;
+      if (dsPipeFittingCode(code)) return false;
       const sub = String(DS.sub || '');
       if (!sub) return false;
-      if (sub === 'DI喉') {
-        return /[-_]DI[-_]/i.test(code) || /球墨|ductile|\bDI喉\b/i.test(hay);
-      }
-      if (sub === 'GI喉') {
-        return /[-_]GI[-_]/i.test(code) || (/鉛水/.test(hay) && !/燈喉/.test(hay)) || /galvanis/i.test(hay);
-      }
+      if (sub === 'DI喉') return /[-_]DI[-_]/i.test(code);
+      if (sub === 'GI喉') return /[-_]GI[-_]/i.test(code);
       return false;
     }
-    case 'bolt':
-      return /螺絲/.test(hay) || /^ML-BONU-/i.test(code) || /^ML-TDEX-/i.test(code)
+    case 'bolt': /* 螺絲：固定字頭 */
+      return /^ML-BONU-/i.test(code) || /^ML-TDEX-/i.test(code)
         || /^FM-SSBN-/i.test(code) || /^SP-STUD-/i.test(code);
     case 'valvegroup': {
       const sub = String(DS.sub || '');
       if (!sub) return false;
       return dsValveSub(it, sub);
     }
-    case 'hosereel':
-      return /喉轆/.test(search) || /^FM-HR-/i.test(code) || /^FM-NOZZ-/i.test(code)
+    case 'hosereel': /* 喉轆：FM-* */
+      if (!/^FM-/i.test(code)) return false;
+      return /^FM-HR-/i.test(code) || /^FM-HREL-/i.test(code) || /^FM-NOZZ-/i.test(code)
         || /^FM-CAP-NZ-/i.test(code) || /^FM-BRAC-HR-/i.test(code) || /^FM-TUBE-HR-/i.test(code)
-        || /^FM-COCK-XX-/i.test(code) || /^FM-HREL-/i.test(code);
-    case 'cable':
-      return /電線/.test(search) || /^EL-CABL-/i.test(code) || /^FE-CMI-/i.test(code);
+        || /^FM-COCK-XX-/i.test(code) || /喉轆/.test(search);
+    case 'cable': /* 電線：EL-* */
+      if (!/^EL-/i.test(code)) return false;
+      return /^EL-CABL-/i.test(code) || /^EL-PVCA-/i.test(code) || /電線/.test(search);
     case 'fitgroup': {
       const sub = String(DS.sub || '');
       if (!sub) return false;
