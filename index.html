@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.74';
+const APP_VERSION = '0.6.75';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8090,11 +8090,15 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* ---------- v0.6.74 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+/* ---------- v0.6.75 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+   FAN（2026-10-17 App 群）：已揀每格數量旁加影相，記呢個數量係咩位置；上雲時相一齊交（qty_slots）。
+   注意：GAS dimbook_measure v1.62 而家只 forward lines[{code,qty}]——qty_slots／photos 要 WO 出 GAS 版先會到 Dimbook。
+   FAN：上雲後開「度數」folder 放 JSON＋每格 qty 相——App 交 payload（folder_hint／qty_slots／photos）；建 folder 交 WO／Dimbook／GAS。未 publish。
    FAN（2026-10-17 App 群）：已揀 ✕ 驚誤按 → confirm「刪呢行？」先刪（同暫存刪確認風格）。
    FAN（2026-10-17 App 群）：消防檢唔使度數；一般要度數＝水喉／螺絲／閘掣／喉轆／電線／燈／喉／過路箱 → 做下拉。
    FAN（2026-10-17）：燈喉＋過路箱放埋一齊，加埋梳／夾／杯臣／喉碼；撳入去再分類。燈喉／梳結／過路箱用 EL-*；各類跟價目字頭（水喉 PI、掣 VA、電 EL、喉轆 FM）。
-   FAN（2026-10-17）：水喉下一層用尺寸（Ømm，跟 ss search）；再淨係 GI／DI；揀完即出價目（*-GI-*／*-DI-*）；梳／夾／杯臣／喉碼收喺 GI 清單，唔再多一層下拉。
+   FAN（2026-10-17）：水喉下一層用尺寸（Ømm，跟 ss search）；再淨係 GI／DI；揀完即出價目（*-GI-*／*-DI-*／*-CD-* 球墨）；梳／夾／杯臣／喉碼收喺 GI 清單，唔再多一層下拉。
+   FAN（2026-10-17）：Ø50／65 等只有 *-CD-*（生鐵球墨）時都要出 DI；code／search／desc 標球墨／ductile 亦納入 DI。
    價目底：合約 20259005 ss＋Rate Book（ss_items.json）。清單剔除 FI-*（消防檢／火警 panel 類），其餘用分類下拉篩。
    師傅：揀分類 →（可再分）→（可再搜）→ 加項目 → 填數量 → job_ref／屋邨／樓 → 送出。
    提交：gasCall `dimbook_measure`（GAS v1.59+）→ Dimbook webhook（Script Properties）。 */
@@ -8149,7 +8153,7 @@ const DS = {
   q: '', cat: '', sub: '', sub2: '', sub3: '', show: 100, items: null, err: '', busy: false,
   job_ref: '', estate: '', estateTxt: '', building: '', buildingTxt: '',
   work_desc: '', is_ecall: false, ecallTouched: false,
-  lines: [], /* {code, qty, qtys:[…], search, desc} — qty=qtys 合計（送 Dimbook 只用 qty） */
+  lines: [], /* {code, qty, qtys:[…], qtyPhotos:[id|null…], search, desc} — qty=qtys 合計；相跟每格 */
   lastPayload: null, lastReply: null, submitting: false,
   draftId: null, /* 而家編緊邊份手機暫存 */
   showDrafts: true
@@ -8167,6 +8171,14 @@ function dsEnsureQtys(l) {
   const n = Number(l.qty);
   l.qtys = (isFinite(n) && n > 0) ? [Math.round(n * 1000) / 1000] : [''];
 }
+function dsEnsureQtyPhotos(l) {
+  /* 同 qtys 對齊：每格可有一張相（PhotoDB id）；草稿只存 id，唔塞 base64 入 localStorage */
+  if (!l) return;
+  dsEnsureQtys(l);
+  if (!Array.isArray(l.qtyPhotos)) l.qtyPhotos = [];
+  while (l.qtyPhotos.length < l.qtys.length) l.qtyPhotos.push(null);
+  if (l.qtyPhotos.length > l.qtys.length) l.qtyPhotos.length = l.qtys.length;
+}
 function dsSumQtys(l) {
   dsEnsureQtys(l);
   let s = 0;
@@ -8179,7 +8191,26 @@ function dsSumQtys(l) {
 function dsSyncQty(l) {
   if (!l) return 0;
   l.qty = dsSumQtys(l);
+  dsEnsureQtyPhotos(l);
   return l.qty;
+}
+async function dsDelPhotoId(id) {
+  if (!id) return;
+  try { await PhotoDB.del(id); } catch (e) {}
+  try { thumbs.delete(id); } catch (e) {}
+}
+async function dsPurgeLinePhotos(l) {
+  if (!l || !Array.isArray(l.qtyPhotos)) return;
+  for (const id of l.qtyPhotos) await dsDelPhotoId(id);
+  l.qtyPhotos = [];
+}
+function dsPhotoCount() {
+  let n = 0;
+  for (const l of (DS.lines || [])) {
+    dsEnsureQtyPhotos(l);
+    for (const id of (l.qtyPhotos || [])) if (id) n++;
+  }
+  return n;
 }
 function dsDraftLabel(d) {
   const job = (d && d.job_ref) || '（未填 job）';
@@ -8199,8 +8230,8 @@ function dsSnapDraft() {
     is_ecall: !!DS.is_ecall,
     ecallTouched: !!DS.ecallTouched,
     lines: (DS.lines || []).map(l => {
-      dsEnsureQtys(l); dsSyncQty(l);
-      return { code: l.code, qty: l.qty, qtys: (l.qtys || []).slice(), search: l.search || '', desc: l.desc || '' };
+      dsEnsureQtys(l); dsEnsureQtyPhotos(l); dsSyncQty(l);
+      return { code: l.code, qty: l.qty, qtys: (l.qtys || []).slice(), qtyPhotos: (l.qtyPhotos || []).slice(), search: l.search || '', desc: l.desc || '' };
     }),
     updated: Date.now()
   };
@@ -8233,25 +8264,34 @@ function dsOpenDraft(rid) {
   DS.ecallTouched = !!d.ecallTouched;
   DS.lines = Array.isArray(d.lines) ? d.lines.map(l => {
     const o = Object.assign({}, l);
-    dsEnsureQtys(o); dsSyncQty(o);
+    dsEnsureQtys(o); dsEnsureQtyPhotos(o); dsSyncQty(o);
     return o;
   }) : [];
   DS.cat = ''; DS.sub = ''; DS.sub2 = ''; DS.sub3 = ''; DS.q = '';
   toast('已開手機暫存——可改；撳「送去 Dimbook」先上雲', 3000);
   dsPaint();
 }
-function dsDeleteDraft(rid) {
+async function dsDeleteDraft(rid) {
   const all = dsDraftsAll();
   const d = all[rid];
   if (!d) return;
   if (!confirm('刪呢份手機暫存？\n' + dsDraftLabel(d) + '\n（只刪呢部手機；已上雲嘅唔會刪）')) return;
+  if (Array.isArray(d.lines)) {
+    for (const l of d.lines) {
+      for (const id of (l.qtyPhotos || [])) await dsDelPhotoId(id);
+    }
+  }
   delete all[rid];
   dsDraftsWrite(all);
-  if (DS.draftId === rid) DS.draftId = null;
+  if (DS.draftId === rid) {
+    for (const l of (DS.lines || [])) await dsPurgeLinePhotos(l);
+    DS.draftId = null;
+  }
   toast('已刪手機暫存');
   dsPaint();
 }
-function dsClearFormKeepDraftFlag() {
+async function dsClearFormKeepDraftFlag() {
+  for (const l of (DS.lines || [])) await dsPurgeLinePhotos(l);
   DS.job_ref = ''; DS.estate = ''; DS.estateTxt = ''; DS.building = ''; DS.buildingTxt = '';
   DS.work_desc = ''; DS.is_ecall = false; DS.ecallTouched = false;
   DS.lines = []; DS.cat = ''; DS.sub = ''; DS.sub2 = ''; DS.sub3 = ''; DS.q = '';
@@ -8263,10 +8303,10 @@ function dsFormHasContent() {
     || DS.estate || DS.estateTxt
     || String(DS.work_desc || '').trim());
 }
-function dsNewDraft() {
+async function dsNewDraft() {
   /* 開一份空白新暫存；有未存內容先 silent autosave 入而家呢份，唔無聲丟 */
   if (dsFormHasContent()) dsSaveDraft(true);
-  dsClearFormKeepDraftFlag();
+  await dsClearFormKeepDraftFlag();
   DS.draftId = (typeof newId === 'function' ? newId('ds') : ('ds' + Date.now()));
   toast('已開新一份度數（空白）', 2500);
   dsPaint();
@@ -8315,6 +8355,7 @@ function dsIsEcall() {
   return /^K/i.test(String(DS.job_ref || '').trim());
 }
 function dsPayload() {
+  /* Dimbook 合約：lines 只 {code,qty} 合計。相／每格明細喺 qty_slots（要 GAS 轉發）。 */
   const lines = DS.lines.filter(l => l && l.code).map(l => { dsSyncQty(l); return l; }).filter(l => Number(l.qty) > 0).map(l => ({ code: l.code, qty: Number(l.qty) }));
   const o = {
     job_ref: String(DS.job_ref || '').trim(),
@@ -8322,8 +8363,44 @@ function dsPayload() {
     building: dsBldName(),
     work_desc: String(DS.work_desc || '').trim(),
     is_ecall: dsIsEcall(),
-    lines
+    lines,
+    /* 請 GAS／Dimbook：上雲後喺 job 底開「度數」folder，放入 measure JSON＋每格 qty 相 */
+    folder_hint: { name: '度數', kind: 'dosu_measure', put: ['measure.json', 'qty_photos'] },
+    photo_count: dsPhotoCount()
   };
+  return o;
+}
+async function dsPayloadWithPhotos() {
+  const o = dsPayload();
+  const qty_slots = [];
+  const photos = [];
+  for (const l of (DS.lines || [])) {
+    if (!l || !l.code) continue;
+    dsEnsureQtys(l); dsEnsureQtyPhotos(l); dsSyncQty(l);
+    for (let j = 0; j < (l.qtys || []).length; j++) {
+      const n = Number(l.qtys[j]);
+      if (!(isFinite(n) && n > 0)) continue;
+      const pid = (l.qtyPhotos || [])[j] || null;
+      let photo = null;
+      if (pid) {
+        try {
+          const ph = await PhotoDB.get(pid);
+          if (ph && ph.dataUrl) {
+            const b64 = (ph.dataUrl.split(',')[1] || '');
+            if (b64) {
+              const name = (pid + '.jpg');
+              photo = { name: name, mime: 'image/jpeg', base64: b64, slot: j, code: l.code, qty: n };
+              photos.push({ name: name, mime: 'image/jpeg', base64: b64 });
+            }
+          }
+        } catch (e) {}
+      }
+      qty_slots.push({ code: l.code, qty: n, slot: j, photo: photo ? { name: photo.name, mime: photo.mime, base64: photo.base64 } : null });
+    }
+  }
+  o.qty_slots = qty_slots;
+  o.photos = photos; /* 同 checklist upload 風格；GAS 可寫入「度數」folder */
+  o.photo_count = photos.length;
   return o;
 }
 function dsValidate(p) {
@@ -8373,12 +8450,23 @@ function dsPipeSizeLabel(sz) {
   if (sz === '3分') return 'Ø3分';
   return 'Ø' + sz + 'mm';
 }
+function dsPipeIsDi(it) {
+  /* DI＝球墨／ductile：*-DI-* 之外，Rate Book 常用 *-CD-*（cast/ductile）；search／desc 寫球墨／ductile 都算 */
+  const code = String((it && it.code) || '');
+  if (!( /^PI-/i.test(code) || /^BG-PIPE-/i.test(code) )) return false;
+  if (dsPipeFittingCode(code)) return false;
+  if (/[-_]GI[-_]/i.test(code)) return false; /* 唔好把 GI 當 DI */
+  if (/[-_]DI[-_]/i.test(code) || /[-_]CD[-_]/i.test(code)) return true;
+  const hay = String((it && it.search) || '') + ' ' + String((it && it.desc) || '');
+  return /球墨|ductile/i.test(hay);
+}
 function dsPipeInScope(it) {
   if (!it || dsIsFireInspItem(it)) return false;
   const code = String(it.code || '');
   if (!( /^PI-/i.test(code) || /^BG-PIPE-/i.test(code) )) return false;
   if (dsPipeFittingCode(code)) return true;
-  return /[-_]DI[-_]/i.test(code) || /[-_]GI[-_]/i.test(code);
+  if (/[-_]GI[-_]/i.test(code)) return true;
+  return dsPipeIsDi(it);
 }
 function dsPipeSizesAvailable() {
   const seen = {};
@@ -8403,8 +8491,8 @@ function dsPipeTypeMatch(it, typeId) {
   if (!( /^PI-/i.test(code) || /^BG-PIPE-/i.test(code) )) return false;
   switch (typeId) {
     case 'DI':
-    case 'DI喉': /* 舊草稿相容 */
-      return !dsPipeFittingCode(code) && /[-_]DI[-_]/i.test(code);
+    case 'DI喉': /* 舊草稿相容；含 *-CD-*／球墨／ductile */
+      return dsPipeIsDi(it);
     case 'GI':
     case 'GI喉': /* 舊草稿相容；GI 清單兼收梳夾杯臣喉碼 */
       return dsPipeFittingCode(code) || (!dsPipeFittingCode(code) && /[-_]GI[-_]/i.test(code));
@@ -8591,36 +8679,108 @@ function dsAddLine(it) {
   if (!it || !it.code) return;
   const ex = DS.lines.find(l => l.code === it.code);
   if (ex) {
-    dsEnsureQtys(ex);
+    dsEnsureQtys(ex); dsEnsureQtyPhotos(ex);
     const n0 = Number(ex.qtys[0]);
     ex.qtys[0] = Math.round(((isFinite(n0) && n0 > 0 ? n0 : 0) + 1) * 1000) / 1000;
     dsSyncQty(ex);
     toast('已加數量：' + it.code);
-  } else DS.lines.push({ code: it.code, qty: 1, qtys: [1], search: it.search || '', desc: it.desc || '' });
+  } else DS.lines.push({ code: it.code, qty: 1, qtys: [1], qtyPhotos: [null], search: it.search || '', desc: it.desc || '' });
   dsPaint();
 }
-function dsSetQtyBox(i, j, v) {
+async function dsSetQtyBox(i, j, v) {
   const l = DS.lines[i]; if (!l) return;
-  dsEnsureQtys(l);
+  dsEnsureQtys(l); dsEnsureQtyPhotos(l);
   if (j < 0 || j >= l.qtys.length) return;
   const n = Number(v);
   l.qtys[j] = (isFinite(n) && n > 0) ? (Math.round(n * 1000) / 1000) : (String(v || '').trim() === '' ? '' : v);
-  if (!(dsSyncQty(l) > 0)) DS.lines.splice(i, 1);
+  if (!(dsSyncQty(l) > 0)) {
+    await dsPurgeLinePhotos(l);
+    DS.lines.splice(i, 1);
+  }
   dsPaint();
 }
 function dsAddQtyBox(i) {
   const l = DS.lines[i]; if (!l) return;
-  dsEnsureQtys(l);
+  dsEnsureQtys(l); dsEnsureQtyPhotos(l);
   l.qtys.push('');
+  l.qtyPhotos.push(null);
   dsPaint();
 }
-function dsRmQtyBox(i, j) {
+async function dsRmQtyBox(i, j) {
   const l = DS.lines[i]; if (!l) return;
-  dsEnsureQtys(l);
+  dsEnsureQtys(l); dsEnsureQtyPhotos(l);
   if (l.qtys.length <= 1) return;
+  await dsDelPhotoId(l.qtyPhotos[j]);
   l.qtys.splice(j, 1);
-  if (!(dsSyncQty(l) > 0)) DS.lines.splice(i, 1);
+  l.qtyPhotos.splice(j, 1);
+  if (!(dsSyncQty(l) > 0)) {
+    await dsPurgeLinePhotos(l);
+    DS.lines.splice(i, 1);
+  }
   dsPaint();
+}
+let _dsPicTarget = null; /* {i,j} 影相目標格 */
+function dsPickQtyPhoto(i, j, src) {
+  const l = DS.lines[i]; if (!l) return;
+  dsEnsureQtyPhotos(l);
+  if (j < 0 || j >= l.qtys.length) return;
+  _dsPicTarget = { i: i, j: j };
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  if (src === 'cam') inp.setAttribute('capture', 'environment');
+  inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0];
+    try { document.body.removeChild(inp); } catch (e) {}
+    if (!f) { _dsPicTarget = null; return; }
+    await dsOnQtyPhotoFile(f);
+  };
+  inp.oncancel = () => { try { document.body.removeChild(inp); } catch (e) {} _dsPicTarget = null; };
+  inp.click();
+}
+async function dsOnQtyPhotoFile(file) {
+  const t = _dsPicTarget; _dsPicTarget = null;
+  if (!t) return;
+  const l = DS.lines[t.i]; if (!l) return;
+  dsEnsureQtyPhotos(l);
+  if (t.j < 0 || t.j >= l.qtys.length) return;
+  try {
+    toast('處理緊相片…', 1200);
+    if (typeof compress !== 'function') { toast('影相功能未載入'); return; }
+    const c = await compress(file);
+    const id = (typeof newId === 'function' ? newId('dsp') : ('dsp' + Date.now()));
+    const rec = 'dosu:' + (DS.draftId || 'cur');
+    await PhotoDB.put({ id: id, rec: rec, dataUrl: c.dataUrl, w: c.w, h: c.h });
+    thumbs.set(id, c.dataUrl);
+    const old = l.qtyPhotos[t.j];
+    l.qtyPhotos[t.j] = id;
+    if (old && old !== id) await dsDelPhotoId(old);
+    dsSaveDraft(true);
+    dsPaint();
+    toast('已加位置相 ✓', 1200);
+  } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
+}
+async function dsRmQtyPhoto(i, j) {
+  const l = DS.lines[i]; if (!l) return;
+  dsEnsureQtyPhotos(l);
+  if (j < 0 || j >= l.qtyPhotos.length) return;
+  if (!l.qtyPhotos[j]) return;
+  if (!confirm('刪呢格位置相？')) return;
+  await dsDelPhotoId(l.qtyPhotos[j]);
+  l.qtyPhotos[j] = null;
+  dsSaveDraft(true);
+  dsPaint();
+}
+function dsHydrateQtyThumbs() {
+  if (cur.view !== 'dosu') return;
+  $$('img[data-ds-photo]').forEach(async img => {
+    const id = img.getAttribute('data-ds-photo');
+    if (!id) return;
+    const u = await thumbOf(id);
+    if (u) img.src = u;
+  });
 }
 function dsFormHtml() {
   const ed = DS.estate && !PK.open.ds_est ? pkEstDef(DS.estate) : null;
@@ -8641,13 +8801,21 @@ function dsFormHtml() {
 }
 function dsLinesHtml() {
   if (!DS.lines.length) return '<div class="card mut">未揀項目。上面揀種類，再撳「＋ 加入」。</div>';
-  return `<div class="card"><h3>已揀（${DS.lines.length}）</h3>` + DS.lines.map((l, i) => {
-    dsEnsureQtys(l); dsSyncQty(l);
+  return `<div class="card"><h3>已揀（${DS.lines.length}）</h3>
+    <div class="mut" style="margin-bottom:6px">每格數量可影相，記呢個數量係咩位置；送上雲時相一齊交（入「度數」folder）。</div>` + DS.lines.map((l, i) => {
+    dsEnsureQtys(l); dsEnsureQtyPhotos(l); dsSyncQty(l);
     const boxes = (l.qtys || []).map((v, j) => {
+      const pid = (l.qtyPhotos || [])[j] || '';
       const rm = (l.qtys.length > 1)
         ? `<button type="button" class="lnk dsqtyrm" data-ds="qtyrm" data-i="${i}" data-j="${j}" aria-label="刪格">−</button>`
         : '';
-      return `<span class="dsqty1"><input type="number" min="0" step="any" value="${esc(v)}" data-ds="qty" data-i="${i}" data-j="${j}" inputmode="decimal">${rm}</span>`;
+      const ph = pid
+        ? `<span class="dsqtyphwrap"><img class="dsqtyph" data-ds-photo="${esc(pid)}" alt="位置相" width="40" height="40"><button type="button" class="lnk dsqtyphrm" data-ds="qtyphrm" data-i="${i}" data-j="${j}" aria-label="刪相">✕相</button></span>`
+        : '';
+      return `<span class="dsqty1"><input type="number" min="0" step="any" value="${esc(v)}" data-ds="qty" data-i="${i}" data-j="${j}" inputmode="decimal">` +
+        `<button type="button" class="btn sm dsqtycam" data-ds="qtycam" data-i="${i}" data-j="${j}" aria-label="影相">${pid ? '📷' : '📷'}</button>` +
+        `<button type="button" class="btn sm dsqtygal" data-ds="qtygal" data-i="${i}" data-j="${j}" aria-label="揀相">🖼</button>` +
+        `${ph}${rm}</span>`;
     }).join('');
     const tot = (l.qtys.length > 1 && Number(l.qty) > 0) ? `<span class="mut dsqtysum">合 ${esc(l.qty)}</span>` : '';
     return `<div class="dsline" data-i="${i}">
@@ -8686,8 +8854,13 @@ function dsPreviewHtml() {
   const p = dsPayload();
   const bad = dsValidate(p);
   DS.lastPayload = p;
+  const pn = p.photo_count || 0;
+  const phNote = pn
+    ? `<div class="mut" style="margin:6px 0">位置相 ${pn} 張會同上雲一齊交（請 GAS／Dimbook 放入「度數」folder）。</div>`
+    : `<div class="mut" style="margin:6px 0">未有位置相——可喺每格數量旁撳 📷。</div>`;
   return `<div class="card">
     ${bad ? `<div class="warnbox">${esc(bad)}<div class="mut" style="margin-top:6px">未齊都可以先「暫存到手機」。</div></div>` : ''}
+    ${phNote}
     <button class="btn pri" style="width:100%" data-ds="submit" ${bad || DS.submitting ? 'disabled' : ''}>${DS.submitting ? '送緊…' : '送去 Dimbook（上雲）'}</button>
     <button type="button" class="btn" style="width:100%;margin-top:8px" data-ds="savedraft">暫存到手機（未上雲）</button>
   </div>`;
@@ -8780,6 +8953,7 @@ function dsPaint() {
     const el = document.getElementById(id);
     if (el) { el.focus(); try { if (ss != null && el.setSelectionRange) el.setSelectionRange(ss, ss); } catch (e) {} }
   }
+  try { dsHydrateQtyThumbs(); } catch (e) {}
 }
 PKH.ds_est = (v, how) => {
   if (how === 'type') return;
@@ -8835,10 +9009,14 @@ document.addEventListener('click', e => {
     const i = +b.dataset.i, l = DS.lines[i];
     const lab = (l && (l.search || l.code)) || '';
     if (!confirm('刪呢行？' + (lab ? '\n' + lab : ''))) return;
-    DS.lines.splice(i, 1); return dsPaint();
+    (async () => { await dsPurgeLinePhotos(l); DS.lines.splice(i, 1); dsPaint(); })();
+    return;
   }
   if (a === 'qtyadd') { dsAddQtyBox(+b.dataset.i); return; }
   if (a === 'qtyrm') { dsRmQtyBox(+b.dataset.i, +b.dataset.j); return; }
+  if (a === 'qtycam') { dsPickQtyPhoto(+b.dataset.i, +b.dataset.j, 'cam'); return; }
+  if (a === 'qtygal') { dsPickQtyPhoto(+b.dataset.i, +b.dataset.j, 'gal'); return; }
+  if (a === 'qtyphrm') { dsRmQtyPhoto(+b.dataset.i, +b.dataset.j); return; }
   if (a === 'savedraft') return dsSaveDraft(false);
   if (a === 'newdraft') return dsNewDraft();
   if (a === 'opendraft') return dsOpenDraft(b.dataset.rid);
@@ -8846,25 +9024,27 @@ document.addEventListener('click', e => {
   if (a === 'submit') return dsSubmit();
 });
 async function dsSubmit() {
-  const p = dsPayload();
-  const bad = dsValidate(p);
+  const base = dsPayload();
+  const bad = dsValidate(base);
   if (bad) { toast(bad); return; }
   if (DS.submitting) return;
   DS.submitting = true; dsPaint();
   try {
+    const p = await dsPayloadWithPhotos(); /* lines 合計 + qty_slots／photos／folder_hint */
     const body = Object.assign({ action: 'dimbook_measure', app_version: APP_VERSION }, p);
     const nm = (typeof Store !== 'undefined' && Store.prefs && Store.prefs.ckName) || '';
     if (nm) body.name = nm;
-    const o = await gasCall(body, 60000);
+    const wait = 60000 + Math.min(120000, (p.photos || []).length * 8000);
+    const o = await gasCall(body, wait);
     DS.lastReply = o || { ok: false, error: 'no_reply' };
     if (o && o.ok) {
-      toast('已交 Dimbook（已上雲）' + (o.dimbook_id ? ' · ' + o.dimbook_id : ''), 3500);
+      toast('已交 Dimbook（已上雲）' + (o.dimbook_id ? ' · ' + o.dimbook_id : '') + ((p.photos || []).length ? ' · 相 ' + p.photos.length : ''), 3500);
       if (DS.draftId) {
         const all = dsDraftsAll();
         delete all[DS.draftId];
         dsDraftsWrite(all);
       }
-      dsClearFormKeepDraftFlag();
+      await dsClearFormKeepDraftFlag();
     } else {
       const err = (o && o.error) || 'bad_reply';
       const msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.59 dimbook_measure）'
@@ -8897,7 +9077,7 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
       '.dsform .dslbl,.dslbl{display:block;font-size:13px;color:#555;margin:8px 0 0}.dsform .inp,#ds_q,#ds_job,#ds_wd,#ds_cat,#ds_sub,#ds_sub2,#ds_sub3{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
       '.dscheck{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:16px}.dscheck input{width:20px;height:20px}' +
       '.dsline{border-top:1px solid #eee;padding:10px 0}.dsline:first-of-type{border-top:0}.dslineh{display:flex;justify-content:space-between;align-items:center;gap:8px}' +
-      '.dsqty{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:15px}.dsqtylab{flex:0 0 auto;padding-top:10px}.dsqtyboxes{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex:1}.dsqty1{display:inline-flex;align-items:center;gap:2px}.dsqty1 input{width:88px;font-size:18px;min-height:40px;padding:0 8px}.dsqtyadd{min-height:40px;padding:0 12px;font-size:18px;font-weight:700}.dsqtyrm{font-size:20px;padding:0 4px;line-height:1}.dsqtysum{margin-left:4px}' +
+      '.dsqty{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:15px}.dsqtylab{flex:0 0 auto;padding-top:10px}.dsqtyboxes{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;flex:1}.dsqty1{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa}.dsqty1 input{width:72px;font-size:18px;min-height:40px;padding:0 8px}.dsqtycam,.dsqtygal{min-height:36px;padding:0 8px;font-size:16px}.dsqtyphwrap{display:inline-flex;align-items:center;gap:2px}.dsqtyph{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;background:#eee}.dsqtyphrm{font-size:12px;padding:0 2px}.dsqtyadd{min-height:40px;padding:0 12px;font-size:18px;font-weight:700}.dsqtyrm{font-size:20px;padding:0 4px;line-height:1}.dsqtysum{margin-left:4px}' +
       '.dsitem{text-align:left;width:100%}.dsadd{color:#1d4ed8;font-weight:700;margin-top:4px}.dsprice{font-size:12px}' +
       '.dspre{white-space:pre-wrap;word-break:break-word;background:#f8fafc;border-radius:8px;padding:10px;font-size:12px;max-height:280px;overflow:auto}';
     document.head.appendChild(s);
