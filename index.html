@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.61';
+const APP_VERSION = '0.6.62';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8110,7 +8110,7 @@ const DS_CATS = [
   { id: '螺絲', test: 'bolt' },
   { id: '銅掣／波子掣', test: 'valvegroup', subs: [
     { id: '銅掣', label: '銅掣' },
-    { id: '波子掣', label: '波子掣（含四分一吋）／銅球掣' }
+    { id: '波子掣', label: '波子掣（1/4吋／1吋）／銅球掣' }
   ]},
   { id: '喉轆', test: 'hosereel' },
   { id: '電線', test: 'cable', subs: [
@@ -8261,8 +8261,9 @@ function dsValveSub(it, sub) {
     case '銅掣':
       return /^VA-SGAV-BR-/i.test(code) || /銅掣/.test(hay);
     case '波子掣':
-      /* 唔包生鐵閘掣／生鐵球掣；四分一吋＝VA-COCK-BS-0009（below 10mm） */
-      return /^VA-COCK-/i.test(code) || /^VA-SGBV-/i.test(code) || /波子掣|銅球掣/.test(hay);
+      /* 唔包生鐵；1/4吋＝VA-COCK-BS-0009；1吋＝FM-COCK-XX-0025 */
+      return /^VA-COCK-/i.test(code) || /^FM-COCK-/i.test(code)
+        || /^VA-SGBV-/i.test(code) || /波子掣|銅球掣/.test(hay);
     default:
       return false;
   }
