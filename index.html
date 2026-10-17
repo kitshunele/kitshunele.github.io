@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.86';
+const APP_VERSION = '0.6.87';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -3442,11 +3442,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target &&
 window.addEventListener('hashchange', () => { if (cur.view !== 'clock') { cksReset(); if (CK.step === 'stat') CK.step = 'home'; } });
 (function () { try { const st = document.createElement('style'); st.textContent = '.cksbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.cksbar input[type=date]{font-size:17px;padding:6px;border:1px solid var(--line);border-radius:8px}.cksbar #cksreload{margin-left:auto}.ckscnt{margin:6px 0 10px;font-size:15px}.cksc-none{color:#6b7280}.cksc-open{color:#b45309}.cksc-done{color:#15803d}.cksrow .t{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}.cksl{margin:2px 0}.cksl .ckin,.cksl .ckout{display:inline-block;min-width:38px;font-weight:700}.cksb-none{background:#f3f4f6;color:#374151}.cksb-open{background:#fef3c7;color:#92400e}.cksb-done{background:#dcfce7;color:#166534}.cksrow.cks-open{border:2px solid #f59e0b;background:#fffbeb}.cksmiss{color:#b91c1c;font-weight:700}.cksdet{margin-top:4px;font-size:14px}'; document.head.appendChild(st); } catch (e) {} })();
 
-/* ---------- v0.6.86 📅 消防檢日曆查詢（只讀）----------
+/* ---------- v0.6.87 📅 消防檢日曆查詢（只讀）----------
    資料：RM Schedule Link (FS) + Kit Fax → fs_schedule.json（TNS）；Apps Script data/fs_schedule。
-   v0.6.86：預設淨樓名；撳樓名先顯示直線號碼（像電話就 tel: 可撥）。 */
+   v0.6.87：日曆各類檢（Link／季檢／半年檢／年檢）預設顯示樓名＋直線號碼。 */
 const LS_SC = 'fsapp20259005.sched.v1', SC_MAX = 60;
-let SC = { loading: false, err: '', errCode: '', live: false, m: '', q: '', g: '', est: '', loc: '', typ: 'link', open: {} }; /* typ: ''全部 | link | quarter | half | annual；open[id]=撳開睇直線 */
+let SC = { loading: false, err: '', errCode: '', live: false, m: '', q: '', g: '', est: '', loc: '', typ: 'link' }; /* typ: ''全部 | link | quarter | half | annual */
 const SC_MSG = {
   bad_action: '公司伺服器（Apps Script）仲係舊版，未有「消防檢日曆查詢」功能。要更新到 v1.5（重新部署）先用得；更新之後唔使改任何設定。',
   not_found: '公司 Drive 未有消防檢日曆（fs_schedule.json 未上載）。',
@@ -3491,7 +3491,7 @@ function scCol(tp) { return SC_COL[tp] || '#64748b'; }
 function scTypLabel(tp) {
   return tp === 'annual' ? '年檢' : tp === 'half' ? '半年檢' : tp === 'quarter' ? '季檢' : tp === 'link' ? 'Link test' : '';
 }
-/** 樓名（預設畫面）；直線號碼要撳先出 */
+/** 樓名；各類檢都有就一齊顯示直線號碼 */
 function scBldgName(x) { return ((x.loc || '').trim() || (x.link || '').trim() || '—'); }
 function scLinkNo(x) { return (x.link || '').trim(); }
 /** 像香港電話（8 位／+852）先當可撥；FT-／FA-／K- 編號唔係電話 */
@@ -3507,18 +3507,16 @@ function scTelHref(no) {
   if (d.startsWith('852') && d.length === 11) return 'tel:+' + d;
   return 'tel:' + d;
 }
-/** 展開後顯示嘅直線／號碼（電話 → 可撥連結） */
-function scLinkReveal(no) {
+function scLinkSpan(no) {
   if (!no) return '';
   if (scIsTel(no)) return `<a class="sctel" href="${esc(scTelHref(no))}">${esc(no)}</a>`;
-  return `<span class="sctel">直線 ${esc(no)}</span>`;
+  return `<span class="sctel">${esc(no)}</span>`;
 }
-/** 月曆／搜尋共用：樓名掣＋撳開先出號碼 */
-function scBldgBtn(x, extra) {
-  const no = scLinkNo(x), name = esc(scBldgName(x)), open = !!(SC.open && SC.open[x.id]);
-  const tip = no ? (open ? '隱藏直線' : '撳睇直線') : '';
-  if (!no) return `<span class="scbname">${name}</span>${extra || ''}`;
-  return `<button type="button" class="scbldg${open ? ' open' : ''}" data-act="scbldg" data-id="${esc(x.id)}" aria-expanded="${open ? 'true' : 'false'}" title="${tip}"><span class="scbname">${name}</span><small class="scchev">${open ? '▾' : '▸'}</small>${extra || ''}</button>${open ? `<span class="sclink">${scLinkReveal(no)}</span>` : ''}`;
+/** 月曆／搜尋共用：預設「樓名　直線號碼」（各類檢） */
+function scBldgLabel(x, extra) {
+  const no = scLinkNo(x), name = esc(scBldgName(x));
+  const linkBit = no ? ` <span class="sclink">${scLinkSpan(no)}</span>` : '';
+  return `<span class="scbname">${name}</span>${linkBit}${extra || ''}`;
 }
 function scFutDates(d, today) { return (d || []).filter(s => s >= today); }
 function scType(x) {
@@ -3570,7 +3568,7 @@ function scMonthHtml(ca) {
       ${ests.map(e => { const en = scEn(by.get(e)[0]).est; return `<div class="scest"><b>${esc(e)}</b>${en ? ` <span class="mut">${esc(en)}</span>` : ''}<div class="scloc">${by.get(e).map(x => {
         const tp = scType(x), lab = scTypLabel(tp), col = scCol(tp);
         const typBit = (SC.typ === '' && tp !== 'link' && lab) ? ` <b class="sctyp" style="color:var(--sc)">${lab}</b>` : '';
-        return `<span class="sctag" style="--sc:${col}"><i style="background:var(--sc)"></i>${scBldgBtn(x, typBit)}</span>`;
+        return `<span class="sctag" style="--sc:${col}"><i style="background:var(--sc)"></i>${scBldgLabel(x, typBit)}</span>`;
       }).join('')}</div></div>`; }).join('')}</div>`;
   }).join('');
 }
@@ -3587,7 +3585,7 @@ function scSearchHtml(ca) {
     const col = scCol(tp);
     const isLink = tp === 'link';
     return `<div class="card scrow${x.cx ? ' sccx' : ''}" style="${x.cx ? '' : 'border-left:4px solid ' + col}">
-      <div class="t">${scBldgBtn(x)}${x.cx ? '<span class="badge draft">已取消</span>' : (!isLink && typBadge) ? `<span class="badge" style="background:${col};color:#fff;border:0">${esc(typBadge)}</span>` : ''}</div>
+      <div class="t">${scBldgLabel(x)}${x.cx ? '<span class="badge draft">已取消</span>' : (!isLink && typBadge) ? `<span class="badge" style="background:${col};color:#fff;border:0">${esc(typBadge)}</span>` : ''}</div>
       <div class="mut">${esc(x.est || '—')}${(!isLink && en.est) ? ' · ' + esc(en.est) : ''}${(!isLink && en.loc) ? ' · ' + esc(en.loc) : ''}</div>
       ${x.cx ? '<div class="mut">呢條線已取消，冇排期。</div>' : `<div class="scnext">${nx ? `下次：<b>${scMd(nx)}</b>${nx === today ? ' <span class="badge pend">今日</span>' : ''}` : '已冇未過期排期'}</div>
       <div class="scyear">${ms.map(m => `<b>${+m.slice(5, 7)}月${m.slice(5, 7) === '01' || m === ms[0] ? `<small>${m.slice(2, 4)}</small>` : ''}</b><span>${(bym.get(m) || []).map(s => `<i class="${s === today ? 'td' : ''}">${+s.slice(8, 10)}</i>`).join('') || '—'}</span>`).join('')}</div>`}</div>`;
@@ -3642,13 +3640,10 @@ async function scClear() {
       '.scloc .sctag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;margin:2px 8px 2px 0;font-size:14px}' +
       '.scloc .sctag i{width:8px;height:8px;border-radius:50%;flex:0 0 auto;display:inline-block}' +
       '.scloc .sctag b.sctyp{font-weight:600;font-size:12px}' +
-      '.scbldg{appearance:none;background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;display:inline-flex;align-items:center;gap:4px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent}' +
-      '.scbldg .scbname{text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}' +
-      '.scbldg.open .scbname{text-decoration:none;font-weight:600}' +
-      '.scbldg .scchev{font-size:11px;opacity:.55;line-height:1}' +
-      '.sclink{display:inline-block;margin-left:4px;font-size:13px;font-weight:600;color:var(--sc,#2563eb)}' +
+      '.scloc .sclink,.scrow .sclink{font-weight:600;color:var(--sc,#2563eb)}' +
+      '.scloc .sclink{font-size:13px}' +
       '.scrow .t{display:flex;flex-wrap:wrap;align-items:center;gap:6px}' +
-      '.scrow .sclink{display:block;width:100%;margin:2px 0 0;font-size:15px}' +
+      '.scrow .sclink{font-size:15px}' +
       'a.sctel{color:inherit;font-weight:700;text-decoration:underline}';
     document.head.appendChild(s);
   } catch (e) {}
@@ -9874,7 +9869,6 @@ document.addEventListener('click', async e => {
     case 'scnext': SC.m = scAddM(SC.m || hkDate().slice(0, 7), 1); return render();
     case 'scthis': SC.m = hkDate().slice(0, 7); return render();
     case 'sctyp': SC.typ = el.dataset.v || ''; return render();
-    case 'scbldg': { const id = el.dataset.id || ''; if (!id) return; SC.open = SC.open || {}; SC.open[id] = !SC.open[id]; const l = document.getElementById('sclist'); if (l) l.innerHTML = scListHtml(); else render(); return; }
     case 'scclear': return scClear();
     case 'ecreload': EC.live = false; EC.err = ''; return ecLoad();
     case 'ecst': EC.f.st = el.dataset.v || ''; return render();
