@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.69';
+const APP_VERSION = '0.6.70';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8229,6 +8229,20 @@ function dsClearFormKeepDraftFlag() {
   DS.lines = []; DS.cat = ''; DS.sub = ''; DS.sub2 = ''; DS.q = '';
   DS.draftId = null;
 }
+function dsFormHasContent() {
+  return !!(String(DS.job_ref || '').trim()
+    || (DS.lines && DS.lines.length)
+    || DS.estate || DS.estateTxt
+    || String(DS.work_desc || '').trim());
+}
+function dsNewDraft() {
+  /* 開一份空白新暫存；有未存內容先 silent autosave 入而家呢份，唔無聲丟 */
+  if (dsFormHasContent()) dsSaveDraft(true);
+  dsClearFormKeepDraftFlag();
+  DS.draftId = (typeof newId === 'function' ? newId('ds') : ('ds' + Date.now()));
+  toast('已開新一份度數（空白）', 2500);
+  dsPaint();
+}
 function dsDraftsHtml() {
   const all = dsDraftsAll();
   const list = Object.keys(all).map(k => all[k]).sort((a, b) => (b.updated || 0) - (a.updated || 0));
@@ -8248,6 +8262,7 @@ function dsDraftsHtml() {
     : '<div class="mut">未有手機暫存。度數未完可撳「暫存到手機」。上雲（送 Dimbook）後會自動清走呢份。</div>';
   return `<div class="card"><h3>手機暫存</h3>
     <div class="mut" style="margin-bottom:8px">未度完可暫存呢部手機；可查閱／繼續，直至送上雲端（Dimbook）。</div>
+    <button type="button" class="btn pri" style="width:100%;margin-bottom:8px" data-ds="newdraft">＋ 新增度數</button>
     ${rows}
     <button type="button" class="btn" style="width:100%;margin-top:8px" data-ds="savedraft">暫存到手機（未上雲）</button>
   </div>`;
@@ -8671,6 +8686,7 @@ document.addEventListener('click', e => {
   }
   if (a === 'rm') { DS.lines.splice(+b.dataset.i, 1); return dsPaint(); }
   if (a === 'savedraft') return dsSaveDraft(false);
+  if (a === 'newdraft') return dsNewDraft();
   if (a === 'opendraft') return dsOpenDraft(b.dataset.rid);
   if (a === 'deldraft') return dsDeleteDraft(b.dataset.rid);
   if (a === 'submit') return dsSubmit();
