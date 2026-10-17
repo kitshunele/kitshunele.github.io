@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.50';
+const APP_VERSION = '0.6.51';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8107,7 +8107,7 @@ const DS_CATS = [
   { id: '過路箱', test: 'abox' }
 ];
 const DS = {
-  q: '', cat: '', show: 40, items: null, err: '', busy: false,
+  q: '', cat: '', sub: '', show: 40, items: null, err: '', busy: false,
   job_ref: '', estate: '', estateTxt: '', building: '', buildingTxt: '',
   work_desc: '', is_ecall: false, ecallTouched: false,
   lines: [], /* {code, qty, search, desc} */
@@ -8168,8 +8168,18 @@ function dsInCat(it, catId) {
   const desc = String(it.desc || '');
   const hay = search + ' ' + desc;
   switch (def.test) {
-    case 'pipe': /* 水喉：PI 喉管類（曲尺 SCEW 都算喉件） */
-      return /^PI-/i.test(code) || /^BG-PIPE-/i.test(code);
+    case 'pipe': { /* 水喉：先 DI／GI 再篩 */
+      if (!(/^PI-/i.test(code) || /^BG-PIPE-/i.test(code))) return false;
+      const sub = String(DS.sub || '');
+      if (!sub) return false; /* 要先揀 DI喉／GI喉 */
+      if (sub === 'DI喉') {
+        return /[-_]DI[-_]/i.test(code) || /球墨|ductile|\bDI喉\b/i.test(hay);
+      }
+      if (sub === 'GI喉') {
+        return /[-_]GI[-_]/i.test(code) || (/鉛水/.test(hay) && !/燈喉/.test(hay)) || /galvanis/i.test(hay);
+      }
+      return false;
+    }
     case 'bolt': /* 螺絲：中文「螺絲」或螺栓 code */
       return /螺絲/.test(hay) || /^ML-BONU-/i.test(code) || /^ML-TDEX-/i.test(code)
         || /^FM-SSBN-/i.test(code) || /^SP-STUD-/i.test(code);
@@ -8274,6 +8284,7 @@ function dsHitsHtml() {
   const catN = DS.cat ? (' · 分類「' + esc(DS.cat) + '」') : ' · 已唔顯示消防檢 FI-*';
   const head = `<div class="mut" style="margin:4px 2px 8px">價目 ${n} 項${catN} · 顯示 ${hits.length}${DS.q ? '（再搜「' + esc(DS.q) + '」）' : ''}</div>`;
   if (!DS.cat) return '<div class="card mut">先喺上面揀分類（水喉／螺絲／閘掣等）。消防檢項目唔使度數。</div>';
+  if (DS.cat === '水喉' && !DS.sub) return '<div class="card mut">水喉請再揀 DI喉 或 GI喉。</div>';
   if (!hits.length) return head + '<div class="card mut">呢分類暫時冇項目。試第二個分類，或者改搜尋字。</div>';
   return head + hits.map(it => {
     const pr = dsPriceTxt(it);
@@ -8299,12 +8310,20 @@ function dsPreviewHtml() {
 function dsCatSelHtml() {
   const opts = ['<option value="">— 揀要度數嘅種類 —</option>']
     .concat(DS_CATS.map(c => `<option value="${esc(c.id)}" ${DS.cat === c.id ? 'selected' : ''}>${esc(c.id)}</option>`));
+  const subOpts = ['<option value="">— 揀 DI喉／GI喉 —</option>',
+    `<option value="DI喉" ${DS.sub === 'DI喉' ? 'selected' : ''}>DI喉（球墨／ductile）</option>`,
+    `<option value="GI喉" ${DS.sub === 'GI喉' ? 'selected' : ''}>GI喉（鉛水／鍍鋅）</option>`];
+  const needSub = DS.cat === '水喉';
+  const ready = DS.cat && (!needSub || DS.sub);
   return `<div class="card"><h3>項目種類（下拉）</h3>
     <label class="dslbl">一般要度數：水喉／螺絲／閘掣／喉轆／電線／燈喉／過路箱
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
+    ${needSub ? `<label class="dslbl">水喉物料
+      <select class="inp" id="ds_sub" aria-label="水喉 DI 或 GI">${subOpts.join('')}</select>
+    </label>` : ''}
     <div class="mut" style="margin-top:6px">消防檢唔使度數；清單已唔顯示 FI-*。</div>
-    ${DS.cat ? `<label class="dslbl">喺「${esc(DS.cat)}」入面再搜（可留空）<input class="inp" id="ds_q" value="${esc(DS.q)}" placeholder="例：100mm、膜片、過路" autocomplete="off" enterkeyhint="search"></label>` : ''}
+    ${ready ? `<label class="dslbl">喺「${esc(DS.cat)}${DS.sub ? ' · ' + esc(DS.sub) : ''}」入面再搜（可留空）<input class="inp" id="ds_q" value="${esc(DS.q)}" placeholder="例：100mm、法蘭" autocomplete="off" enterkeyhint="search"></label>` : ''}
   </div>`;
 }
 function dsBody() {
@@ -8362,7 +8381,8 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target; if (!t || cur.view !== 'dosu') return;
-  if (t.id === 'ds_cat') { DS.cat = t.value || ''; DS.q = ''; dsPaint(); return; }
+  if (t.id === 'ds_cat') { DS.cat = t.value || ''; DS.sub = ''; DS.q = ''; dsPaint(); return; }
+  if (t.id === 'ds_sub') { DS.sub = t.value || ''; DS.q = ''; dsPaint(); return; }
   if (t.id === 'ds_ecall') { DS.ecallTouched = true; DS.is_ecall = !!t.checked; dsPaint(); return; }
   if (t.matches && t.matches('input[data-ds="qty"]')) { dsSetQty(+t.dataset.i, t.value); }
 });
@@ -8425,7 +8445,7 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   try {
     const s = document.createElement('style');
     s.textContent =
-      '.dsform .dslbl,.dslbl{display:block;font-size:13px;color:#555;margin:8px 0 0}.dsform .inp,#ds_q,#ds_job,#ds_wd,#ds_cat{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
+      '.dsform .dslbl,.dslbl{display:block;font-size:13px;color:#555;margin:8px 0 0}.dsform .inp,#ds_q,#ds_job,#ds_wd,#ds_cat,#ds_sub{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
       '.dscheck{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:16px}.dscheck input{width:20px;height:20px}' +
       '.dsline{border-top:1px solid #eee;padding:10px 0}.dsline:first-of-type{border-top:0}.dslineh{display:flex;justify-content:space-between;align-items:center;gap:8px}' +
       '.dsqty{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:15px}.dsqty input{width:96px;font-size:18px;min-height:40px;padding:0 8px}' +
