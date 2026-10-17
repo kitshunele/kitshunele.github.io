@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.49';
+const APP_VERSION = '0.6.50';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8097,14 +8097,14 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    提交：gasCall `dimbook_measure`（GAS v1.59+）→ Dimbook webhook（Script Properties）。 */
 const DS_ITEMS_URL = 'ss_items.json'; /* 同 PWA 目錄一齊上；stage／Pages 相對路徑 */
 const DS_CATS = [
-  { id: '水喉', kws: ['水喉', '水管', '喉管', 'gi管', '銅喉', '喉件', 'water pipe', 'pipework'] },
-  { id: '螺絲', kws: ['螺絲', '螺帽', 'bolt', 'screw', 'nut'] },
-  { id: '閘掣', kws: ['閘掣', 'gate valve', '止回', '球掣', '蝶掣', 'valve', '減壓掣', 'control valve'] },
-  { id: '喉轆', kws: ['喉轆', 'hose reel', 'hose-reel'] },
-  { id: '電線', kws: ['電線', '電纜', 'cable', '配線', 'wiring'] },
-  { id: '燈', kws: ['燈', 'light', '照明', '出口燈', 'emergency light'] },
-  { id: '喉', kws: ['軟喉', 'hose', '消防喉', '喉咀', '喉碼'] },
-  { id: '過路箱', kws: ['過路箱', 'junction', '接線箱', '過路'] }
+  /* FAN／SV PE：水喉、螺絲、閘掣、喉轆、電線、燈喉、過路箱 — 跟 Rate Book code／中文俗稱，唔用鬆 keyword */
+  { id: '水喉', test: 'pipe' },
+  { id: '螺絲', test: 'bolt' },
+  { id: '閘掣', test: 'gate' },
+  { id: '喉轆', test: 'hosereel' },
+  { id: '電線', test: 'cable' },
+  { id: '燈喉', test: 'conduit' },
+  { id: '過路箱', test: 'abox' }
 ];
 const DS = {
   q: '', cat: '', show: 40, items: null, err: '', busy: false,
@@ -8155,19 +8155,40 @@ function dsValidate(p) {
 }
 function dsNorm(s) { return String(s || '').normalize('NFKC').toLowerCase().replace(/[\s\u3000]+/g, ''); }
 function dsIsFireInspItem(it) {
-  /* 消防檢／火警 panel 類：度數唔用（FAN 2026-10-17） */
+  /* 消防檢／火警 panel 類：度數唔用 */
   return /^FI-/i.test(String((it && it.code) || ''));
 }
 function dsCatDef(id) { return DS_CATS.find(c => c.id === id) || null; }
 function dsInCat(it, catId) {
-  if (dsIsFireInspItem(it)) return false;
+  if (!it || dsIsFireInspItem(it)) return false;
   if (!catId) return true;
   const def = dsCatDef(catId); if (!def) return true;
-  const hay = dsNorm((it.search || '') + ' ' + (it.code || '') + ' ' + (it.desc || ''));
-  for (let i = 0; i < def.kws.length; i++) {
-    if (hay.indexOf(dsNorm(def.kws[i])) >= 0) return true;
+  const code = String(it.code || '');
+  const search = String(it.search || '');
+  const desc = String(it.desc || '');
+  const hay = search + ' ' + desc;
+  switch (def.test) {
+    case 'pipe': /* 水喉：PI 喉管類（曲尺 SCEW 都算喉件） */
+      return /^PI-/i.test(code) || /^BG-PIPE-/i.test(code);
+    case 'bolt': /* 螺絲：中文「螺絲」或螺栓 code */
+      return /螺絲/.test(hay) || /^ML-BONU-/i.test(code) || /^ML-TDEX-/i.test(code)
+        || /^FM-SSBN-/i.test(code) || /^SP-STUD-/i.test(code);
+    case 'gate': /* 閘掣：生鐵／銅閘掣同 gate valve code */
+      return /閘掣/.test(hay) || /^VA-FGAV-/i.test(code) || /^VA-SGAV-/i.test(code)
+        || /^VA-FGBV-/i.test(code) || /^VA-SGBV-/i.test(code) || (/GATE/i.test(code) && /^VA-/i.test(code));
+    case 'hosereel':
+      return /喉轆/.test(search) || /^FM-HR-/i.test(code) || /^FM-NOZZ-/i.test(code)
+        || /^FM-CAP-NZ-/i.test(code) || /^FM-BRAC-HR-/i.test(code) || /^FM-TUBE-HR-/i.test(code)
+        || /^FM-COCK-XX-/i.test(code) || /^FM-HREL-/i.test(code);
+    case 'cable':
+      return /電線/.test(search) || /^EL-CABL-/i.test(code) || /^FE-CMI-/i.test(code);
+    case 'conduit': /* 燈喉＝conduit EL-COND */
+      return /燈喉/.test(hay) || /^EL-COND-/i.test(code);
+    case 'abox':
+      return /過路箱/.test(search) || /^EL-ABOX-/i.test(code) || /^EL-CPSM-/i.test(code);
+    default:
+      return false;
   }
-  return false;
 }
 function dsSearchHits(q) {
   const items = ((DS.items && DS.items.items) || []).filter(it => dsInCat(it, DS.cat));
@@ -8279,7 +8300,7 @@ function dsCatSelHtml() {
   const opts = ['<option value="">— 揀要度數嘅種類 —</option>']
     .concat(DS_CATS.map(c => `<option value="${esc(c.id)}" ${DS.cat === c.id ? 'selected' : ''}>${esc(c.id)}</option>`));
   return `<div class="card"><h3>項目種類（下拉）</h3>
-    <label class="dslbl">一般要度數：水喉／螺絲／閘掣／喉轆／電線／燈／喉／過路箱
+    <label class="dslbl">一般要度數：水喉／螺絲／閘掣／喉轆／電線／燈喉／過路箱
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
     <div class="mut" style="margin-top:6px">消防檢唔使度數；清單已唔顯示 FI-*。</div>
