@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.72';
+const APP_VERSION = '0.6.73';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8090,7 +8090,7 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* ---------- v0.6.49 📏 度數（下拉分類＋數量 → 交 Dimbook）----------
+/* ---------- v0.6.73 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
    FAN（2026-10-17 App 群）：消防檢唔使度數；一般要度數＝水喉／螺絲／閘掣／喉轆／電線／燈／喉／過路箱 → 做下拉。
    FAN（2026-10-17）：燈喉＋過路箱放埋一齊，加埋梳／夾／杯臣／喉碼；撳入去再分類。燈喉／梳結／過路箱用 EL-*；各類跟價目字頭（水喉 PI、掣 VA、電 EL、喉轆 FM）。
    FAN（2026-10-17）：水喉下一層用尺寸（Ømm，跟 ss search）；再淨係 GI／DI；揀完即出價目（*-GI-*／*-DI-*）；梳／夾／杯臣／喉碼收喺 GI 清單，唔再多一層下拉。
@@ -8148,7 +8148,7 @@ const DS = {
   q: '', cat: '', sub: '', sub2: '', sub3: '', show: 100, items: null, err: '', busy: false,
   job_ref: '', estate: '', estateTxt: '', building: '', buildingTxt: '',
   work_desc: '', is_ecall: false, ecallTouched: false,
-  lines: [], /* {code, qty, search, desc} */
+  lines: [], /* {code, qty, qtys:[…], search, desc} — qty=qtys 合計（送 Dimbook 只用 qty） */
   lastPayload: null, lastReply: null, submitting: false,
   draftId: null, /* 而家編緊邊份手機暫存 */
   showDrafts: true
@@ -8159,6 +8159,26 @@ function dsDraftsAll() {
 }
 function dsDraftsWrite(a) {
   try { localStorage.setItem(DS_DRAFT_LS, JSON.stringify(a || {})); } catch (e) {}
+}
+function dsEnsureQtys(l) {
+  if (!l) return;
+  if (Array.isArray(l.qtys) && l.qtys.length) return;
+  const n = Number(l.qty);
+  l.qtys = (isFinite(n) && n > 0) ? [Math.round(n * 1000) / 1000] : [''];
+}
+function dsSumQtys(l) {
+  dsEnsureQtys(l);
+  let s = 0;
+  for (const v of (l.qtys || [])) {
+    const n = Number(v);
+    if (isFinite(n) && n > 0) s += n;
+  }
+  return Math.round(s * 1000) / 1000;
+}
+function dsSyncQty(l) {
+  if (!l) return 0;
+  l.qty = dsSumQtys(l);
+  return l.qty;
 }
 function dsDraftLabel(d) {
   const job = (d && d.job_ref) || '（未填 job）';
@@ -8177,7 +8197,10 @@ function dsSnapDraft() {
     work_desc: String(DS.work_desc || '').trim(),
     is_ecall: !!DS.is_ecall,
     ecallTouched: !!DS.ecallTouched,
-    lines: (DS.lines || []).map(l => ({ code: l.code, qty: l.qty, search: l.search || '', desc: l.desc || '' })),
+    lines: (DS.lines || []).map(l => {
+      dsEnsureQtys(l); dsSyncQty(l);
+      return { code: l.code, qty: l.qty, qtys: (l.qtys || []).slice(), search: l.search || '', desc: l.desc || '' };
+    }),
     updated: Date.now()
   };
 }
@@ -8207,7 +8230,11 @@ function dsOpenDraft(rid) {
   DS.work_desc = d.work_desc || '';
   DS.is_ecall = !!d.is_ecall;
   DS.ecallTouched = !!d.ecallTouched;
-  DS.lines = Array.isArray(d.lines) ? d.lines.map(l => Object.assign({}, l)) : [];
+  DS.lines = Array.isArray(d.lines) ? d.lines.map(l => {
+    const o = Object.assign({}, l);
+    dsEnsureQtys(o); dsSyncQty(o);
+    return o;
+  }) : [];
   DS.cat = ''; DS.sub = ''; DS.sub2 = ''; DS.sub3 = ''; DS.q = '';
   toast('已開手機暫存——可改；撳「送去 Dimbook」先上雲', 3000);
   dsPaint();
@@ -8287,7 +8314,7 @@ function dsIsEcall() {
   return /^K/i.test(String(DS.job_ref || '').trim());
 }
 function dsPayload() {
-  const lines = DS.lines.filter(l => l && l.code && Number(l.qty) > 0).map(l => ({ code: l.code, qty: Number(l.qty) }));
+  const lines = DS.lines.filter(l => l && l.code).map(l => { dsSyncQty(l); return l; }).filter(l => Number(l.qty) > 0).map(l => ({ code: l.code, qty: Number(l.qty) }));
   const o = {
     job_ref: String(DS.job_ref || '').trim(),
     estate: dsEstName(),
@@ -8562,15 +8589,36 @@ async function dsLoadItems(force) {
 function dsAddLine(it) {
   if (!it || !it.code) return;
   const ex = DS.lines.find(l => l.code === it.code);
-  if (ex) { ex.qty = Number(ex.qty || 0) + 1; toast('已加數量：' + it.code); }
-  else DS.lines.push({ code: it.code, qty: 1, search: it.search || '', desc: it.desc || '' });
+  if (ex) {
+    dsEnsureQtys(ex);
+    const n0 = Number(ex.qtys[0]);
+    ex.qtys[0] = Math.round(((isFinite(n0) && n0 > 0 ? n0 : 0) + 1) * 1000) / 1000;
+    dsSyncQty(ex);
+    toast('已加數量：' + it.code);
+  } else DS.lines.push({ code: it.code, qty: 1, qtys: [1], search: it.search || '', desc: it.desc || '' });
   dsPaint();
 }
-function dsSetQty(i, v) {
+function dsSetQtyBox(i, j, v) {
   const l = DS.lines[i]; if (!l) return;
+  dsEnsureQtys(l);
+  if (j < 0 || j >= l.qtys.length) return;
   const n = Number(v);
-  if (!isFinite(n) || n <= 0) { DS.lines.splice(i, 1); }
-  else l.qty = Math.round(n * 1000) / 1000;
+  l.qtys[j] = (isFinite(n) && n > 0) ? (Math.round(n * 1000) / 1000) : (String(v || '').trim() === '' ? '' : v);
+  if (!(dsSyncQty(l) > 0)) DS.lines.splice(i, 1);
+  dsPaint();
+}
+function dsAddQtyBox(i) {
+  const l = DS.lines[i]; if (!l) return;
+  dsEnsureQtys(l);
+  l.qtys.push('');
+  dsPaint();
+}
+function dsRmQtyBox(i, j) {
+  const l = DS.lines[i]; if (!l) return;
+  dsEnsureQtys(l);
+  if (l.qtys.length <= 1) return;
+  l.qtys.splice(j, 1);
+  if (!(dsSyncQty(l) > 0)) DS.lines.splice(i, 1);
   dsPaint();
 }
 function dsFormHtml() {
@@ -8593,10 +8641,18 @@ function dsFormHtml() {
 function dsLinesHtml() {
   if (!DS.lines.length) return '<div class="card mut">未揀項目。上面揀種類，再撳「＋ 加入」。</div>';
   return `<div class="card"><h3>已揀（${DS.lines.length}）</h3>` + DS.lines.map((l, i) => {
+    dsEnsureQtys(l); dsSyncQty(l);
+    const boxes = (l.qtys || []).map((v, j) => {
+      const rm = (l.qtys.length > 1)
+        ? `<button type="button" class="lnk dsqtyrm" data-ds="qtyrm" data-i="${i}" data-j="${j}" aria-label="刪格">−</button>`
+        : '';
+      return `<span class="dsqty1"><input type="number" min="0" step="any" value="${esc(v)}" data-ds="qty" data-i="${i}" data-j="${j}" inputmode="decimal">${rm}</span>`;
+    }).join('');
+    const tot = (l.qtys.length > 1 && Number(l.qty) > 0) ? `<span class="mut dsqtysum">合 ${esc(l.qty)}</span>` : '';
     return `<div class="dsline" data-i="${i}">
       <div class="dslineh"><b>${esc(l.search || l.code)}</b><button type="button" class="lnk" data-ds="rm" data-i="${i}" aria-label="刪">✕</button></div>
       <div class="mut">${esc(l.code)}${l.desc ? ' · ' + esc(l.desc) : ''}</div>
-      <label class="dsqty">數量 <input type="number" min="0.001" step="any" value="${esc(l.qty)}" data-ds="qty" data-i="${i}" inputmode="decimal"></label>
+      <div class="dsqty"><span class="dsqtylab">數量</span><div class="dsqtyboxes">${boxes}<button type="button" class="btn dsqtyadd" data-ds="qtyadd" data-i="${i}" aria-label="加數量格">＋</button>${tot}</div></div>
     </div>`;
   }).join('') + '</div>';
 }
@@ -8745,9 +8801,11 @@ document.addEventListener('input', e => {
   if (t.id === 'ds_job') { DS.job_ref = t.value; if (!DS.ecallTouched) dsPaint(); return; }
   if (t.id === 'ds_wd') { DS.work_desc = t.value; return; }
   if (t.matches && t.matches('input[data-ds="qty"]')) {
-    const i = +t.dataset.i; const l = DS.lines[i]; if (!l) return;
-    const n = Number(t.value);
-    if (isFinite(n) && n > 0) l.qty = n;
+    const i = +t.dataset.i, j = +t.dataset.j; const l = DS.lines[i]; if (!l) return;
+    dsEnsureQtys(l);
+    if (!(j >= 0) || j >= l.qtys.length) return;
+    l.qtys[j] = t.value;
+    dsSyncQty(l);
     /* 唔即刻刪／重畫，等 blur／change */
   }
 });
@@ -8758,7 +8816,7 @@ document.addEventListener('change', e => {
   if (t.id === 'ds_sub2') { DS.sub2 = t.value || ''; DS.sub3 = ''; DS.q = ''; dsPaint(); return; }
   if (t.id === 'ds_sub3') { DS.sub3 = t.value || ''; DS.q = ''; dsPaint(); return; }
   if (t.id === 'ds_ecall') { DS.ecallTouched = true; DS.is_ecall = !!t.checked; dsPaint(); return; }
-  if (t.matches && t.matches('input[data-ds="qty"]')) { dsSetQty(+t.dataset.i, t.value); }
+  if (t.matches && t.matches('input[data-ds="qty"]')) { dsSetQtyBox(+t.dataset.i, +t.dataset.j, t.value); }
 });
 document.addEventListener('click', e => {
   const tile = e.target.closest('[data-act="dosu"]');
@@ -8773,6 +8831,8 @@ document.addEventListener('click', e => {
     return;
   }
   if (a === 'rm') { DS.lines.splice(+b.dataset.i, 1); return dsPaint(); }
+  if (a === 'qtyadd') { dsAddQtyBox(+b.dataset.i); return; }
+  if (a === 'qtyrm') { dsRmQtyBox(+b.dataset.i, +b.dataset.j); return; }
   if (a === 'savedraft') return dsSaveDraft(false);
   if (a === 'newdraft') return dsNewDraft();
   if (a === 'opendraft') return dsOpenDraft(b.dataset.rid);
@@ -8831,7 +8891,7 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
       '.dsform .dslbl,.dslbl{display:block;font-size:13px;color:#555;margin:8px 0 0}.dsform .inp,#ds_q,#ds_job,#ds_wd,#ds_cat,#ds_sub,#ds_sub2,#ds_sub3{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
       '.dscheck{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:16px}.dscheck input{width:20px;height:20px}' +
       '.dsline{border-top:1px solid #eee;padding:10px 0}.dsline:first-of-type{border-top:0}.dslineh{display:flex;justify-content:space-between;align-items:center;gap:8px}' +
-      '.dsqty{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:15px}.dsqty input{width:96px;font-size:18px;min-height:40px;padding:0 8px}' +
+      '.dsqty{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:15px}.dsqtylab{flex:0 0 auto;padding-top:10px}.dsqtyboxes{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex:1}.dsqty1{display:inline-flex;align-items:center;gap:2px}.dsqty1 input{width:88px;font-size:18px;min-height:40px;padding:0 8px}.dsqtyadd{min-height:40px;padding:0 12px;font-size:18px;font-weight:700}.dsqtyrm{font-size:20px;padding:0 4px;line-height:1}.dsqtysum{margin-left:4px}' +
       '.dsitem{text-align:left;width:100%}.dsadd{color:#1d4ed8;font-weight:700;margin-top:4px}.dsprice{font-size:12px}' +
       '.dspre{white-space:pre-wrap;word-break:break-word;background:#f8fafc;border-radius:8px;padding:10px;font-size:12px;max-height:280px;overflow:auto}';
     document.head.appendChild(s);
