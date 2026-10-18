@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.100';
+const APP_VERSION = '0.6.101';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8169,7 +8169,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* ---------- v0.6.99 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+/* ---------- v0.6.101 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+   FAN（2026-10-18 App 群）：Module／裝拆揀頂層即直出安裝／拆除兩項（唔使二層下拉）；同 code FE-MOD-XX-0000，lines 帶 bill:'fix'|'takedown'。
    FAN（2026-10-18 App 群）：Module／裝拆拆成「安裝 Module」（淨 Fix）／「拆除 Module」（淨 Takedown）；同 code FE-MOD-XX-0000，lines 帶 bill:'fix'|'takedown'。
    FAN（2026-10-18 App 群）：電線→電線／針躉（加針躉 EL-CONM）；Module／裝拆（FE-MOD 可揀）。
    FAN（2026-10-17 App 群）：已選擇數量格淨係相機，唔使相簿（拎走 🖼；capture=environment）。
@@ -8217,10 +8218,7 @@ const DS_CATS = [
     { id: 'Relay', label: 'Relay（CORY／TIRY／BASK 直出）' },
     { id: '索制', label: '索制（EL-CONR）' }
   ]}, /* Dimbook：Relay 直出三項；索制淨 CONR；唔使 Relay 中層 */
-  { id: 'Module／裝拆', test: 'modfix', subs: [
-    { id: '安裝 Module', label: '安裝 Module（Fix $62）' },
-    { id: '拆除 Module', label: '拆除 Module（Takedown $25）' }
-  ]}, /* FAN 0.6.99：兩揀；同 code FE-MOD；bill fix|takedown */
+  { id: 'Module／裝拆', test: 'modfix' }, /* FAN 0.6.101：頂層直出安裝＋拆除兩虛擬項；唔使二層；同 code FE-MOD；bill fix|takedown */
   { id: 'Ziton', test: 'ziton' }
 ];
 /* 水喉揀咗尺寸之後：淨係 GI／DI（FAN 0.6.72）；梳夾杯臣喉碼唔再同層，收喺 GI 清單 */
@@ -8762,12 +8760,8 @@ function dsInCat(it, catId) {
       return dsBgBellMatch(it);
     case 'relaygroup':
       return dsRelayMatch(it);
-    case 'modfix': { /* Module／裝拆：二層安裝／拆除；仍 match FE-MOD-* */
-      const sub = String(DS.sub || '');
-      if (!sub) return false;
-      if (sub === '安裝 Module' || sub === '拆除 Module') return /^FE-MOD-/i.test(code);
-      return false;
-    }
+    case 'modfix': /* Module／裝拆：頂層直出；match FE-MOD-*（唔要 DS.sub） */
+      return /^FE-MOD-/i.test(code);
     case 'ziton': /* Ziton 火警 panel／配件：價目 SR（search 含 Ziton） */
       return /ziton/i.test(search) || /ziton/i.test(String(it.desc || ''));
     default:
@@ -8802,10 +8796,12 @@ function dsModBillClone(it, bill) {
   return o;
 }
 function dsModBillVirtual(it) {
-  const sub = String(DS.sub || '');
-  if (sub === '安裝 Module') return dsModBillClone(it, 'fix');
-  if (sub === '拆除 Module') return dsModBillClone(it, 'takedown');
+  /* 0.6.101：hits 已用 dsModBillBoth；呢度只係 add 無 data-bill 時後備（唔應再靠 DS.sub） */
   return it;
+}
+function dsModBillBoth(it) {
+  /* 0.6.101：同一 FE-MOD 永遠出安裝（淨 b）＋拆除（淨 d）兩虛擬項 */
+  return [dsModBillClone(it, 'fix'), dsModBillClone(it, 'takedown')];
 }
 function dsSearchHits(q) {
   let items = ((DS.items && DS.items.items) || []).filter(it => dsInCat(it, DS.cat));
@@ -8834,9 +8830,11 @@ function dsSearchHits(q) {
   if (DS.cat === 'Relay／索制' && DS.sub === 'Relay') {
     items = items.slice().sort((a, b) => dsRelayRank(a) - dsRelayRank(b));
   }
-  /* Module／裝拆：虛擬顯示淨 Fix 或淨 Takedown */
-  if (DS.cat === 'Module／裝拆' && (DS.sub === '安裝 Module' || DS.sub === '拆除 Module')) {
-    items = items.map(dsModBillVirtual);
+  /* Module／裝拆：頂層即出安裝＋拆除兩虛擬項（唔使二層） */
+  if (DS.cat === 'Module／裝拆') {
+    const both = [];
+    items.forEach(it => { both.push.apply(both, dsModBillBoth(it)); });
+    items = both;
   }
   return items.slice(0, DS.show);
 }
@@ -9124,7 +9122,7 @@ function dsCatSelHtml() {
   }
   const path = pathBits.filter(Boolean).join(' · ');
   return `<div class="card"><h3>項目種類（下拉）</h3>
-    <label class="dslbl">一般要度數：水喉（先揀 Ømm，再 GI／DI 即出清單）／螺絲／喉轆／電線／針躉（再分普通線／防火線／針躉）／撳手／警鐘／閃燈（直出五項）／Relay／索制／Module／裝拆（再分安裝 Fix／拆除 Takedown；同 FE-MOD）／Ziton；閘掣撳入再分閘掣／銅掣／波子掣；電配件撳入再分（電只 EL；防火線含 CFR）
+    <label class="dslbl">一般要度數：水喉（先揀 Ømm，再 GI／DI 即出清單）／螺絲／喉轆／電線／針躉（再分普通線／防火線／針躉）／撳手／警鐘／閃燈（直出五項）／Relay／索制／Module／裝拆（直出安裝 Fix／拆除 Takedown；同 FE-MOD）／Ziton；閘掣撳入再分閘掣／銅掣／波子掣；電配件撳入再分（電只 EL；防火線含 CFR）
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
     ${needSub ? `<label class="dslbl">${esc(subLbl)}
