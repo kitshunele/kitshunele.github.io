@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.93';
+const APP_VERSION = '0.6.94';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8976,6 +8976,11 @@ function dsHitsHtml() {
     if (!DS.sub2) return '<div class="card mut">請再揀 GI 或 DI。</div>';
   } else if (defNeed && defNeed.subs && defNeed.subs.length && !DS.sub) {
     return '<div class="card mut">請再揀細分類（' + esc(defNeed.subs.map(s => s.id).join('／')) + '）。</div>';
+  } else if (defNeed && defNeed.subs && DS.sub) {
+    const subDef = defNeed.subs.find(s => s.id === DS.sub);
+    if (subDef && subDef.subs && subDef.subs.length && !DS.sub2) {
+      return '<div class="card mut">請再揀（' + esc(subDef.subs.map(s => s.id).join('／')) + '）。</div>';
+    }
   }
   if (!hits.length) return head + '<div class="card mut">呢分類暫時冇項目。試第二個分類，或者改搜尋字。</div>';
   return head + hits.map(it => {
