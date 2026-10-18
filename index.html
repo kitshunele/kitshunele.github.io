@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.123';
+const APP_VERSION = '0.6.124';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.123：圈選暫存（相＋圈＋答案）——關閉可「繼續」；完成加入先清。
+/* 0.6.124：人手揀 item 唔自動完成加入／唔跳返度數；淨 AI 齊先自動入。
+   0.6.123：圈選暫存（相＋圈＋答案）——關閉可「繼續」；完成加入先清。
    0.6.122：AI（或全部已有內容）完自動完成加入，唔停確認畫面；頂／底欄掣再加強對比。
    0.6.121：圈選底欄「細／大／關閉」暗底白掣加字色，唔再似空白格。
    0.6.120：AI 建議被人手改＝錯例，送 dosu_pipe_ai_learn 畀伺服器學習。
@@ -9626,7 +9627,7 @@ function dsPaScheduleAutoAi() {
       dsPaHideLabelPanel();
       dsPaUpdateChrome();
       dsPaRedraw();
-      dsPaAutoFinishIfReady('已跟手動');
+      toast('已跟手動內容——撳圈可改，確認後撳完成加入', 2500);
       return;
     }
     dsPaRunAiThenReview();
@@ -10014,7 +10015,7 @@ function dsPaNext() {
       dsPaHideLabelPanel();
       dsPaUpdateChrome();
       dsPaRedraw();
-      dsPaAutoFinishIfReady('已跟手動');
+      toast('已跟手動內容——撳圈可改，確認後撳完成加入', 2500);
       return;
     }
     dsPaRunAiThenReview();
@@ -10225,10 +10226,7 @@ function dsPaApplyItem(it) {
   toast('已揀：' + lab + (next < DS_PA.circles.length ? '（下個圈跟住）' : ''), 1400);
   dsPaPersist(true);
   if (DS_PA.learns && DS_PA.learns.length) dsPaFlushLearns();
-  /* 全部已揀 → 自動完成加入 */
-  if (DS_PA.step === 'label' && dsPaAllLabeled()) {
-    setTimeout(() => { dsPaAutoFinishIfReady('已揀齊'); }, 350);
-  }
+  /* 人手揀完留喺圈選畫面，唔跳返度數；要入單撳「完成加入」或等 AI 自動 */
 }
 
 function dsPaSaveCurrentLabel(requireLabel) {
