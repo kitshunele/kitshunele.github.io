@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.112';
+const APP_VERSION = '0.6.113';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.112：長按圈邊拖移＝放大縮細；長按圈心＝拖位。
+/* 0.6.113：單指拖＝移相；空白處長按 1.5 秒先加圈（唔再短撳／拖畫圈）。
+   0.6.112：長按圈邊拖移＝放大縮細；長按圈心＝拖位。
    0.6.111：AI 後圈旁顯示配件名／code；返回上一步可返改圈。
    0.6.110：圈預設細啲；底欄細／大調最後一圈。
    0.6.109：撳圈揀配件；圈完下一步自動 AI 分析（dosu_pipe_ai）。
@@ -9375,7 +9376,7 @@ const DS_PA = {
 };
 function dsPaEntryHtml() {
   return `<div class="card"><h3>📷 影相圈配件</h3>
-    <div class="mut" style="margin-bottom:8px">影相／相簿 → 圈配件（可撳圈改種類）→ 下一步自動 AI 分析 → 再確認加入。跟 map 0.2。</div>
+    <div class="mut" style="margin-bottom:8px">影相／相簿 → 單指拖移相、長按 1.5 秒加圈（撳圈改種類）→ 下一步 AI → 確認。跟 map 0.2。</div>
     <div style="display:flex;gap:8px">
       <button type="button" class="btn pri" style="flex:1" data-ds="paopen" data-src="cam">📷 相機</button>
       <button type="button" class="btn" style="flex:1" data-ds="paopen" data-src="album">🖼 相簿</button>
@@ -9536,11 +9537,13 @@ function dsPaMount() {
   img.src = DS_PA.dataUrl;
 
   const ptrs = new Map(); /* pointerId -> {x,y} client relative stage */
-  let mode = null; /* draw | pan | pinch | move | pending */
+  let mode = null; /* pan | pinch | move | resize | pending */
   let longT = null;
   let pinch0 = null; /* {dist, scale, tx, ty, mx, my} */
   let pan0 = null;
-  let pending = null; /* {x,y,t} for long-press detect */
+  let pending = null; /* {x,y,n,hi,onRim,t} */
+  const ADD_HOLD_MS = 1500; /* 空白長按先加圈 */
+  const CIRCLE_HOLD_MS = 420; /* 圈上長按：搬／調大細 */
 
   const stageXY = (e) => {
     const r = stage.getBoundingClientRect();
@@ -9609,6 +9612,7 @@ function dsPaMount() {
       const hi = hiInfo.i;
       pending = { x: e.clientX, y: e.clientY, n: n, hi: hi, onRim: !!hiInfo.onRim, t: Date.now() };
       mode = 'pending';
+      const holdMs = hi >= 0 ? CIRCLE_HOLD_MS : ADD_HOLD_MS;
       longT = setTimeout(() => {
         if (mode !== 'pending' || !pending) return;
         if (pending.hi >= 0) {
@@ -9626,10 +9630,20 @@ function dsPaMount() {
           }
           dsPaRedraw();
         } else {
-          mode = 'pan';
-          pan0 = { x: pending.x, y: pending.y, tx: DS_PA.view.tx, ty: DS_PA.view.ty };
+          /* 空白長按 1.5 秒 → 加細圈 */
+          const n2 = pending.n;
+          DS_PA.circles.push({ cx: n2.x, cy: n2.y, r: 0.022 });
+          DS_PA.answers.push({ label: '', size: '' });
+          mode = null;
+          pending = null;
+          DS_PA.drawing = null;
+          DS_PA.moveIdx = -1;
+          DS_PA.resizeIdx = -1;
+          toast('已加圈（單指拖移相／長按 1.5 秒加圈）', 1600);
+          dsPaRedraw();
+          dsPaUpdateChrome();
         }
-      }, 420);
+      }, holdMs);
     }
   };
   const onMove = (e) => {
@@ -9655,11 +9669,17 @@ function dsPaMount() {
     }
     if (mode === 'pending' && pending) {
       const dx = e.clientX - pending.x, dy = e.clientY - pending.y;
-      if (Math.sqrt(dx * dx + dy * dy) > 12) {
+      if (Math.sqrt(dx * dx + dy * dy) > 10) {
         clearLong();
-        /* 短距離移動：若撳中圈 → 當畫新圈取消；改開始畫圈（由原點）或 pan */
-        mode = 'draw';
-        DS_PA.drawing = { cx: pending.n.x, cy: pending.n.y, r: 0.012 };
+        if (pending.hi >= 0) {
+          /* 喺圈上拖：取消長按；短按鬆手仍可揀配件唔會到呢度 */
+          mode = null;
+          pending = null;
+          return;
+        }
+        /* 單指拖空白＝移相 */
+        mode = 'pan';
+        pan0 = { x: pending.x, y: pending.y, tx: DS_PA.view.tx, ty: DS_PA.view.ty };
         pending = null;
       }
     }
@@ -9686,12 +9706,6 @@ function dsPaMount() {
       dsPaRedraw();
       return;
     }
-    if (mode === 'draw' && DS_PA.drawing) {
-      const n = toNorm(e.clientX, e.clientY);
-      const dx = n.x - DS_PA.drawing.cx, dy = n.y - DS_PA.drawing.cy;
-      DS_PA.drawing.r = Math.max(0.008, Math.min(0.25, Math.sqrt(dx * dx + dy * dy)));
-      dsPaRedraw();
-    }
   };
   const onUp = (e) => {
     if (!ptrs.has(e.pointerId)) return;
@@ -9702,10 +9716,6 @@ function dsPaMount() {
       /* 剩一指：結束 pinch */
       mode = null; pinch0 = null;
       return;
-    }
-    if (mode === 'draw' && DS_PA.drawing && DS_PA.drawing.r >= 0.008) {
-      DS_PA.circles.push({ cx: DS_PA.drawing.cx, cy: DS_PA.drawing.cy, r: DS_PA.drawing.r });
-      DS_PA.answers.push({ label: '', size: '' });
     }
     if (mode === 'pending' && pending) {
       if (pending.hi >= 0) {
@@ -9720,11 +9730,7 @@ function dsPaMount() {
         dsPaEditLabel(hi);
         return;
       }
-      /* 短按空白：加細圈 */
-      const n = pending.n;
-      DS_PA.circles.push({ cx: n.x, cy: n.y, r: 0.022 });
-      DS_PA.answers.push({ label: '', size: '' });
-      toast('已加圈（撳圈揀／長按中心拖／長按邊調大細）', 1600);
+      /* 短按空白：唔再加圈（要長按 1.5 秒） */
     }
     DS_PA.drawing = null;
     DS_PA.moveIdx = -1;
@@ -9779,7 +9785,7 @@ function dsPaUpdateChrome() {
   const lg = document.getElementById('dspa_lg');
   if (!n) return;
   if (DS_PA.step === 'draw') {
-    if (ttl) ttl.textContent = '① 圈配件 · 長按邊調大細';
+    if (ttl) ttl.textContent = '① 單指移相 · 長按 1.5s 加圈';
     if (undo) undo.style.visibility = 'visible';
     if (sm) sm.style.display = '';
     if (lg) lg.style.display = '';
