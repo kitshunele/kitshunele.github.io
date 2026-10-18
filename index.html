@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.97';
+const APP_VERSION = '0.6.98';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8169,7 +8169,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* ---------- v0.6.76 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+/* ---------- v0.6.98 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+   FAN（2026-10-18 App 群）：電線→電線／針躉（加針躉 EL-CONM）；Module／裝拆（FE-MOD 可揀）。
    FAN（2026-10-17 App 群）：已選擇數量格淨係相機，唔使相簿（拎走 🖼；capture=environment）。
    FAN（2026-10-17 App 群）：已揀每格數量旁加影相，記呢個數量係咩位置；上雲時相一齊交（qty_slots）。
    注意：GAS dimbook_measure v1.62 而家只 forward lines[{code,qty}]——qty_slots／photos 要 WO 出 GAS 版先會到 Dimbook。
@@ -8196,9 +8197,10 @@ const DS_CATS = [
     { id: '波子掣', label: '波子掣（1/4吋／1吋）／銅球掣' }
   ]},
   { id: '喉轆', test: 'hosereel' },
-  { id: '電線', test: 'cable', subs: [
+  { id: '電線／針躉', test: 'cable', subs: [
     { id: '普通線', label: '普通線（EL-CABL／PVCA／潛水線）' },
-    { id: '防火線', label: '防火線（FE-CMI／CFR；含1.5／2.5／4）' }
+    { id: '防火線', label: '防火線（FE-CMI／CFR；含1.5／2.5／4）' },
+    { id: '針躉', label: '針躉（EL-CONM）' }
   ]},
   { id: '燈喉／過路箱／電配件', test: 'fitgroup', subs: [
     { id: '燈喉', label: '燈喉（EL-COND）' },
@@ -8214,6 +8216,7 @@ const DS_CATS = [
     { id: 'Relay', label: 'Relay（CORY／TIRY／BASK 直出）' },
     { id: '索制', label: '索制（EL-CONR）' }
   ]}, /* Dimbook：Relay 直出三項；索制淨 CONR；唔使 Relay 中層 */
+  { id: 'Module／裝拆', test: 'modfix' }, /* FAN 0.6.98：師傅可揀 FE-MOD；Dimbook 出單仍自動加 */
   { id: 'Ziton', test: 'ziton' }
 ];
 /* 水喉揀咗尺寸之後：淨係 GI／DI（FAN 0.6.72）；梳夾杯臣喉碼唔再同層，收喺 GI 清單 */
@@ -8735,6 +8738,7 @@ function dsInCat(it, catId) {
         return /^FE-CMI-/i.test(code) || /^FE-CFR-/i.test(code) || /^FE-CFRF-/i.test(code)
           || /防火線/.test(String(it.search || ''));
       }
+      if (sub === '針躉') return /^EL-CONM-/i.test(code);
       return false;
     }
     case 'fitgroup': {
@@ -8746,6 +8750,8 @@ function dsInCat(it, catId) {
       return dsBgBellMatch(it);
     case 'relaygroup':
       return dsRelayMatch(it);
+    case 'modfix': /* Module／裝拆：FE-MOD-*（Control module 裝拆） */
+      return /^FE-MOD-/i.test(code);
     case 'ziton': /* Ziton 火警 panel／配件：價目 SR（search 含 Ziton） */
       return /ziton/i.test(search) || /ziton/i.test(String(it.desc || ''));
     default:
@@ -8772,7 +8778,7 @@ function dsSearchHits(q) {
     });
   }
   /* 電線→防火線：細碼／CFR 排前，免 1.5 被 MI 大碼頂出首屏 */
-  if (DS.cat === '電線' && DS.sub === '防火線') {
+  if (DS.cat === '電線／針躉' && DS.sub === '防火線') {
     items = items.slice().sort((a, b) => {
       const ka = dsFireRank(a), kb = dsFireRank(b);
       for (let i = 0; i < ka.length; i++) {
@@ -9037,7 +9043,7 @@ function dsCatSelHtml() {
     /* 0.6.72：唔再出第三層（力古／梳夾…）；揀 GI／DI 即出價目 */
   } else {
     needSub = !!(def && def.subs && def.subs.length);
-    subLbl = (DS.cat === '電線' || DS.cat === '燈喉／過路箱／電配件' || DS.cat === '閘掣' || DS.cat === 'Relay／索制') ? '再分類' : '細分類';
+    subLbl = (DS.cat === '電線／針躉' || DS.cat === '燈喉／過路箱／電配件' || DS.cat === '閘掣' || DS.cat === 'Relay／索制') ? '再分類' : '細分類';
     subAria = '細分類';
     const subPh = needSub ? ('— 揀 ' + def.subs.map(s => s.id).join('／') + ' —') : '';
     subOpts = needSub
@@ -9069,7 +9075,7 @@ function dsCatSelHtml() {
   }
   const path = pathBits.filter(Boolean).join(' · ');
   return `<div class="card"><h3>項目種類（下拉）</h3>
-    <label class="dslbl">一般要度數：水喉（先揀 Ømm，再 GI／DI 即出清單）／螺絲／喉轆／電線／撳手／警鐘／閃燈（直出五項）／Relay／索制／Ziton；閘掣撳入再分閘掣／銅掣／波子掣；電配件撳入再分（電只 EL；防火線含 CFR）
+    <label class="dslbl">一般要度數：水喉（先揀 Ømm，再 GI／DI 即出清單）／螺絲／喉轆／電線／針躉（再分普通線／防火線／針躉）／撳手／警鐘／閃燈（直出五項）／Relay／索制／Module／裝拆（FE-MOD）／Ziton；閘掣撳入再分閘掣／銅掣／波子掣；電配件撳入再分（電只 EL；防火線含 CFR）
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
     ${needSub ? `<label class="dslbl">${esc(subLbl)}
