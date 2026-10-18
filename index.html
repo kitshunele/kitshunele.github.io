@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.104';
+const APP_VERSION = '0.6.105';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.104：度數「影相圈配件」——影相→圈→揀七 label（map 0.2）→確認加入行；缺徑 soft-flag。
+/* 0.6.105：影相圈配件可相機或相簿揀相。
+   0.6.104：度數「影相圈配件」——影相→圈→揀七 label（map 0.2）→確認加入行；缺徑 soft-flag。
    0.6.102：度數項目卡唔再顯示「參考：…價」（FAN）。
  ---------- v0.6.101 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
    FAN（2026-10-18 App 群）：Module／裝拆揀頂層即直出安裝／拆除兩項（唔使二層下拉）；同 code FE-MOD-XX-0000，lines 帶 bill:'fix'|'takedown'。
@@ -9283,7 +9284,7 @@ document.addEventListener('click', e => {
   if (a === 'opendraft') return dsOpenDraft(b.dataset.rid);
   if (a === 'deldraft') return dsDeleteDraft(b.dataset.rid);
   if (a === 'submit') return dsSubmit();
-  if (a === 'paopen') return dsPaOpen();
+  if (a === 'paopen') return dsPaOpen(b.dataset.src || 'cam');
 });
 async function dsSubmit() {
   const base = dsPayload();
@@ -9360,8 +9361,11 @@ const DS_PA = {
 };
 function dsPaEntryHtml() {
   return `<div class="card"><h3>📷 影相圈配件</h3>
-    <div class="mut" style="margin-bottom:8px">影現場相 → 圈配件 → 揀種類（令叉／上牙／90度曲／刁曲／喉碼／花灑頭／警鐘）→ 確認加入度數。跟 Dimbook map 0.2；缺尺寸會標「要補」。</div>
-    <button type="button" class="btn pri" style="width:100%" data-ds="paopen">📷 影相開始圈選</button>
+    <div class="mut" style="margin-bottom:8px">影現場相或由相簿揀 → 圈配件 → 揀種類（令叉／上牙／90度曲／刁曲／喉碼／花灑頭／警鐘）→ 確認加入度數。跟 Dimbook map 0.2；缺尺寸會標「要補」。</div>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="btn pri" style="flex:1" data-ds="paopen" data-src="cam">📷 相機</button>
+      <button type="button" class="btn" style="flex:1" data-ds="paopen" data-src="album">🖼 相簿</button>
+    </div>
   </div>`;
 }
 function dsPaPad4(n) {
@@ -9418,11 +9422,12 @@ function dsPaResolve(label, sizeMm) {
   }
   return { code: code, search: search, soft: soft, ok: !!code };
 }
-function dsPaOpen() {
+function dsPaOpen(src) {
+  /* src: cam＝相機；album＝相簿（唔加 capture，系統相簿） */
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = 'image/*';
-  inp.setAttribute('capture', 'environment');
+  if (src !== 'album') inp.setAttribute('capture', 'environment');
   inp.style.display = 'none';
   document.body.appendChild(inp);
   inp.onchange = async () => {
