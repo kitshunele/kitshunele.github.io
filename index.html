@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.94';
+const APP_VERSION = '0.6.95';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -9238,13 +9238,17 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   } catch (e) {}
 })();
 
-/* ---------- v0.6.81 單據報銷（FAN 2026-10-17：開頁出編號寫喺單上；影相→AI加總；Sheet＋Drive；撞單） ----------
-   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.67+／v1.68 認 4 字 claim_no）。 */
-const EX_MAX_PHOTOS = 6;
+/* ---------- v0.6.95 單據報銷（FAN 2026-10-17：開頁出編號；影相→AI加總；Sheet＋Drive；撞單） ----------
+   FAN（2026-10-18）：影相上限 20；手機暫存（跟度數：localStorage＋PhotoDB；autosave；送出成功先清；可繼續）。
+   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.69+ 認 20 張）。 */
+const EX_MAX_PHOTOS = 20;
+const EX_DRAFT_LS = 'fsapp20259005.expense.drafts.v1';
 const EX = {
   claimNo: '', amount: '', purpose: '', date: '', photoIds: [],
   aiAmount: null, aiNote: '', aiBusy: false, aiPending: false, amountFromAi: false, aiPhotoN: 0,
-  submitting: false, lastReply: null, msg: ''
+  submitting: false, lastReply: null, msg: '',
+  draftId: null, /* 而家編緊邊份手機暫存 */
+  _draftTimer: null, _restored: false
 };
 let _exAiTimer = null;
 function exTechName() {
@@ -9264,8 +9268,156 @@ function exResetForm() {
   EX.amountFromAi = false;
   EX.lastReply = null;
   EX.msg = '';
+  EX.draftId = null;
   if (_exAiTimer) { clearTimeout(_exAiTimer); _exAiTimer = null; }
+  if (EX._draftTimer) { clearTimeout(EX._draftTimer); EX._draftTimer = null; }
   exEnsureClaimNo();
+}
+function exDraftsAll() {
+  try { return JSON.parse(localStorage.getItem(EX_DRAFT_LS) || '{}') || {}; }
+  catch (e) { return {}; }
+}
+function exDraftsWrite(a) {
+  try { localStorage.setItem(EX_DRAFT_LS, JSON.stringify(a || {})); } catch (e) {}
+}
+function exFormHasContent() {
+  return !!(String(EX.amount || '').trim()
+    || String(EX.purpose || '').trim()
+    || (EX.photoIds && EX.photoIds.length)
+    || (EX.claimNo && EX.amount) /* 有編號＋金額 */
+    || (EX.photoIds && EX.photoIds.length));
+}
+function exDraftLabel(d) {
+  const no = (d && d.claimNo) || '（未有編號）';
+  const amt = (d && d.amount) ? ('$' + d.amount) : '未填金額';
+  const pur = (d && d.purpose) ? String(d.purpose).slice(0, 24) : '未填用途';
+  const n = (d && d.photoIds && d.photoIds.length) || 0;
+  return no + ' · ' + amt + ' · ' + pur + (n ? ' · ' + n + ' 張相' : '');
+}
+function exSnapDraft() {
+  return {
+    rid: EX.draftId || (typeof newId === 'function' ? newId('ex') : ('ex' + Date.now())),
+    claimNo: EX.claimNo || '',
+    amount: String(EX.amount || ''),
+    purpose: String(EX.purpose || ''),
+    date: EX.date || '',
+    photoIds: (EX.photoIds || []).slice(),
+    aiAmount: EX.aiAmount,
+    aiNote: EX.aiNote || '',
+    amountFromAi: !!EX.amountFromAi,
+    updated: Date.now()
+  };
+}
+function exSaveDraft(silent) {
+  exReadForm();
+  const has = !!(String(EX.amount || '').trim() || String(EX.purpose || '').trim() || (EX.photoIds && EX.photoIds.length) || EX.claimNo);
+  if (!has) {
+    if (!silent) toast('未有內容可暫存（至少填金額／用途或影一張相）');
+    return null;
+  }
+  const d = exSnapDraft();
+  EX.draftId = d.rid;
+  const all = exDraftsAll();
+  all[d.rid] = d;
+  exDraftsWrite(all);
+  if (!silent) toast('已暫存喺呢部手機（未上雲）', 2500);
+  return d.rid;
+}
+function exScheduleDraftSave() {
+  if (EX.submitting) return;
+  if (EX._draftTimer) clearTimeout(EX._draftTimer);
+  EX._draftTimer = setTimeout(() => {
+    EX._draftTimer = null;
+    try { exSaveDraft(true); } catch (e) {}
+  }, 500);
+}
+function exOpenDraft(rid) {
+  const d = exDraftsAll()[rid];
+  if (!d) return toast('搵唔到呢份暫存');
+  EX.draftId = rid;
+  EX.claimNo = d.claimNo || exNewClaimNo();
+  EX.amount = d.amount != null ? String(d.amount) : '';
+  EX.purpose = d.purpose || '';
+  EX.date = d.date || (typeof hkDate === 'function' ? hkDate() : '');
+  EX.photoIds = Array.isArray(d.photoIds) ? d.photoIds.slice() : [];
+  EX.aiAmount = (d.aiAmount != null && d.aiAmount > 0) ? d.aiAmount : null;
+  EX.aiNote = d.aiNote || '';
+  EX.amountFromAi = !!d.amountFromAi;
+  EX.aiBusy = false;
+  EX.aiPending = false;
+  EX.msg = '';
+  EX.lastReply = null;
+  toast('已開手機暫存——可改；撳「送出報銷」先上雲', 3000);
+  exPaint();
+}
+async function exDeleteDraft(rid) {
+  const all = exDraftsAll();
+  const d = all[rid];
+  if (!d) return;
+  if (!confirm('刪呢份手機暫存？\n' + exDraftLabel(d) + '\n（只刪呢部手機；已上雲嘅唔會刪）')) return;
+  for (const id of (d.photoIds || [])) {
+    if (!(EX.draftId === rid && (EX.photoIds || []).includes(id))) await exDelPhotoId(id);
+  }
+  delete all[rid];
+  exDraftsWrite(all);
+  if (EX.draftId === rid) {
+    await exClearPhotos();
+    EX.draftId = null;
+    exResetForm();
+  }
+  toast('已刪手機暫存');
+  exPaint();
+}
+async function exNewDraft() {
+  if (exFormHasContent() || EX.claimNo) exSaveDraft(true);
+  await exClearPhotos();
+  exResetForm();
+  EX.draftId = (typeof newId === 'function' ? newId('ex') : ('ex' + Date.now()));
+  toast('已開新一份報銷（空白）', 2500);
+  exPaint();
+}
+function exDraftsHtml() {
+  const all = exDraftsAll();
+  const list = Object.keys(all).map(k => all[k]).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const rows = list.length
+    ? list.map(d => {
+        const t0 = d.updated ? new Date(d.updated).toLocaleString('zh-HK', { hour12: false }) : '';
+        const cur = EX.draftId === d.rid ? ' · 編緊' : '';
+        return `<div class="exdraft">
+          <div><b>${esc(exDraftLabel(d))}</b>${cur ? `<span class="mut">${esc(cur)}</span>` : ''}</div>
+          <div class="mut">${esc(t0)} · 未上雲</div>
+          <div class="exdrafta">
+            <button type="button" class="btn" data-ex="opendraft" data-rid="${esc(d.rid)}">查閱／繼續</button>
+            <button type="button" class="btn" data-ex="deldraft" data-rid="${esc(d.rid)}" style="color:#b91c1c">刪</button>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="mut">未有手機暫存。未送出可撳「暫存到手機」；等太耐／撳出去再入都會自動留低。</div>';
+  return `<div class="card">
+    <h3>手機暫存</h3>
+    <div class="mut" style="margin-bottom:8px">未送出可暫存呢部手機；可查閱／繼續，直至送出報銷成功。</div>
+    <button type="button" class="btn pri" style="width:100%;margin-bottom:8px" data-ex="newdraft">＋ 新增報銷</button>
+    ${rows}
+  </div>`;
+}
+function exTryRestoreOnEnter() {
+  /* 入頁：若而家空白且有暫存 → 自動開最近一份；唔覆蓋編緊／已填 */
+  if (EX._restored) return;
+  EX._restored = true;
+  if (EX.draftId || exFormHasContent()) return;
+  const all = exDraftsAll();
+  const list = Object.keys(all).map(k => all[k]).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  if (!list.length) return;
+  const d = list[0];
+  EX.draftId = d.rid;
+  EX.claimNo = d.claimNo || exNewClaimNo();
+  EX.amount = d.amount != null ? String(d.amount) : '';
+  EX.purpose = d.purpose || '';
+  EX.date = d.date || (typeof hkDate === 'function' ? hkDate() : '');
+  EX.photoIds = Array.isArray(d.photoIds) ? d.photoIds.slice() : [];
+  EX.aiAmount = (d.aiAmount != null && d.aiAmount > 0) ? d.aiAmount : null;
+  EX.aiNote = d.aiNote || '';
+  EX.amountFromAi = !!d.amountFromAi;
 }
 function exEnsureDate() {
   if (!EX.date) EX.date = typeof hkDate === 'function' ? hkDate() : '';
@@ -9299,6 +9451,7 @@ async function exClearPhotos() {
   EX.photoIds = [];
 }
 function viewExpense() {
+  exTryRestoreOnEnter();
   exEnsureDate();
   exEnsureClaimNo();
   const nm = exTechName();
@@ -9312,8 +9465,9 @@ function viewExpense() {
   const aiHint = EX.aiBusy ? '🤖 讀緊單據銀碼…'
     : (EX.aiAmount != null ? `AI 加總：$${EX.aiAmount}${EX.amountFromAi ? '（已填入，可改）' : ''}${EX.aiNote ? ' · ' + EX.aiNote : ''}`
       : (EX.photoIds.length ? '可人手填金額；有 AI 時會自動加總' : ''));
-  return `<div class="top"><div class="bar"><button data-act="grid" aria-label="返主頁">‹ 主頁</button><div class="ttl">🧾 單據報銷<small>測試版 v${APP_VERSION}</small></div><button data-act="menu" aria-label="選單">☰</button></div></div>
+  return `<div class="top"><div class="bar"><button data-act="grid" aria-label="返主頁">‹ 主頁</button><div class="ttl">🧾 單據報銷<small>測試版 v${APP_VERSION} · 最多 ${EX_MAX_PHOTOS} 張</small></div><button data-act="menu" aria-label="選單">☰</button></div></div>
   <main class="exmain">
+    ${exDraftsHtml()}
     <div class="card exclaim">
       <div class="mut" style="margin-bottom:4px">先寫呢 4 個字喺張紙單（方便日後對原單）</div>
       <div class="exclaimno" id="ex_claim">${esc(EX.claimNo)}</div>
@@ -9335,6 +9489,7 @@ function viewExpense() {
     </div>
     ${EX.msg ? `<div class="mut" style="margin:8px 0;text-align:center">${esc(EX.msg)}</div>` : ''}
     <button class="btn pri" style="width:100%;min-height:56px;font-size:18px;margin-top:8px" data-ex="submit" ${EX.submitting || EX.aiBusy ? 'disabled' : ''}>${EX.submitting ? '送緊…' : EX.aiBusy ? '等 AI…' : '送出報銷'}</button>
+    <button type="button" class="btn" style="width:100%;margin-top:8px" data-ex="savedraft" ${EX.submitting ? 'disabled' : ''}>暫存到手機（未上雲）</button>
   </main>`;
 }
 function exPaint() {
@@ -9379,6 +9534,7 @@ async function exOnPhotoFile(file) {
     thumbs.set(id, c.dataUrl);
     EX.photoIds.push(id);
     exPaint();
+    exScheduleDraftSave();
     toast('已加單據相 ✓', 1200);
     exScheduleAiSum();
   } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
@@ -9393,6 +9549,7 @@ async function exRmPhoto(id) {
   } else {
     exScheduleAiSum();
   }
+  exScheduleDraftSave();
   exPaint();
 }
 function exScheduleAiSum() {
@@ -9503,6 +9660,11 @@ async function exSubmit() {
     EX.lastReply = o || { ok: false, error: 'no_reply' };
     if (o && o.ok) {
       toast('已送報銷 ' + (p.claim_no || '') + (o.folder_id ? ' · Drive 已開夾' : '') + (p.photos.length ? ' · 相 ' + p.photos.length : ''), 3500);
+      /* 送出成功：清手機暫存＋相 */
+      try {
+        const all = exDraftsAll();
+        if (EX.draftId && all[EX.draftId]) { delete all[EX.draftId]; exDraftsWrite(all); }
+      } catch (e) {}
       await exClearPhotos();
       exResetForm();
       EX.msg = (p.claim_no ? ('編號 ' + p.claim_no + ' · ') : '') + (o.sheet_url ? '已寫入試算表' : '已送出');
@@ -9525,12 +9687,13 @@ async function exSubmit() {
 }
 document.addEventListener('input', e => {
   const t = e.target; if (!t || cur.view !== 'expense') return;
-  if (t.id === 'ex_date') EX.date = t.value || '';
+  if (t.id === 'ex_date') { EX.date = t.value || ''; exScheduleDraftSave(); }
   if (t.id === 'ex_amt') {
     EX.amount = t.value || '';
     EX.amountFromAi = false; /* 人手改過就唔再當 AI 填 */
+    exScheduleDraftSave();
   }
-  if (t.id === 'ex_pur') EX.purpose = t.value || '';
+  if (t.id === 'ex_pur') { EX.purpose = t.value || ''; exScheduleDraftSave(); }
 });
 document.addEventListener('click', e => {
   const tile = e.target.closest('[data-act="expense"]');
@@ -9540,15 +9703,19 @@ document.addEventListener('click', e => {
   if (a === 'cam') return exPickCam();
   if (a === 'delph') return exRmPhoto(b.dataset.id);
   if (a === 'submit') return exSubmit();
+  if (a === 'savedraft') { exSaveDraft(false); return; }
+  if (a === 'opendraft') return exOpenDraft(b.dataset.rid);
+  if (a === 'deldraft') return exDeleteDraft(b.dataset.rid);
+  if (a === 'newdraft') return exNewDraft();
 });
 (function () {
   if (TILES.some(t => t.act === 'expense')) return;
   const k = TILES.findIndex(t => t.act === 'dosu');
-  TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'expense', icon: '🧾', name: '單據報銷', sub: '影單據 → AI 加總 → Sheet＋Drive' });
+  TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'expense', icon: '🧾', name: '單據報銷', sub: '影單據 → 暫存／送出 · 最多 20 張' });
 })();
 const parseHashRaw_ex = parseHash;
 parseHash = function () {
-  if (/^#\/expense\b/.test(location.hash)) { cur = { view: 'expense', id: null, step: null }; lkReset(); exEnsureDate(); return; }
+  if (/^#\/expense\b/.test(location.hash)) { cur = { view: 'expense', id: null, step: null }; lkReset(); EX._restored = false; exEnsureDate(); return; }
   parseHashRaw_ex();
 };
 const viewGridRaw_ex = viewGrid;
@@ -9560,7 +9727,8 @@ if (/^#\/expense\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
     s.textContent =
       '.exmain .exlbl{display:block;font-size:13px;color:#555;margin:10px 0 0}.exmain .inp{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
       '.exclaim{text-align:center;padding:14px 12px}.exclaimno{font-size:28px;font-weight:700;letter-spacing:1px;font-family:ui-monospace,Menlo,Consolas,monospace;color:#0b5;margin-top:4px;user-select:all}' +
-      '.exthumbs{margin-top:8px}';
+      '.exthumbs{margin-top:8px}' +
+      '.exdraft{border-top:1px solid #e5e7eb;padding:10px 0 4px;margin-top:8px}.exdrafta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.exdrafta .btn{flex:1;min-width:120px}';
     document.head.appendChild(s);
   } catch (e) {}
 })();
