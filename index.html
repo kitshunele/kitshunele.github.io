@@ -386,7 +386,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.129';
+const APP_VERSION = '0.6.130';
+/* v0.6.130：消防處·水缸 2.e／2.f 預設不適用（def_v=NA） */
 /* v0.6.129：栓轆問卷／預設批次——q_def／def_v／q_skip／def_skip；F6 下龍頭／喉轆、隱藏喉轆、Inlet門、閘制訊號；F24「有冇水種缸」；F26 改名
    v0.6.128：問卷一般系統加 FIXED_HR「有冇固定喉轆」；消防處·栓轆 5.d 跟答預設是／不適用（q_def）；AI 失敗唔再開下拉仍沿用 0.6.127 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
