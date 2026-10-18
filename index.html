@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.102';
+const APP_VERSION = '0.6.103';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1908,7 +1908,7 @@ function settings() {
   <input id="cfgUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(c.url)}">
   ${UPLOAD_URL_BUILTIN ? `<div class="mut">已預設公司網址，一般唔使改。${upCfg().url !== UPLOAD_URL_BUILTIN ? ' <a class="jump" href="#" data-s="reset">還原公司網址</a>' : ''}</div>` : ''}
   <div class="cfgck" id="cfgck">👷 打卡名：<b>${esc(Store.prefs.ckName || '（未輸入）')}</b> <button class="lnk" data-s="ckname" type="button">${Store.prefs.ckName ? '換名' : '輸入名'}</button><div class="mut">換咗人／名打錯先改；新手機輸入返同一個名就得。</div></div>
-  <div class="cfgck" id="cfgacc">🔐 <button class="lnk" data-s="accmgr" type="button">管理：批准手機</button> <span class="badge pend" id="accbadge" hidden></span><div class="mut">主管用：批准新手機（要 MANAGER_PIN）。</div></div>
+  <div class="cfgck" id="cfgacc">🔐 <button class="lnk" data-s="accmgr" type="button">管理：批准手機</button> <span class="badge pend" id="accbadge" hidden></span>${(typeof ACC !== 'undefined' && (ACC.mgrOk || ACC.mgrPin || mgrRemembered())) ? ` <button class="lnk" data-s="acclogout" type="button">🚪 登出主管</button>` : ''}<div class="mut">主管用：批准新手機（要 MANAGER_PIN）。登入成功會記住，唔使每次再入。</div></div>
   <div id="cfgMsg" class="mut" style="margin-top:8px;min-height:1.2em"></div>
   <div class="acts"><button class="btn" data-s="close">關閉</button><button class="btn" data-s="test">測試連線</button><button class="btn pri" data-s="save">儲存</button></div></div>`;
   m.classList.add('show'); if (typeof accBadge === 'function') accBadge();
@@ -1924,6 +1924,7 @@ function settings() {
     if (s === 'close') { m.classList.remove('show'); m.onclick = null; return; }
     if (s === 'ckname') { m.classList.remove('show'); m.onclick = null; return ckChangeName(); } /* v0.6.13 換打卡名 */
     if (s === 'accmgr') { m.classList.remove('show'); m.onclick = null; return go('#/accmgr'); } /* v0.6.14 管理：批准手機（只喺設定入面） */
+    if (s === 'acclogout') { mgrRememberClear(); m.classList.remove('show'); m.onclick = null; toast('已登出主管'); render(); return; }
     if (s === 'eye') { const i = $('#cfgPin'); i.type = i.type === 'password' ? 'text' : 'password'; return; }
     if (s === 'reset') { e.preventDefault(); $('#cfgUrl').value = UPLOAD_URL_BUILTIN; msg('已還原公司網址，撳「儲存」。'); return; }
     if (s === 'save') { if (!save()) return; m.classList.remove('show'); m.onclick = null; toast('已儲存上傳設定 ✓'); render(); setTimeout(() => autoRetry(true), 300); return; }
@@ -3215,7 +3216,7 @@ document.addEventListener('click', e => { const b = e.target.closest && e.target
   if (a === 'barx') { Store.prefs.ckBarHide = 1; Store.flush(); const x = $('#ckbar'); if (x) x.remove(); return; }
   if (a === 'geo') { delete Store.prefs.ckGeoDenied; CKG.perm = CKG.perm === 'denied' ? 'denied' : ''; Store.flush(); ckGpsWarm(true); return; }
   if (a === 'stat') { cksReset(); CKS.tab = b.dataset.t === 'rec' ? 'rec' : 'stat'; CK.step = 'stat'; CK.err = ''; CK.errCode = ''; if (cur.view === 'clock') render(); else go('#/clock'); setTimeout(() => { const i = $('#ckspin'); if (i) i.focus(); }, 50); return; }
-  if (a === 'stopen') { const i = $('#ckspin'), p = i ? i.value.trim() : ''; if (!p) return toast('請輸入主管密碼'); CKS.pin = p; CKS.date = ''; return CKS.tab === 'rec' ? ckrLoad() : cksLoad(); }
+  if (a === 'stopen') { const i = $('#ckspin'), p = i ? i.value.trim() : ''; if (!p) return toast('請輸入主管密碼'); CKS.pin = p; if (typeof ACC !== 'undefined') ACC.mgrPin = p; CKS.date = ''; return CKS.tab === 'rec' ? ckrLoad() : cksLoad(); }
   if (a === 'sttab') { CKS.tab = b.dataset.t === 'rec' ? 'rec' : 'stat'; CKS.err = ''; CKR.err = ''; render(); if (CKS.pin && CKS.tab === 'rec' && !CKR.data) ckrLoad(); else if (CKS.pin && CKS.tab === 'stat' && !CKS.data) cksLoad(); return; } /* v0.6.21-test4 */
   if (a === 'rreload') return ckrLoad();
   if (a === 'rrq') { const n = Number(b.dataset.d) || 7, t = ckDay(); CKR.to = t; CKR.from = ckAddDay(t, 1 - n); return ckrLoad(); }
@@ -3347,28 +3348,33 @@ PKH.ck_blk = (v, how) => { if (cur.view !== 'clock' || CK.step !== 'estate') ret
   ckGoLbl(); };
 (function () { try { const st = document.createElement('style'); st.textContent = '.badge.ckno{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-size:12px;padding:1px 6px;border-radius:9px;margin-left:4px}.ckh3{margin:12px 0 4px;font-size:16px}.ckday .ckdh{margin-bottom:4px}.cklbl{font-size:13px;margin:2px 0}'; document.head.appendChild(st); } catch (e) {} })();
 
-/* v0.6.21 👥 今日打卡情況（主管）：FAN 2026-10-05。主管密碼（MANAGER_PIN）只喺記憶體，離開呢頁就清；唔儲存、唔寫 log。
+/* v0.6.21 👥 今日打卡情況（主管）：FAN 2026-10-05。主管密碼（MANAGER_PIN）；v0.6.103 成功後記住（同批准手機共用），離開頁唔清；「登出主管」先清。
    伺服器 v1.20 clock_status（已批准手機 ＋ MANAGER_PIN，只讀）；伺服器 v1.19 → bad_action → 提示要更新。 */
 const CKS = { pin: '', data: null, date: '', busy: false, err: '', old: false, tab: 'stat' };
-function cksReset() { CKS.pin = ''; CKS.data = null; CKS.date = ''; CKS.busy = false; CKS.err = ''; CKS.old = false; CKS.tab = 'stat'; ckrReset(); }
+function cksReset() { /* v0.6.103：有記住／已有 ACC.mgrPin → 保留 PIN */
+  const keep = (typeof ACC !== 'undefined' && ACC.mgrPin) ? ACC.mgrPin : '';
+  CKS.pin = keep; CKS.data = null; CKS.date = ''; CKS.busy = false; CKS.err = ''; CKS.old = false; CKS.tab = 'stat'; ckrReset(); }
 const CKS_ERR = { bad_manager_pin: '主管密碼唔啱', manager_locked: '主管密碼錯太多次，鎖咗 15 分鐘', manager_pin_not_set: '公司未設定 MANAGER_PIN', bad_date: '日期唔啱（唔可以揀未來日子）',
   bad_action: '要公司伺服器更新到 v1.20 先睇到「今日打卡情況」（打卡照常用得）' };
 async function cksLoad() {
   if (CKS.busy || !CKS.pin) return; CKS.busy = true; CKS.err = ''; CKS.old = false; render();
   try {
     const o = await gasCall(Object.assign({ action: 'clock_status', manager_pin: CKS.pin }, CKS.date ? { date: CKS.date } : {}), 30000);
-    if (o && o.ok && Array.isArray(o.members)) { CKS.data = o; CKS.date = o.date; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; }
+    if (o && o.ok && Array.isArray(o.members)) { CKS.data = o; CKS.date = o.date; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; if (typeof mgrRememberSave === 'function') mgrRememberSave(CKS.pin); }
     else { const c = (o && o.error) || 'bad_reply'; CKS.old = c === 'bad_action';
       CKS.err = (CKS_ERR[c] || upErrText(c)) + (o && o.remaining != null ? `（仲有 ${Number(o.remaining)} 次機會）` : '');
-      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.pin = ''; CKS.data = null; CKR.data = null; } }
+      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.pin = ''; CKS.data = null; CKR.data = null; if (typeof mgrRememberClear === 'function') mgrRememberClear(); } }
   } catch (e) { CKS.err = ckErrText(e); }
   CKS.busy = false; if (cur.view === 'clock' && CK.step === 'stat') render();
 }
 function viewCkStat(top) {
   const pinBox = `<div class="card" id="ckspinbox"><h3>輸入主管密碼（MANAGER_PIN）</h3><input id="ckspin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼" style="width:100%;font-size:18px">
     <button class="btn pri" style="width:100%;margin-top:10px;min-height:54px" data-cka="stopen">開啟</button>${CKS.err ? `<div class="errbox" id="ckserr" style="margin-top:8px">${esc(CKS.err)}</div>` : ''}
-    <div class="mut" style="margin-top:6px">密碼只用嚟開呢頁，唔會儲存喺手機；離開呢頁就要再輸入。</div></div>`;
-  if (!CKS.pin) return top + `<main><h2>${CKS.tab === 'rec' ? '📋 全部打卡紀錄' : '👥 今日打卡情況'}</h2>${pinBox}</main>`;
+    <div class="mut" style="margin-top:6px">登入成功之後會記住（呢部手機）；重開 App 唔使再入。要解除：☰ → 設定 → 登出主管。</div></div>`;
+  if (!CKS.pin) {
+    if (typeof ACC !== 'undefined' && ACC.mgrPin) { CKS.pin = ACC.mgrPin; setTimeout(() => { if (cur.view === 'clock' && CK.step === 'stat' && CKS.pin && !CKS.busy && !CKR.busy) (CKS.tab === 'rec' ? ckrLoad() : cksLoad()); }, 0); }
+    else return top + `<main><h2>${CKS.tab === 'rec' ? '📋 全部打卡紀錄' : '👥 今日打卡情況'}</h2>${pinBox}</main>`;
+  }
   if (CKS.tab === 'rec') return viewCkRec(top); /* v0.6.21-test4 */
   const d = CKS.data, today = (d && d.today) || ckDay(), date = CKS.date || today, hm = t => esc(String(t || '').slice(0, 5));
   const bar = `<div class="card cksbar" id="cksbar"><label for="cksdate" class="mut">日期</label><input type="date" id="cksdate" value="${esc(date)}" max="${esc(today)}">${date === today ? '<span class="badge done">今日</span>' : ''}
@@ -3386,7 +3392,7 @@ function viewCkStat(top) {
     <div id="ckslist">${d.members.length ? d.members.map(row).join('') : '<div class="card mut">冇已批准嘅成員。</div>'}</div>
     <div class="mut">成員 =「師傅名單」已批准嘅人。時間係公司伺服器時間（HKT）；讀取：${esc(d.now_hkt || '')}。</div></main>`;
 }
-/* v0.6.21-test4 📋 全部打卡紀錄（主管）：FAN 2026-10-05 15:09。同「今日打卡情況」共用主管密碼（只喺記憶體，離開打卡頁就清）。
+/* v0.6.21-test4 📋 全部打卡紀錄（主管）：FAN 2026-10-05 15:09。同「今日打卡情況」共用主管密碼（v0.6.103 記住登入）。
    伺服器 v1.20 clock_records（已批准手機 ＋ MANAGER_PIN，只讀；唔回手機ID）；日期最多 31 日（預設最近 7 日 HKT），揀人；新到舊；之前日子冇落班 → 紅框。 */
 const CKR = { data: null, from: '', to: '', name: '', busy: false, err: '', old: false };
 function ckrReset() { CKR.data = null; CKR.from = ''; CKR.to = ''; CKR.name = ''; CKR.busy = false; CKR.err = ''; CKR.old = false; }
@@ -3403,10 +3409,10 @@ async function ckrLoad() {
   CKR.busy = true; CKR.err = ''; CKR.old = false; render();
   try {
     const o = await gasCall(Object.assign({ action: 'clock_records', manager_pin: CKS.pin, from: CKR.from, to: CKR.to }, CKR.name ? { name: CKR.name } : {}), 60000);
-    if (o && o.ok && Array.isArray(o.items)) { CKR.data = o; CKR.from = o.from; CKR.to = o.to; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; }
+    if (o && o.ok && Array.isArray(o.items)) { CKR.data = o; CKR.from = o.from; CKR.to = o.to; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; if (typeof mgrRememberSave === 'function') mgrRememberSave(CKS.pin); }
     else { const c = (o && o.error) || 'bad_reply'; CKR.old = c === 'bad_action';
       CKR.err = (CKR_ERR[c] || CKS_ERR[c] || upErrText(c)) + (o && o.remaining != null ? `（仲有 ${Number(o.remaining)} 次機會）` : '');
-      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.err = CKR.err; CKS.pin = ''; CKS.data = null; CKR.data = null; } }
+      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.err = CKR.err; CKS.pin = ''; CKS.data = null; CKR.data = null; if (typeof mgrRememberClear === 'function') mgrRememberClear(); } }
   } catch (e) { CKR.err = ckErrText(e); }
   CKR.busy = false; if (cur.view === 'clock' && CK.step === 'stat') render();
 }
@@ -5313,11 +5319,46 @@ if (typeof bdLoadSaved === 'function') bdLoadSaved();
 /* ---------- v0.6.14 新手機要公司批准（FAN 2026-10-04 18:09／18:11）----------
    伺服器 v1.14：每個資料動作要 device_id（ckDev）＋ dtoken（register_name 時發；手機只存喺 localStorage「fsapp20259005.acc.v1」，唔入備份）。
    未批准 → need_approval：顯示「已登記，等公司批准」（#/wait，有「重新檢查」）；手機上未上傳嘅嘢照留，批准之後自動上傳。
-   主管頁：☰ → ⚙️ 設定 →「管理：批准手機」（#/accmgr，要 MANAGER_PIN；PIN 只喺記憶體，離開頁就清）。主頁冇格、冇 badge。 */
+   主管頁：☰ → ⚙️ 設定 →「管理：批准手機」（#/accmgr，要 MANAGER_PIN）。
+   v0.6.103（FAN 2026-10-18）：成功登入後記住主管（唔存明文密碼；只存裝置綁定 token）；重開／重整 App 唔使再入；「登出主管」先清。主頁冇格、冇 badge。 */
 const ACC_LS = 'fsapp20259005.acc.v1';
+const ACC_MGR_LS = 'fsapp20259005.mgr.v1'; /* v0.6.103 主管記住登入（token，唔係明文 PIN） */
 const ACC = { busy: false, msg: '', mgr: null, showRm: false, mgrPin: '', mgrOk: false, mgrBusy: false, mgrErr: '', pendN: null, back: '', chk: 'pending', chkAt: 0, rename: false };
 function accGet() { try { return JSON.parse(localStorage.getItem(ACC_LS) || '{}') || {}; } catch (e) { return {}; } }
 function accPut(o) { try { localStorage.setItem(ACC_LS, JSON.stringify(o)); } catch (e) {} }
+function mgrTokEnc(pin) { /* 裝置綁定 XOR＋base64：唔明文；DevTools 仍可還原（同「記住我」一樣） */
+  const k = ((typeof ckDev === 'function' ? ckDev() : '') || 'd') + '|mgr|' + (typeof SCHEMA !== 'undefined' ? SCHEMA : 'fs');
+  let out = ''; for (let i = 0; i < pin.length; i++) out += String.fromCharCode(pin.charCodeAt(i) ^ k.charCodeAt(i % k.length));
+  try { return btoa(unescape(encodeURIComponent(out))); } catch (e) { return ''; }
+}
+function mgrTokDec(tok) {
+  try {
+    const k = ((typeof ckDev === 'function' ? ckDev() : '') || 'd') + '|mgr|' + (typeof SCHEMA !== 'undefined' ? SCHEMA : 'fs');
+    const raw = decodeURIComponent(escape(atob(tok))); let out = '';
+    for (let i = 0; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ k.charCodeAt(i % k.length));
+    return out;
+  } catch (e) { return ''; }
+}
+function mgrRememberSave(pin) {
+  pin = String(pin || '').trim(); if (!pin) return;
+  try { localStorage.setItem(ACC_MGR_LS, JSON.stringify({ tok: mgrTokEnc(pin), at: new Date().toISOString() })); } catch (e) {}
+  ACC.mgrPin = pin; ACC.mgrOk = true;
+  if (typeof CKS !== 'undefined') CKS.pin = pin;
+}
+function mgrRememberLoad() {
+  try {
+    const c = JSON.parse(localStorage.getItem(ACC_MGR_LS) || 'null'); if (!c || !c.tok) return '';
+    const p = mgrTokDec(c.tok); if (!p) return '';
+    ACC.mgrPin = p; ACC.mgrOk = true; if (typeof CKS !== 'undefined') CKS.pin = p; return p;
+  } catch (e) { return ''; }
+}
+function mgrRememberClear() {
+  try { localStorage.removeItem(ACC_MGR_LS); } catch (e) {}
+  ACC.mgrPin = ''; ACC.mgrOk = false; ACC.mgr = null; ACC.mgrErr = '';
+  if (typeof CKS !== 'undefined') { CKS.pin = ''; CKS.data = null; if (typeof CKR !== 'undefined') CKR.data = null; }
+}
+function mgrRemembered() { try { return !!localStorage.getItem(ACC_MGR_LS); } catch (e) { return false; } }
+(function () { try { mgrRememberLoad(); } catch (e) {} })(); /* 開 App 還原主管登入 */
 /* v0.6.14.3 開 App 閘（FAN 2026-10-04 19:38）：未批准（或者未登記）嘅手機只見到鎖住頁（viewLock），主頁／選單／資料頁一律唔顯示，打 #/xxx 都冇用。
    a.ok = {at, src:'srv'}：伺服器確認過批准 → 之後冇網都用得（每次開 App／返回 App 再問一次 access_status，取消咗即刻鎖）。
    a.ok.src='legacy'：未有閘之前已經用過（打過卡／上傳過）嘅舊機 → 開 App 等伺服器答先（檢查緊顯示鎖住頁），連唔到先放行，唔會鎖死已批准嘅 4 部。 */
@@ -5475,7 +5516,7 @@ function accMiniMenu() { /* 鎖住時嘅 ☰：淨係 ⚙️ 設定（PIN／打�
     <div class="mut" style="margin:6px 0">${accLocked() ? '其他功能要主管批准呢部手機先用得。' : '其他功能要載入公司資料之後先用得。'}</div><div class="acts"><button class="btn" data-m="0">關閉</button></div></div>`;
   m.classList.add('show'); m.onclick = e => { if (e.target === m || e.target.closest('[data-m]')) { m.classList.remove('show'); m.onclick = null; } };
 }
-const ACC_LOCK_ACTS = new Set(['appdretry', 'settings', 'accrecheck', 'accreg', 'accrereg', 'accrename', 'accmopen', 'accmreload', 'accset', 'accrm', 'accrestore', 'accshowrm', 'accmgrback']);
+const ACC_LOCK_ACTS = new Set(['appdretry', 'settings', 'accrecheck', 'accreg', 'accrereg', 'accrename', 'accmopen', 'accmreload', 'accset', 'accrm', 'accrestore', 'accshowrm', 'accmgrback', 'acclogout']);
 document.addEventListener('click', e => { /* 鎖住時：除咗登記／設定／主管頁，其他掣一律唔郁（capture，行喺 app_4actions 之前） */
   const LK = Store.prefs && accLocked(); if (!Store.prefs || !(LK || (typeof APPD !== 'undefined' && !APPD.ready))) return; /* v0.6.15 未有公司資料都一樣 */
   const sv = e.target.closest('[data-s]');
@@ -5495,9 +5536,17 @@ const ACC_ERR = { bad_manager_pin: '主管密碼唔啱', manager_locked: '主管
 function viewAccMgr() {
   const top = `<div class="top"><div class="bar"><button data-act="accmgrback" aria-label="返回">‹ 返回</button><div class="ttl">🔐 管理：批准手機<small>主管用 · 要 MANAGER_PIN · 經公司 Apps Script</small></div></div></div>`;
   const c = upCfg(); if (!c.url || !c.pin) return top + `<main><div class="warnbox">未設定上傳網址／PIN。請喺 ☰ →「⚙️ 上傳設定」填好先。</div></main>`;
-  if (!ACC.mgr) return top + `<main><div class="card"><h3>輸入主管密碼（MANAGER_PIN）</h3><input id="accmpin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼" style="width:100%;font-size:18px">
+  if (!ACC.mgr) {
+    if (ACC.mgrPin) { /* v0.6.103 已記住 → 自動開／可重試，唔再入密碼 */
+      if (!ACC.mgrBusy && !ACC.mgrErr) setTimeout(() => { if (cur.view === 'accmgr' && !ACC.mgr && ACC.mgrPin && !ACC.mgrBusy) accMgrCall({ action: 'acc_list' }); }, 0);
+      return top + `<main>${ACC.mgrErr ? `<div class="errbox" id="accmerr">${esc(ACC.mgrErr)}</div>` : ''}<div class="card mut">${ACC.mgrBusy ? '用記住嘅主管登入開緊…' : (ACC.mgrErr ? '記住咗嘅登入開唔到（可能冇網）。' : '用記住嘅主管登入開緊…')}</div>
+        <button class="btn pri" style="width:100%;margin-top:10px" data-act="accmreload" ${ACC.mgrBusy ? 'disabled' : ''}>${ACC.mgrBusy ? '讀緊…' : '🔄 再試'}</button>
+        <button class="btn" style="width:100%;margin-top:8px" data-act="acclogout">🚪 登出主管</button></main>`;
+    }
+    return top + `<main><div class="card"><h3>輸入主管密碼（MANAGER_PIN）</h3><input id="accmpin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼" style="width:100%;font-size:18px">
     <button class="btn pri" style="width:100%;margin-top:10px;min-height:54px" data-act="accmopen" ${ACC.mgrBusy ? 'disabled' : ''}>${ACC.mgrBusy ? '讀緊…' : '開啟'}</button>
-    ${ACC.mgrErr ? `<div class="errbox" id="accmerr" style="margin-top:8px">${esc(ACC.mgrErr)}</div>` : ''}<div class="mut" style="margin-top:6px">密碼只用嚟開呢頁，唔會儲存喺手機。</div></div></main>`;
+    ${ACC.mgrErr ? `<div class="errbox" id="accmerr" style="margin-top:8px">${esc(ACC.mgrErr)}</div>` : ''}<div class="mut" style="margin-top:6px">登入成功之後會記住（呢部手機）；重開 App 唔使再入。要解除就撳「登出主管」。</div></div></main>`;
+  }
   const m = ACC.mgr, row = (x, pend) => { const rs = x.rows || [x], n = rs.length, ids = rs.map(y => y.row).join(','), first = n > 1 ? rs.map(y => y.first || '').filter(Boolean).sort()[0] : x.first;
     return `<div class="card accrow${n > 1 ? ' accdup' : ''}" data-row="${x.row}" data-rows="${ids}"><div class="t"><b>${esc(x.name || '（冇名）')}</b>${pend ? '<span class="badge pend">等批准</span>' : '<span class="badge done">已批准</span>'}${n > 1 ? `<span class="badge accdupn">登記咗 ${n} 次</span>` : ''}</div>
     <div class="mut">${esc(x.label && x.label !== '?' ? x.label : '（舊機，型號未知）')} · …${esc(x.dev_tail || '')}</div><div class="mut">第一次登記 ${esc(first || '—')} · 最後使用 ${esc(x.last_use || '—')}</div>${x.note ? `<div class="mut">${esc(x.note)}</div>` : ''}
@@ -5514,20 +5563,23 @@ function viewAccMgr() {
   return top + `<main>${ACC.mgrErr ? `<div class="errbox" id="accmerr">${esc(ACC.mgrErr)}</div>` : ''}
     <h2 class="bdh">等批准（${pendG.length}）</h2>${pendG.length ? pendG.map(x => row(x, true)).join('') : '<div class="card mut" id="accnone">冇手機等緊批准。</div>'}
     <h2 class="bdh">已批准（${m.approved.length}）</h2>${m.approved.map(x => row(x, false)).join('')}${rmSec}
-    <button class="btn" style="width:100%;margin:10px 0" data-act="accmreload" ${ACC.mgrBusy ? 'disabled' : ''}>🔄 重新載入</button><div class="mut">讀取：${esc(m.now_hkt || '')} HKT · 都可以直接喺「師傅名單」剔「批准」（最多 1 分鐘生效）。</div></main>`;
+    <button class="btn" style="width:100%;margin:10px 0" data-act="accmreload" ${ACC.mgrBusy ? 'disabled' : ''}>🔄 重新載入</button>
+    <button class="btn" style="width:100%;margin:0 0 10px" data-act="acclogout">🚪 登出主管</button>
+    <div class="mut">讀取：${esc(m.now_hkt || '')} HKT · 都可以直接喺「師傅名單」剔「批准」（最多 1 分鐘生效）。已記住主管登入（呢部手機）。</div></main>`;
 }
 async function accMgrCall(body) {
   if (ACC.mgrBusy) return; ACC.mgrBusy = true; ACC.mgrErr = ''; render();
   const list = Array.isArray(body) ? body : [body]; body = list[0]; /* v0.6.21：合併咗嘅卡 → 一行一行送（有錯即停） */
   try { let o; for (const b of list) { o = await gasCall(Object.assign({ manager_pin: ACC.mgrPin }, b), 30000); if (!o || !o.ok) break; }
-    if (o && o.ok) { ACC.mgrOk = true; ACC.mgr = { pending: o.pending || [], approved: o.approved || [], removed: Array.isArray(o.removed) ? o.removed : [], canRm: o.can_remove === true, now_hkt: o.now_hkt || '' }; ACC.pendN = new Set(ACC.mgr.pending.map(x => (x.device_id || x.row) + '|' + (x.name || ''))).size; } /* v0.6.16：can_remove 只喺 v1.16 */
+    if (o && o.ok) { ACC.mgrOk = true; ACC.mgr = { pending: o.pending || [], approved: o.approved || [], removed: Array.isArray(o.removed) ? o.removed : [], canRm: o.can_remove === true, now_hkt: o.now_hkt || '' }; ACC.pendN = new Set(ACC.mgr.pending.map(x => (x.device_id || x.row) + '|' + (x.name || ''))).size; mgrRememberSave(ACC.mgrPin); } /* v0.6.16：can_remove 只喺 v1.16；v0.6.103 記住登入 */
     else if (o && (o.error === 'bad_op' || o.error === 'bad_action') && body.op) { if (ACC.mgr) ACC.mgr.canRm = false; ACC.mgrErr = ACC_ERR.bad_op; }
-    else { ACC.mgrErr = (ACC_ERR[o && o.error] || upErrText(o && o.error)) + (o && o.remaining != null ? `（仲有 ${o.remaining} 次機會）` : ''); if (o && ['bad_manager_pin', 'manager_locked'].includes(o.error)) { ACC.mgr = null; ACC.mgrPin = ''; } }
+    else { ACC.mgrErr = (ACC_ERR[o && o.error] || upErrText(o && o.error)) + (o && o.remaining != null ? `（仲有 ${o.remaining} 次機會）` : ''); if (o && ['bad_manager_pin', 'manager_locked'].includes(o.error)) { ACC.mgr = null; mgrRememberClear(); } }
   } catch (e) { ACC.mgrErr = e.message; }
   ACC.mgrBusy = false; if (cur.view === 'accmgr') render();
 }
 const accRowsOf = el => { const v = String(el.dataset.rows || el.dataset.row || '').split(',').map(Number).filter(n => n > 0); return v.length ? v : [Number(el.dataset.row)]; };
-function accMgrReset() { ACC.mgr = null; ACC.showRm = false; ACC.mgrPin = ''; ACC.mgrErr = ''; ACC.mgrBusy = false; } /* mgrOk 留喺記憶體：呢個分頁入面開過管理先算管理員。PIN 離開頁就清，唔寫入手機。 */
+function accMgrReset() { ACC.mgr = null; ACC.showRm = false; ACC.mgrErr = ''; ACC.mgrBusy = false; /* v0.6.103：記住登入 → 唔清 PIN；冇記住先清 */
+  if (mgrRemembered()) { if (!ACC.mgrPin) mgrRememberLoad(); } else ACC.mgrPin = ''; }
 window.addEventListener('hashchange', () => { if (cur.view !== 'accmgr') accMgrReset(); if (cur.view !== 'wait') ACC.msg = ''; });
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act;
@@ -5544,6 +5596,7 @@ document.addEventListener('click', async e => {
   if (a === 'accrestore') return accMgrCall({ action: 'acc_set', row: Number(el.dataset.row), device_id_set: el.dataset.dev, op: 'restore', approve: false });
   if (a === 'accmgrback') { const lk = accLocked(); go('#/'); if (lk) setTimeout(() => accCheck(), 50); return; }
   if (a === 'accrename') { ACC.rename = true; ACC.msg = ''; ACC.nameDraft = null; return render(); }
+  if (a === 'acclogout') { mgrRememberClear(); toast('已登出主管'); if (cur.view === 'accmgr') render(); return; }
   if (a === 'accmopen') { const i = $('#accmpin'), p = i ? i.value.trim() : ''; if (!p) return toast('請輸入主管密碼'); ACC.mgrPin = p; return accMgrCall({ action: 'acc_list' }); }
   if (a === 'accmreload') return accMgrCall({ action: 'acc_list' });
   if (a === 'accset') { const yes = el.dataset.v === '1';
@@ -6333,7 +6386,7 @@ SWR_HOOK.kv_doc = (b, o) => { if (typeof FL !== 'undefined' && o.ok && b.doc ===
 SWR_HOOK.acc_pending_count = () => { try { accBadge(); } catch (e) { } };
 /* ----- 清走 ----- */
 const appDataWipeRaw_swr = appDataWipe;
-appDataWipe = function () { appDataWipeRaw_swr(); swrWipe(); try { localStorage.removeItem(PS_PLACES_LS); PS.places = null; PS.placesAt = 0; } catch (e) { } }; /* 未批准／被移除 → 手機緩存全部清走 */
+appDataWipe = function () { appDataWipeRaw_swr(); swrWipe(); try { localStorage.removeItem(PS_PLACES_LS); PS.places = null; PS.placesAt = 0; } catch (e) { } try { if (typeof mgrRememberClear === 'function') mgrRememberClear(); } catch (e) { } }; /* 未批准／被移除 → 手機緩存全部清走（含主管記住） */
 (function () { try { const s = document.createElement('style'); s.textContent =
   '#swrhint{position:fixed;left:50%;bottom:calc(10px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:rgba(17,24,39,.88);color:#fff;font-size:13px;padding:5px 12px;border-radius:14px;z-index:70;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:92vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
   '#swrhint.show{opacity:1;transform:translate(-50%,0)}#swrhint.off{background:rgba(146,64,14,.92)}';
@@ -7998,8 +8051,8 @@ async function pecUploadOld(btn) {
   btn.disabled = true; btn.textContent = '上傳緊…';
   try {
     const o = await gasCall({ action: 'pe_prev', manager_pin: pin, period: PEC.old.period, sheets: E.s && E.s.length ? E.s : [E.n], building: svpBName(bi), date: PEC.date, who: who, rows: rows }, 90000);
-    if (o && o.ok) toast('已寫入 ' + PEC.old.period + '（已填 ' + filled.length + ' 支；未剔唔寫）。冇改其他期數。');
-    else if (o && (o.error === 'bad_manager_pin' || o.error === 'manager_locked' || o.error === 'not_manager')) { if (typeof ACC !== 'undefined') ACC.mgrPin = ''; toast(o.error === 'manager_locked' ? '主管密碼錯太多次，鎖咗 15 分鐘' : '主管密碼唔啱'); }
+    if (o && o.ok) { if (typeof mgrRememberSave === 'function') mgrRememberSave(pin); toast('已寫入 ' + PEC.old.period + '（已填 ' + filled.length + ' 支；未剔唔寫）。冇改其他期數。'); }
+    else if (o && (o.error === 'bad_manager_pin' || o.error === 'manager_locked' || o.error === 'not_manager')) { if (typeof mgrRememberClear === 'function') mgrRememberClear(); else if (typeof ACC !== 'undefined') ACC.mgrPin = ''; toast(o.error === 'manager_locked' ? '主管密碼錯太多次，鎖咗 15 分鐘' : '主管密碼唔啱'); }
     else if (o && o.error === 'bad_action') toast('公司伺服器未到 v1.29（未部署），舊期未寫。', 4000);
     else if (o && o.error === 'not_old_period') toast('呢期唔係舊期，冇寫。');
     else toast('舊期未寫到。');
