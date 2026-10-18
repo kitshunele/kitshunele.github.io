@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.106';
+const APP_VERSION = '0.6.107';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.106：影相圈配件加上下步（圈錯可返；標註可返改圈）。
+/* 0.6.107：影相圈配件雙指放大縮細＋長按拖移圈。
+   0.6.106：影相圈配件加上下步（圈錯可返；標註可返改圈）。
    0.6.105：影相圈配件可相機或相簿揀相。
    0.6.104：度數「影相圈配件」——影相→圈→揀七 label（map 0.2）→確認加入行；缺徑 soft-flag。
    0.6.102：度數項目卡唔再顯示「參考：…價」（FAN）。
@@ -9361,7 +9362,10 @@ const DS_PA = {
   softFlags: [],
   step: 'draw', /* draw | label */
   labelIdx: 0,
-  answers: [] /* {label, size} parallel to circles */
+  answers: [], /* {label, size} parallel to circles */
+  /* 畫面：雙指 pinch／平移；圈座標仍係 0–1 相對原相 */
+  view: { scale: 1, tx: 0, ty: 0 },
+  moveIdx: -1 /* 長按拖緊邊個圈 */
 };
 function dsPaEntryHtml() {
   return `<div class="card"><h3>📷 影相圈配件</h3>
@@ -9453,6 +9457,8 @@ function dsPaOpen(src) {
       DS_PA.step = 'draw';
       DS_PA.labelIdx = 0;
       DS_PA.answers = [];
+      DS_PA.view = { scale: 1, tx: 0, ty: 0 };
+      DS_PA.moveIdx = -1;
       DS_PA.open = true;
       dsPaMount();
     } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
@@ -9505,6 +9511,7 @@ function dsPaMount() {
   if (!style.parentNode) document.head.appendChild(style);
 
   const cv = document.getElementById('dspa_cv');
+  const stage = cv.parentElement;
   const img = new Image();
   img.onload = () => {
     const maxW = Math.min(window.innerWidth, 1280);
@@ -9513,49 +9520,171 @@ function dsPaMount() {
     cv.width = Math.round(img.naturalWidth * s);
     cv.height = Math.round(img.naturalHeight * s);
     DS_PA._img = img;
-    DS_PA._scale = s;
+    DS_PA._baseScale = s; /* canvas 相對原相 */
+    DS_PA.view = { scale: 1, tx: 0, ty: 0 };
     dsPaRedraw();
   };
   img.src = DS_PA.dataUrl;
 
-  const ptr = { down: false };
-  const toNorm = (e) => {
+  const ptrs = new Map(); /* pointerId -> {x,y} client relative stage */
+  let mode = null; /* draw | pan | pinch | move | pending */
+  let longT = null;
+  let pinch0 = null; /* {dist, scale, tx, ty, mx, my} */
+  let pan0 = null;
+  let pending = null; /* {x,y,t} for long-press detect */
+
+  const stageXY = (e) => {
+    const r = stage.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top, cx: e.clientX, cy: e.clientY };
+  };
+  /* 螢幕座標 → 相 0–1（計埋 view 平移／放大） */
+  const toNorm = (clientX, clientY) => {
     const r = cv.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width;
-    const y = (e.clientY - r.top) / r.height;
+    /* CSS 顯示尺寸可能同 canvas.width 唔同 */
+    const lx = (clientX - r.left) * (cv.width / Math.max(1, r.width));
+    const ly = (clientY - r.top) * (cv.height / Math.max(1, r.height));
+    const v = DS_PA.view || { scale: 1, tx: 0, ty: 0 };
+    const invS = 1 / (v.scale || 1);
+    const x = (lx - v.tx) * invS / cv.width;
+    const y = (ly - v.ty) * invS / cv.height;
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   };
-  cv.addEventListener('pointerdown', e => {
+  const hitCircle = (nx, ny) => {
+    let best = -1, bestD = 1e9;
+    DS_PA.circles.forEach((c, i) => {
+      const dx = nx - c.cx, dy = ny - c.cy;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d <= c.r * 1.35 && d < bestD) { best = i; bestD = d; }
+    });
+    return best;
+  };
+  const clearLong = () => { if (longT) { clearTimeout(longT); longT = null; } };
+
+  const onDown = (e) => {
     if (DS_PA.step !== 'draw') return;
     e.preventDefault();
-    cv.setPointerCapture(e.pointerId);
-    const p = toNorm(e);
-    ptr.down = true;
-    DS_PA.drawing = { cx: p.x, cy: p.y, r: 0.02 };
-    dsPaRedraw();
-  });
-  cv.addEventListener('pointermove', e => {
-    if (DS_PA.step !== 'draw' || !ptr.down || !DS_PA.drawing) return;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    const p = stageXY(e);
+    ptrs.set(e.pointerId, p);
+    clearLong();
+
+    if (ptrs.size === 2) {
+      /* pinch start */
+      mode = 'pinch';
+      DS_PA.drawing = null;
+      DS_PA.moveIdx = -1;
+      const arr = [...ptrs.values()];
+      const dx = arr[0].cx - arr[1].cx, dy = arr[0].cy - arr[1].cy;
+      const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      const mx = (arr[0].x + arr[1].x) / 2, my = (arr[0].y + arr[1].y) / 2;
+      pinch0 = { dist: dist, scale: DS_PA.view.scale, tx: DS_PA.view.tx, ty: DS_PA.view.ty, mx: mx, my: my };
+      return;
+    }
+    if (ptrs.size === 1) {
+      const n = toNorm(e.clientX, e.clientY);
+      const hi = hitCircle(n.x, n.y);
+      pending = { x: e.clientX, y: e.clientY, n: n, hi: hi, t: Date.now() };
+      mode = 'pending';
+      longT = setTimeout(() => {
+        if (mode !== 'pending' || !pending) return;
+        if (pending.hi >= 0) {
+          mode = 'move';
+          DS_PA.moveIdx = pending.hi;
+          DS_PA.drawing = null;
+          toast('拖移呢個圈', 1000);
+          dsPaRedraw();
+        } else {
+          mode = 'pan';
+          pan0 = { x: pending.x, y: pending.y, tx: DS_PA.view.tx, ty: DS_PA.view.ty };
+        }
+      }, 420);
+    }
+  };
+  const onMove = (e) => {
+    if (DS_PA.step !== 'draw') return;
+    if (!ptrs.has(e.pointerId)) return;
     e.preventDefault();
-    const p = toNorm(e);
-    const dx = p.x - DS_PA.drawing.cx;
-    const dy = p.y - DS_PA.drawing.cy;
-    DS_PA.drawing.r = Math.max(0.015, Math.min(0.35, Math.sqrt(dx * dx + dy * dy)));
-    dsPaRedraw();
-  });
-  const endPtr = e => {
-    if (!ptr.down) return;
-    ptr.down = false;
-    if (DS_PA.step === 'draw' && DS_PA.drawing && DS_PA.drawing.r >= 0.018) {
+    ptrs.set(e.pointerId, stageXY(e));
+
+    if (mode === 'pinch' && ptrs.size >= 2 && pinch0) {
+      const arr = [...ptrs.values()];
+      const dx = arr[0].cx - arr[1].cx, dy = arr[0].cy - arr[1].cy;
+      const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      let sc = pinch0.scale * (dist / pinch0.dist);
+      sc = Math.max(1, Math.min(5, sc));
+      const mx = (arr[0].x + arr[1].x) / 2, my = (arr[0].y + arr[1].y) / 2;
+      /* 以 pinch 中心為錨 */
+      DS_PA.view.tx = mx - (pinch0.mx - pinch0.tx) * (sc / pinch0.scale);
+      DS_PA.view.ty = my - (pinch0.my - pinch0.ty) * (sc / pinch0.scale);
+      DS_PA.view.scale = sc;
+      dsPaClampView();
+      dsPaRedraw();
+      return;
+    }
+    if (mode === 'pending' && pending) {
+      const dx = e.clientX - pending.x, dy = e.clientY - pending.y;
+      if (Math.sqrt(dx * dx + dy * dy) > 12) {
+        clearLong();
+        /* 短距離移動：若撳中圈 → 當畫新圈取消；改開始畫圈（由原點）或 pan */
+        mode = 'draw';
+        DS_PA.drawing = { cx: pending.n.x, cy: pending.n.y, r: 0.02 };
+        pending = null;
+      }
+    }
+    if (mode === 'move' && DS_PA.moveIdx >= 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      const c = DS_PA.circles[DS_PA.moveIdx];
+      if (c) { c.cx = n.x; c.cy = n.y; dsPaRedraw(); }
+      return;
+    }
+    if (mode === 'pan' && pan0) {
+      DS_PA.view.tx = pan0.tx + (e.clientX - pan0.x);
+      DS_PA.view.ty = pan0.ty + (e.clientY - pan0.y);
+      dsPaClampView();
+      dsPaRedraw();
+      return;
+    }
+    if (mode === 'draw' && DS_PA.drawing) {
+      const n = toNorm(e.clientX, e.clientY);
+      const dx = n.x - DS_PA.drawing.cx, dy = n.y - DS_PA.drawing.cy;
+      DS_PA.drawing.r = Math.max(0.015, Math.min(0.35, Math.sqrt(dx * dx + dy * dy)));
+      dsPaRedraw();
+    }
+  };
+  const onUp = (e) => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.delete(e.pointerId);
+    clearLong();
+    if (ptrs.size >= 2) return;
+    if (ptrs.size === 1 && mode === 'pinch') {
+      /* 剩一指：結束 pinch */
+      mode = null; pinch0 = null;
+      return;
+    }
+    if (mode === 'draw' && DS_PA.drawing && DS_PA.drawing.r >= 0.018) {
       DS_PA.circles.push({ cx: DS_PA.drawing.cx, cy: DS_PA.drawing.cy, r: DS_PA.drawing.r });
       DS_PA.answers.push({ label: '', size: '' });
     }
+    if (mode === 'pending' && pending) {
+      /* 短按無移動：由呢點開始細圈（點一下加細圈） */
+      const n = pending.n;
+      DS_PA.circles.push({ cx: n.x, cy: n.y, r: 0.045 });
+      DS_PA.answers.push({ label: '', size: '' });
+      toast('已加圈（可長按拖移）', 1200);
+    }
     DS_PA.drawing = null;
+    DS_PA.moveIdx = -1;
+    mode = null; pending = null; pinch0 = null; pan0 = null;
     dsPaRedraw();
     dsPaUpdateChrome();
   };
-  cv.addEventListener('pointerup', endPtr);
-  cv.addEventListener('pointercancel', endPtr);
+  cv.addEventListener('pointerdown', onDown);
+  cv.addEventListener('pointermove', onMove);
+  cv.addEventListener('pointerup', onUp);
+  cv.addEventListener('pointercancel', onUp);
+  /* 雙指唔好觸發瀏覽器手勢 */
+  stage.addEventListener('touchstart', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  stage.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
   document.getElementById('dspa_close').onclick = () => {
     if ((DS_PA.circles.length || DS_PA.step === 'label') && !confirm('關閉會唔加入呢啲圈。確定？')) return;
@@ -9580,7 +9709,7 @@ function dsPaUpdateChrome() {
   const next = document.getElementById('dspa_next');
   if (!n) return;
   if (DS_PA.step === 'draw') {
-    if (ttl) ttl.textContent = '① 圈配件 · 拖動畫圈';
+    if (ttl) ttl.textContent = '① 圈配件 · 雙指放大 · 長按移圈';
     if (undo) undo.style.visibility = 'visible';
     n.textContent = '已圈 ' + DS_PA.circles.length + ' 個';
     if (prev) prev.disabled = false;
@@ -9723,28 +9852,44 @@ async function dsPaFinish() {
   dsPaint();
 }
 
+function dsPaClampView() {
+  const cv = document.getElementById('dspa_cv');
+  if (!cv) return;
+  const v = DS_PA.view;
+  const sc = v.scale || 1;
+  /* 唔好移到完全睇唔到相 */
+  const maxX = cv.width * sc * 0.85;
+  const maxY = cv.height * sc * 0.85;
+  v.tx = Math.max(-maxX, Math.min(maxX, v.tx));
+  v.ty = Math.max(-maxY, Math.min(maxY, v.ty));
+  if (sc <= 1.02) { v.scale = 1; v.tx = 0; v.ty = 0; }
+}
 function dsPaRedraw() {
   const cv = document.getElementById('dspa_cv');
   if (!cv || !DS_PA._img) return;
   const g = cv.getContext('2d');
+  const v = DS_PA.view || { scale: 1, tx: 0, ty: 0 };
+  g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, cv.width, cv.height);
+  g.setTransform(v.scale, 0, 0, v.scale, v.tx, v.ty);
   g.drawImage(DS_PA._img, 0, 0, cv.width, cv.height);
-  const drawC = (c, col, fill) => {
+  const drawC = (c, col, fill, lw) => {
     g.beginPath();
     g.arc(c.cx * cv.width, c.cy * cv.height, c.r * Math.min(cv.width, cv.height), 0, Math.PI * 2);
     g.strokeStyle = col;
-    g.lineWidth = 3;
+    g.lineWidth = (lw || 3) / (v.scale || 1);
     g.stroke();
     if (fill) { g.fillStyle = fill; g.fill(); }
   };
   DS_PA.circles.forEach((c, i) => {
-    const hi = DS_PA.step === 'label' && i === DS_PA.labelIdx;
+    const hi = (DS_PA.step === 'label' && i === DS_PA.labelIdx) || DS_PA.moveIdx === i;
     drawC(c, hi ? '#fbbf24' : '#22c55e', hi ? 'rgba(251,191,36,.25)' : 'rgba(34,197,94,.15)');
     g.fillStyle = hi ? '#fbbf24' : '#22c55e';
-    g.font = 'bold 16px sans-serif';
+    g.font = 'bold ' + (16 / (v.scale || 1)) + 'px sans-serif';
     g.fillText(String(i + 1), c.cx * cv.width + 6, c.cy * cv.height - 6);
   });
   if (DS_PA.drawing) drawC(DS_PA.drawing, '#38bdf8', 'rgba(56,189,248,.12)');
+  g.setTransform(1, 0, 0, 1, 0, 0);
 }
 /* ---------- v0.6.100 單據報銷（FAN 2026-10-17：開頁出編號；影相→AI加總；Sheet＋Drive；撞單） ----------
    FAN（2026-10-18）：影相上限 20；手機暫存（跟度數：localStorage＋PhotoDB；autosave；送出成功先清；可繼續）。
