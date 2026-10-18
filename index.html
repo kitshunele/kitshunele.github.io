@@ -387,7 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.131';
+const APP_VERSION = '0.6.132';
+/* v0.6.132：TANK_FLOAT→水缸 2.g；F24→水缸 1.b／1.c；水缸 2.j／2.k 預設 NA */
 /* v0.6.131：問卷每題顯示對應邊個消防處位置（runtime 反查 fsd q_def／q_skip／gate） */
 /* v0.6.130：消防處·水缸 2.e／2.f 預設不適用（def_v=NA） */
 /* v0.6.129：栓轆問卷／預設批次——q_def／def_v／q_skip／def_skip；F6 下龍頭／喉轆、隱藏喉轆、Inlet門、閘制訊號；F24「有冇水種缸」；F26 改名
