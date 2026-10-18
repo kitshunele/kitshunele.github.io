@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.111';
+const APP_VERSION = '0.6.112';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.111：AI 後圈旁顯示配件名／code；返回上一步可返改圈。
+/* 0.6.112：長按圈邊拖移＝放大縮細；長按圈心＝拖位。
+   0.6.111：AI 後圈旁顯示配件名／code；返回上一步可返改圈。
    0.6.110：圈預設細啲；底欄細／大調最後一圈。
    0.6.109：撳圈揀配件；圈完下一步自動 AI 分析（dosu_pipe_ai）。
    0.6.108：圈配件左上「返回上一步」；下一步淨底欄右。
@@ -9369,7 +9370,8 @@ const DS_PA = {
   answers: [], /* {label, size} parallel to circles */
   /* 畫面：雙指 pinch／平移；圈座標仍係 0–1 相對原相 */
   view: { scale: 1, tx: 0, ty: 0 },
-  moveIdx: -1 /* 長按拖緊邊個圈 */
+  moveIdx: -1, /* 長按拖緊邊個圈 */
+  resizeIdx: -1 /* 長按圈邊調大細 */
 };
 function dsPaEntryHtml() {
   return `<div class="card"><h3>📷 影相圈配件</h3>
@@ -9463,6 +9465,7 @@ function dsPaOpen(src) {
       DS_PA.answers = [];
       DS_PA.view = { scale: 1, tx: 0, ty: 0 };
       DS_PA.moveIdx = -1;
+      DS_PA.resizeIdx = -1;
       DS_PA.open = true;
       dsPaMount();
     } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
@@ -9555,15 +9558,21 @@ function dsPaMount() {
     const y = (ly - v.ty) * invS / cv.height;
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   };
-  const hitCircle = (nx, ny) => {
-    let best = -1, bestD = 1e9;
+  const hitCircleInfo = (nx, ny) => {
+    let best = -1, bestD = 1e9, bestOnRim = false;
     DS_PA.circles.forEach((c, i) => {
       const dx = nx - c.cx, dy = ny - c.cy;
       const d = Math.sqrt(dx * dx + dy * dy);
-      if (d <= Math.max(c.r * 1.6, 0.028) && d < bestD) { best = i; bestD = d; }
+      const hitR = Math.max(c.r * 1.7, 0.030);
+      if (d <= hitR && d < bestD) {
+        best = i; bestD = d;
+        /* 近圓周＝邊（外半＋外緣）；中心＝搬位 */
+        bestOnRim = d >= Math.max(c.r * 0.5, 0.010);
+      }
     });
-    return best;
+    return { i: best, onRim: bestOnRim, d: bestD };
   };
+  const hitCircle = (nx, ny) => hitCircleInfo(nx, ny).i;
   const clearLong = () => { if (longT) { clearTimeout(longT); longT = null; } };
 
   const onDown = (e) => {
@@ -9586,6 +9595,7 @@ function dsPaMount() {
       mode = 'pinch';
       DS_PA.drawing = null;
       DS_PA.moveIdx = -1;
+      DS_PA.resizeIdx = -1;
       const arr = [...ptrs.values()];
       const dx = arr[0].cx - arr[1].cx, dy = arr[0].cy - arr[1].cy;
       const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
@@ -9595,16 +9605,25 @@ function dsPaMount() {
     }
     if (ptrs.size === 1) {
       const n = toNorm(e.clientX, e.clientY);
-      const hi = hitCircle(n.x, n.y);
-      pending = { x: e.clientX, y: e.clientY, n: n, hi: hi, t: Date.now() };
+      const hiInfo = hitCircleInfo(n.x, n.y);
+      const hi = hiInfo.i;
+      pending = { x: e.clientX, y: e.clientY, n: n, hi: hi, onRim: !!hiInfo.onRim, t: Date.now() };
       mode = 'pending';
       longT = setTimeout(() => {
         if (mode !== 'pending' || !pending) return;
         if (pending.hi >= 0) {
-          mode = 'move';
-          DS_PA.moveIdx = pending.hi;
           DS_PA.drawing = null;
-          toast('拖移呢個圈', 1000);
+          if (pending.onRim) {
+            mode = 'resize';
+            DS_PA.resizeIdx = pending.hi;
+            DS_PA.moveIdx = -1;
+            toast('拖圈邊放大縮細', 1000);
+          } else {
+            mode = 'move';
+            DS_PA.moveIdx = pending.hi;
+            DS_PA.resizeIdx = -1;
+            toast('拖移呢個圈', 1000);
+          }
           dsPaRedraw();
         } else {
           mode = 'pan';
@@ -9650,6 +9669,16 @@ function dsPaMount() {
       if (c) { c.cx = n.x; c.cy = n.y; dsPaRedraw(); }
       return;
     }
+    if (mode === 'resize' && DS_PA.resizeIdx >= 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      const c = DS_PA.circles[DS_PA.resizeIdx];
+      if (c) {
+        const dx = n.x - c.cx, dy = n.y - c.cy;
+        c.r = Math.max(0.008, Math.min(0.25, Math.sqrt(dx * dx + dy * dy)));
+        dsPaRedraw();
+      }
+      return;
+    }
     if (mode === 'pan' && pan0) {
       DS_PA.view.tx = pan0.tx + (e.clientX - pan0.x);
       DS_PA.view.ty = pan0.ty + (e.clientY - pan0.y);
@@ -9684,6 +9713,7 @@ function dsPaMount() {
         const hi = pending.hi;
         DS_PA.drawing = null;
         DS_PA.moveIdx = -1;
+        DS_PA.resizeIdx = -1;
         mode = null; pending = null; pinch0 = null; pan0 = null;
         dsPaRedraw();
         dsPaUpdateChrome();
@@ -9694,10 +9724,11 @@ function dsPaMount() {
       const n = pending.n;
       DS_PA.circles.push({ cx: n.x, cy: n.y, r: 0.022 });
       DS_PA.answers.push({ label: '', size: '' });
-      toast('已加圈（撳圈揀配件／長按拖移）', 1400);
+      toast('已加圈（撳圈揀／長按中心拖／長按邊調大細）', 1600);
     }
     DS_PA.drawing = null;
     DS_PA.moveIdx = -1;
+    DS_PA.resizeIdx = -1;
     mode = null; pending = null; pinch0 = null; pan0 = null;
     dsPaRedraw();
     dsPaUpdateChrome();
@@ -9731,7 +9762,7 @@ function dsPaMount() {
 }
 function dsPaResizeLast(factor) {
   if (DS_PA.step !== 'draw' || !DS_PA.circles.length) return;
-  const i = DS_PA.moveIdx >= 0 ? DS_PA.moveIdx : DS_PA.circles.length - 1;
+  const i = DS_PA.resizeIdx >= 0 ? DS_PA.resizeIdx : (DS_PA.moveIdx >= 0 ? DS_PA.moveIdx : DS_PA.circles.length - 1);
   const c = DS_PA.circles[i];
   if (!c) return;
   c.r = Math.max(0.008, Math.min(0.25, c.r * factor));
@@ -9748,7 +9779,7 @@ function dsPaUpdateChrome() {
   const lg = document.getElementById('dspa_lg');
   if (!n) return;
   if (DS_PA.step === 'draw') {
-    if (ttl) ttl.textContent = '① 圈配件 · 細／大調圈';
+    if (ttl) ttl.textContent = '① 圈配件 · 長按邊調大細';
     if (undo) undo.style.visibility = 'visible';
     if (sm) sm.style.display = '';
     if (lg) lg.style.display = '';
@@ -9773,6 +9804,7 @@ function dsPaPrev() {
     DS_PA.step = 'draw';
     DS_PA.labelIdx = 0;
     DS_PA.moveIdx = -1;
+    DS_PA.resizeIdx = -1;
     DS_PA.drawing = null;
     dsPaUpdateChrome();
     dsPaRedraw();
@@ -10027,7 +10059,7 @@ function dsPaRedraw() {
     if (fill) { g.fillStyle = fill; g.fill(); }
   };
   DS_PA.circles.forEach((c, i) => {
-    const hi = (DS_PA.step === 'label' && i === DS_PA.labelIdx) || DS_PA.moveIdx === i;
+    const hi = (DS_PA.step === 'label' && i === DS_PA.labelIdx) || DS_PA.moveIdx === i || DS_PA.resizeIdx === i;
     drawC(c, hi ? '#fbbf24' : '#22c55e', hi ? 'rgba(251,191,36,.25)' : 'rgba(34,197,94,.15)');
     g.fillStyle = hi ? '#fbbf24' : '#22c55e';
     g.font = 'bold ' + (16 / (v.scale || 1)) + 'px sans-serif';
