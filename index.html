@@ -386,8 +386,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.128';
-/* v0.6.128：問卷一般系統加 FIXED_HR「有冇固定喉轆」；消防處·栓轆 5.d 跟答預設是／不適用（q_def）；AI 失敗唔再開下拉仍沿用 0.6.127 */
+const APP_VERSION = '0.6.129';
+/* v0.6.129：栓轆問卷／預設批次——q_def／def_v／q_skip／def_skip；F6 下龍頭／喉轆、隱藏喉轆、Inlet門、閘制訊號；F24「有冇水種缸」；F26 改名
+   v0.6.128：問卷一般系統加 FIXED_HR「有冇固定喉轆」；消防處·栓轆 5.d 跟答預設是／不適用（q_def）；AI 失敗唔再開下拉仍沿用 0.6.127 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1487,16 +1488,20 @@ const fsdKeyOf = step => (step && String(step).startsWith('FSD-') && FSD_BY[step
 const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：消防處年檢核對表只限年檢（CL-A B 部「FSD's Annual Inspection Checklists」半年檢係「-」）
 /* v0.4.8：問卷「有」→ 是/否/不適用 項目預設「是」（✓ 剔選項目唔預設；可留空嘅互斥部分唔預設）；師傅揀過先記 technician */
 /* v0.6.128：it.q_def = [問卷 cell, {答:Y/NA}] → 跟問卷預設；未答唔跌落通用「是」 */
-const fsdEff = (r, c, s, it, M) => { const a = (fsdGet(r, c.key).a || {})[it.k] || {}; if (a.v) return { v: a.v, by: 'technician' }; if (it.q_def) { const qv = r.q[it.q_def[0]], map = it.q_def[1] || {}; if (qv && map[qv]) return { v: map[qv], by: 'default' }; return { v: '', by: '' }; } const dv = it.mode === 'ynn' && !fsdItemOpt(M || optMap(r), c, s) ? 'Y' : ''; return { v: dv, by: dv ? 'default' : '' }; };
-const fsdGet = (r, key) => { const d = r.fsd && r.fsd[key]; return d ? (d.a && d.skip && d.t && d.h ? d : Object.assign({ a: {}, skip: {}, t: {}, h: {} }, d)) : { a: {}, skip: {}, t: {}, h: {} }; }; // 唯讀（改用 fsdRec）
-function fsdRec(r, key) { r.fsd = r.fsd || {}; const d = r.fsd[key] || (r.fsd[key] = {}); d.a = d.a || {}; d.skip = d.skip || {}; d.t = d.t || {}; d.h = d.h || {}; return d; }
+/* v0.6.129：it.def_v（如 'NA'）靜態預設；s.q_skip／s.def_skip 部分自動不適用 */
+const fsdEff = (r, c, s, it, M) => { const a = (fsdGet(r, c.key).a || {})[it.k] || {}; if (a.v) return { v: a.v, by: 'technician' }; if (it.q_def) { const qv = r.q[it.q_def[0]], map = it.q_def[1] || {}; if (qv && map[qv]) return { v: map[qv], by: 'default' }; return { v: '', by: '' }; } if (it.def_v) return { v: it.def_v, by: 'default' }; const dv = it.mode === 'ynn' && !fsdItemOpt(M || optMap(r), c, s) ? 'Y' : ''; return { v: dv, by: dv ? 'default' : '' }; };
+const fsdGet = (r, key) => { const d = r.fsd && r.fsd[key]; return d ? (d.a && d.skip && d.t && d.h && d.force_on ? d : Object.assign({ a: {}, skip: {}, t: {}, h: {}, force_on: {} }, d)) : { a: {}, skip: {}, t: {}, h: {}, force_on: {} }; }; // 唯讀（改用 fsdRec）
+function fsdRec(r, key) { r.fsd = r.fsd || {}; const d = r.fsd[key] || (r.fsd[key] = {}); d.a = d.a || {}; d.skip = d.skip || {}; d.t = d.t || {}; d.h = d.h || {}; d.force_on = d.force_on || {}; return d; }
 const fsdDom = (key, k) => 'fi-' + key + '-' + String(k).replace(/[^A-Za-z0-9]/g, '-');
 const fsdOffAllowed = (r, c) => c.key === 'fa' && r.q.F9 === '有';
 const fsdIsOff = (r, c) => !!(fsdGet(r, c.key).off && fsdOffAllowed(r, c));
-function fsdWalk(c, d, fn, off, hide) { // fn(sec, depth, skipped, why) — why: '' | 'own' | 'link' | 'parent' | 'off' | 'notank'（hide = 隱藏嘅頂層部分）
+function fsdWalk(c, d, fn, off, hide, r) { // fn(sec, depth, skipped, why) — why: '' | 'own' | 'q' | 'def' | 'link' | 'parent' | 'off' | 'notank'
+  const byId = {}; const idx = s => { byId[s.id] = s; (s.subs || []).forEach(idx); }; c.sections.forEach(idx);
+  const autoWhy = s => { if ((d.skip || {})[s.id]) return 'own'; if (s.q_skip && r && r.q[s.q_skip[0]] === s.q_skip[1]) return 'q'; if (s.def_skip && !(d.force_on || {})[s.id]) return 'def'; return ''; };
+  const linkedSkip = s => { if (!s.link) return false; const p = byId[s.link]; if (!p) return !!(d.skip || {})[s.link]; return !!autoWhy(p) || linkedSkip(p); };
   const rec = (s, depth, pwhy) => {
-    const own = !!(d.skip || {})[s.id], link = !!(s.link && (d.skip || {})[s.link]);
-    const why = off ? 'off' : (depth === 0 && hide && hide.includes(s.id)) || pwhy === 'notank' ? 'notank' : pwhy ? 'parent' : own ? 'own' : link ? 'link' : '';
+    const aw = autoWhy(s);
+    const why = off ? 'off' : (depth === 0 && hide && hide.includes(s.id)) || pwhy === 'notank' ? 'notank' : pwhy ? 'parent' : aw === 'own' ? 'own' : aw === 'q' ? 'q' : aw === 'def' ? 'def' : linkedSkip(s) ? 'link' : '';
     fn(s, depth, !!why, why); (s.subs || []).forEach(x => rec(x, depth + 1, why));
   };
   c.sections.forEach(s => rec(s, 0, ''));
@@ -1505,7 +1510,7 @@ const fsdHide = (r, c) => (c.key === 'spr' && noSprTank(r)) ? NOTANK_SEC : null;
 const FSD_TOP = {}; function fsdTopInit() { Object.keys(FSD_TOP).forEach(k => delete FSD_TOP[k]); FSD.forEach(c => { const rec = (s, top) => { FSD_TOP[c.key + '|' + s.id] = top; (s.subs || []).forEach(x => rec(x, top)); }; c.sections.forEach(s => rec(s, s.id)); }); }
 fsdTopInit();
 const fsdItemOpt = (M, c, s) => M.get(`fsdsec.${c.key}.${FSD_TOP[c.key + '|' + s.id]}`) || ''; // 冇花灑水缸 → 泵部分可留空
-function fsdActive(r, c) { const d = fsdGet(r, c.key), out = []; fsdWalk(c, d, (s, dep, sk) => { if (!sk) s.items.forEach(it => { if (it.mode === 'ynn') out.push([s, it]); }); }, fsdIsOff(r, c), fsdHide(r, c)); return out; }
+function fsdActive(r, c) { const d = fsdGet(r, c.key), out = []; fsdWalk(c, d, (s, dep, sk) => { if (!sk) s.items.forEach(it => { if (it.mode === 'ynn') out.push([s, it]); }); }, fsdIsOff(r, c), fsdHide(r, c), r); return out; }
 const fsdCode = (s, it) => it.id ? `${s.id} ${it.id}` : s.id;
 /* ----- 表格（讀數）----- */
 const FH_SRC = [['jockey', '穩壓泵'], ['fix1', '1號固定消防泵'], ['fix2', '2號固定消防泵'], ['bst1', '1號中途泵'], ['bst2', '2號中途泵'], ['tank', '消防水缸重力供水']];
@@ -1522,7 +1527,7 @@ const FDS_T1 = [['1', '消防控制和指示板', 5, true], ['2', '覆示裝置�
 function fsdTableMissing(r, c, s) {
   const d = fsdGet(r, c.key), t = d.t || {}, out = [], b = `fsd.${c.key}.t`;
   if (s.table === 'fhhr_t1') {
-    let hyd = true; fsdWalk(c, d, (x, dep, sk) => { if (x.id === '4' && sk) hyd = false; }, fsdIsOff(r, c));
+    let hyd = true; fsdWalk(c, d, (x, dep, sk) => { if (x.id === '4' && sk) hyd = false; }, fsdIsOff(r, c), null, r);
     const zs = (t.zones || []).map(z => z || {});
     if (hyd && !zs.length) out.push({ code: '表一 未加消防栓區域', sel: '#ft-' + c.key });
     zs.forEach((z, i) => { const zc = `表一 區域${i + 1}`;
@@ -1543,7 +1548,7 @@ function fsdTableMissing(r, c, s) {
     const rows = (t.valves || []).map(x => x || {});
     if (!rows.length) out.push({ code: '表一 未加花灑控制閥', sel: '#ft-' + c.key + '-t1' });
     rows.forEach((x, i) => [['no', '花灑控制閥編號'], ['type', '種類'], ['floor', '控制閥所處樓層／位置']].forEach(([f, l]) => { if (!has(x[f])) out.push({ code: `表一 第${i + 1}行 ${l}`, sel: f === 'type' ? `#ft-${c.key}-v${i}-type` : `[data-bind="${b}.valves.${i}.${f}"]` }); }));
-    const sk = {}; fsdWalk(c, d, (x, dep, skp) => { sk[x.id] = skp; }, fsdIsOff(r, c), fsdHide(r, c));
+    const sk = {}; fsdWalk(c, d, (x, dep, skp) => { sk[x.id] = skp; }, fsdIsOff(r, c), fsdHide(r, c), r);
     SPR_TOT.forEach(([f, l, sid]) => { if (!sk[sid] && !has((t.totals || {})[f])) out.push({ code: `表一 ${l} 設備總數量`, sel: `[data-bind="${b}.totals.${f}"]` }); });
   } else if (s.table === 'spr_t2') {
     const its = (t.sitems || []).map(x => x || {});
@@ -1672,11 +1677,15 @@ function stepFsd(r, key) {
   fsdWalk(c, d, (s, dep, sk, why) => {
     if (why === 'parent' || why === 'off' || why === 'notank') return;
     const H = dep === 0 ? 'h3' : 'h4';
-    const skipBtn = s.skip ? `<button class="fskip ${why === 'own' ? 'on' : ''}" data-act="fsdskip" data-c="${key}" data-s="${esc(s.id)}">${why === 'own' ? '☑' : '☐'} 不適用${s.skip_label ? '（' + esc(s.skip_label) + '）' : ''}</button>` : '';
-    const linkNote = why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」，本附錄略過。</div>` : '';
-    body += `<div class="${dep === 0 ? 'card' : 'sub'} fsec" id="fs-${key}-${String(s.id).replace(/[^A-Za-z0-9]/g, '-')}"><${H}>${esc(s.title)}</${H}>${s.note ? `<div class="mut fsn">${esc(s.note)}</div>` : ''}${skipBtn}${linkNote}
-      ${sk ? (why === 'own' ? '<div class="skipnote">已揀「不適用」，呢部分略過。</div>' : '') : s.items.map(it => fsdItemHtml(r, c, s, it)).join('') + (s.table ? fsdTableHtml(r, c, s) : '')}</div>`;
-  }, off, fsdHide(r, c));
+    const skipOn = why === 'own' || why === 'q' || why === 'def';
+    const skipBtn = s.skip ? `<button class="fskip ${skipOn ? 'on' : ''}" data-act="fsdskip" data-c="${key}" data-s="${esc(s.id)}">${skipOn ? '☑' : '☐'} 不適用${s.skip_label ? '（' + esc(s.skip_label) + '）' : ''}</button>` : '';
+    const skipNote = why === 'own' ? '<div class="skipnote">已揀「不適用」，呢部分略過。</div>'
+      : why === 'q' ? `<div class="skipnote">問卷 ${esc(s.q_skip[0])}＝${esc(s.q_skip[1])} → 自動不適用</div>`
+      : why === 'def' ? '<div class="skipnote">預設不適用</div>'
+      : why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」，本附錄略過。</div>` : '';
+    body += `<div class="${dep === 0 ? 'card' : 'sub'} fsec" id="fs-${key}-${String(s.id).replace(/[^A-Za-z0-9]/g, '-')}"><${H}>${esc(s.title)}</${H}>${s.note ? `<div class="mut fsn">${esc(s.note)}</div>` : ''}${skipBtn}${skipNote}
+      ${sk ? '' : s.items.map(it => fsdItemHtml(r, c, s, it)).join('') + (s.table ? fsdTableHtml(r, c, s) : '')}</div>`;
+  }, off, fsdHide(r, c), r);
   const fs251 = r.block.fs251 || '', addr = [nameOf(r.block), nameOf(r.estate)].filter(Boolean).join('，');
   return `<div class="hint"><b>${esc(c.title)}</b>（${esc(c.circular)}${c.revision ? '，' + esc(c.revision) : ''}）<br>發出 ${esc(c.issued)} · 生效 ${esc(c.effective)} · <a href="${esc(c.source)}" target="_blank" rel="noopener">官方 PDF</a><br>
     <span class="mut">${esc(c.legend)}</span><br><span class="mut">工作用數位副本，方便現場記錄；正式呈交／簽署仍以消防處原表格為準。</span></div>
@@ -1692,7 +1701,19 @@ async function fsdAct(act, el, r) {
   if (act === 'fsdv') { const d = fsdRec(r, key), k = el.dataset.k, a = d.a[k] || {};
     if (a.v === el.dataset.v) { delete a.v; if (!has(a.note)) delete d.a[k]; } else { a.v = el.dataset.v; d.a[k] = a; } // 撳返師傅揀過嘅 → 還原預設；撳預設嗰個 → 變「師傅確認」
     Store.touch(r); render(); if (el.dataset.v === 'N' && (d.a[k] || {}).v === 'N') setTimeout(() => { const t = $(`#${fsdDom(key, k)} textarea`); if (t) t.focus(); }, 50); return; }
-  if (act === 'fsdskip') { const d = fsdRec(r, key), s = el.dataset.s; if (d.skip[s]) delete d.skip[s]; else d.skip[s] = true; Store.touch(r); return render(); }
+  if (act === 'fsdskip') {
+    const d = fsdRec(r, key), sid = el.dataset.s;
+    const find = secs => { for (const s of secs || []) { if (s.id === sid) return s; const x = find(s.subs); if (x) return x; } return null; };
+    const sec = find(c.sections);
+    if (sec && sec.def_skip) {
+      if (d.skip[sid]) delete d.skip[sid];
+      else if ((d.force_on || {})[sid]) { delete d.force_on[sid]; d.skip[sid] = true; }
+      else { d.force_on[sid] = true; }
+    } else {
+      if (d.skip[sid]) delete d.skip[sid]; else d.skip[sid] = true;
+    }
+    Store.touch(r); return render();
+  }
   if (act === 'fsdoff') { const d = fsdRec(r, key); d.off = !d.off; if (!d.off) delete d.off; Store.touch(r); return render(); }
   if (act === 'fsdnote') { fsdOpenNote[key + ':' + el.dataset.k] = true; render(); setTimeout(() => { const t = $(`#${fsdDom(key, el.dataset.k)} textarea`); if (t) t.focus(); }, 50); return; }
   if (act === 'fsdallok') { const d = fsdRec(r, key), M0 = optMap(r), list = fsdActive(r, c).filter(([s, it]) => !fsdEff(r, c, s, it, M0).v);
@@ -1721,7 +1742,7 @@ function fsdExport(r) {
         if (sk) { o.result = it.mode === 'y' ? null : '不適用'; o.auto = why === 'own' ? 'section' : why === 'notank' ? 'no_spr_tank' : why; }
         else { const ef = fsdEff(r, c, s, it, OM); o.result = ef.v ? FSD_V[ef.v] : null; if (ef.by) o.set_by = ef.by; if (!ef.v && it.mode !== 'y' && fsdItemOpt(OM, c, s)) o.optional = fsdItemOpt(OM, c, s); }
         if (has((a.note || '').trim())) o.remark = a.note.trim();
-        items[it.k] = o; }); }, off, fsdHide(r, c));
+        items[it.k] = o; }); }, off, fsdHide(r, c), r);
     out[c.key] = Object.assign(meta, { applicable: true, whole_na: off, header: { contractor_ref: (d.h || {}).ref || '' }, skipped_sections: skipped, items, tables: fsdTablesOut(r, c, d) });
     if (fsdHide(r, c)) out[c.key].hidden_sections = { sections: NOTANK_SEC.slice(), why: '冇花灑水缸（問卷 SPR_TANK＝冇）' };
   });
