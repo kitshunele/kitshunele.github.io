@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.108';
+const APP_VERSION = '0.6.109';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.108：圈配件左上「返回上一步」；下一步淨底欄右。
+/* 0.6.109：撳圈揀配件；圈完下一步自動 AI 分析（dosu_pipe_ai）。
+   0.6.108：圈配件左上「返回上一步」；下一步淨底欄右。
    0.6.107：影相圈配件雙指放大縮細＋長按拖移圈。
    0.6.106：影相圈配件加上下步（圈錯可返；標註可返改圈）。
    0.6.105：影相圈配件可相機或相簿揀相。
@@ -9370,7 +9371,7 @@ const DS_PA = {
 };
 function dsPaEntryHtml() {
   return `<div class="card"><h3>📷 影相圈配件</h3>
-    <div class="mut" style="margin-bottom:8px">影現場相或由相簿揀 → 圈配件 → 揀種類（令叉／上牙／90度曲／刁曲／喉碼／花灑頭／警鐘）→ 確認加入度數。跟 Dimbook map 0.2；缺尺寸會標「要補」。</div>
+    <div class="mut" style="margin-bottom:8px">影相／相簿 → 圈配件（可撳圈改種類）→ 下一步自動 AI 分析 → 再確認加入。跟 map 0.2。</div>
     <div style="display:flex;gap:8px">
       <button type="button" class="btn pri" style="flex:1" data-ds="paopen" data-src="cam">📷 相機</button>
       <button type="button" class="btn" style="flex:1" data-ds="paopen" data-src="album">🖼 相簿</button>
@@ -9562,6 +9563,13 @@ function dsPaMount() {
   const clearLong = () => { if (longT) { clearTimeout(longT); longT = null; } };
 
   const onDown = (e) => {
+    if (DS_PA.step === 'label') {
+      e.preventDefault();
+      const n = toNorm(e.clientX, e.clientY);
+      const hi = hitCircle(n.x, n.y);
+      if (hi >= 0) dsPaEditLabel(hi);
+      return;
+    }
     if (DS_PA.step !== 'draw') return;
     e.preventDefault();
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
@@ -9667,11 +9675,22 @@ function dsPaMount() {
       DS_PA.answers.push({ label: '', size: '' });
     }
     if (mode === 'pending' && pending) {
-      /* 短按無移動：由呢點開始細圈（點一下加細圈） */
+      if (pending.hi >= 0) {
+        /* 短按已有圈 → 揀配件 */
+        const hi = pending.hi;
+        DS_PA.drawing = null;
+        DS_PA.moveIdx = -1;
+        mode = null; pending = null; pinch0 = null; pan0 = null;
+        dsPaRedraw();
+        dsPaUpdateChrome();
+        dsPaEditLabel(hi);
+        return;
+      }
+      /* 短按空白：加細圈 */
       const n = pending.n;
       DS_PA.circles.push({ cx: n.x, cy: n.y, r: 0.045 });
       DS_PA.answers.push({ label: '', size: '' });
-      toast('已加圈（可長按拖移）', 1200);
+      toast('已加圈（撳圈揀配件／長按拖移）', 1400);
     }
     DS_PA.drawing = null;
     DS_PA.moveIdx = -1;
@@ -9718,7 +9737,7 @@ function dsPaUpdateChrome() {
   } else {
     if (ttl) ttl.textContent = '② 標註 ' + (DS_PA.labelIdx + 1) + '/' + DS_PA.circles.length;
     if (undo) undo.style.visibility = 'hidden';
-    n.textContent = '第 ' + (DS_PA.labelIdx + 1) + ' 個圈';
+    n.textContent = DS_PA.circles.map((_,i)=>(DS_PA.answers[i]&&DS_PA.answers[i].label)||('?'+(i+1))).join(' · ');
     if (prev) prev.disabled = false;
     if (next) {
       const last = DS_PA.labelIdx >= DS_PA.circles.length - 1;
@@ -9757,11 +9776,7 @@ function dsPaNext() {
     if (!DS_PA.circles.length) { toast('未圈任何配件'); return; }
     while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
     if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-    DS_PA.step = 'label';
-    DS_PA.labelIdx = 0;
-    dsPaShowLabelPanel();
-    dsPaUpdateChrome();
-    dsPaRedraw();
+    dsPaRunAiThenReview();
     return;
   }
   /* label step */
@@ -9818,6 +9833,109 @@ function dsPaShowLabelPanel() {
   wrap.style.alignItems = 'center';
   wrap.style.paddingBottom = '70px';
 }
+
+function dsPaEditLabel(i) {
+  if (!(i >= 0) || i >= DS_PA.circles.length) return;
+  DS_PA.labelIdx = i;
+  while (DS_PA.answers.length <= i) DS_PA.answers.push({ label: '', size: '' });
+  dsPaShowLabelPanel();
+  /* panel：揀完即存，唔使下一步先存 */
+  const wrap = document.getElementById('dspa_labpanel');
+  if (!wrap) return;
+  const doneBtn = document.createElement('button');
+  doneBtn.type = 'button';
+  doneBtn.className = 'btn pri';
+  doneBtn.style.cssText = 'width:100%;margin-top:10px';
+  doneBtn.textContent = 'OK';
+  doneBtn.onclick = () => {
+    dsPaSaveCurrentLabel(true);
+    dsPaHideLabelPanel();
+    dsPaUpdateChrome();
+    dsPaRedraw();
+  };
+  wrap.querySelector('.card').appendChild(doneBtn);
+}
+function dsPaCropCircles() {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const W = img.naturalWidth, H = img.naturalHeight;
+      const out = [];
+      DS_PA.circles.forEach((c, i) => {
+        const rad = c.r * Math.min(W, H);
+        const pad = rad * 1.35;
+        const cx = c.cx * W, cy = c.cy * H;
+        let x0 = Math.max(0, Math.floor(cx - pad));
+        let y0 = Math.max(0, Math.floor(cy - pad));
+        let x1 = Math.min(W, Math.ceil(cx + pad));
+        let y1 = Math.min(H, Math.ceil(cy + pad));
+        const cw = Math.max(8, x1 - x0), ch = Math.max(8, y1 - y0);
+        const cnv = document.createElement('canvas');
+        cnv.width = cw; cnv.height = ch;
+        const g = cnv.getContext('2d');
+        g.drawImage(img, x0, y0, cw, ch, 0, 0, cw, ch);
+        /* 畫個圈提示 AI 焦點 */
+        g.strokeStyle = '#22c55e';
+        g.lineWidth = 3;
+        g.beginPath();
+        g.arc(cx - x0, cy - y0, rad, 0, Math.PI * 2);
+        g.stroke();
+        const dataUrl = cnv.toDataURL('image/jpeg', 0.82);
+        const b64 = (dataUrl.split(',')[1] || '');
+        out.push({ i: i, base64: b64, mime: 'image/jpeg' });
+      });
+      resolve(out);
+    };
+    img.onerror = () => reject(new Error('讀相失敗'));
+    img.src = DS_PA.dataUrl;
+  });
+}
+async function dsPaRunAiThenReview() {
+  toast('AI 分析緊…', 2000);
+  const nextBtn = document.getElementById('dspa_next');
+  if (nextBtn) nextBtn.disabled = true;
+  let aiOk = false;
+  try {
+    const crops = await dsPaCropCircles();
+    if (typeof gasCall === 'function') {
+      const o = await gasCall({ action: 'dosu_pipe_ai', crops: crops, app_version: APP_VERSION }, 120000);
+      if (o && o.ok && Array.isArray(o.items)) {
+        o.items.forEach(it => {
+          const i = Number(it.i);
+          if (!(i >= 0) || i >= DS_PA.circles.length) return;
+          const lab = it.label;
+          if (DS_PA_LABELS.indexOf(lab) < 0) return;
+          const sz = it.size_mm == null ? '' : String(Math.round(Number(it.size_mm)));
+          DS_PA.answers[i] = { label: lab, size: sz, ai: true, note: it.note || '' };
+        });
+        aiOk = true;
+        toast('AI 已填建議——撳圈可改', 2500);
+      } else {
+        const err = (o && o.error) || 'ai_fail';
+        const msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.71 dosu_pipe_ai）——請人手撳圈揀'
+          : err === 'ai_no_key' ? '未設 AI key——請人手撳圈揀'
+          : 'AI 暫時唔得（' + err + '）——請人手撳圈揀';
+        toast(msg, 4500);
+      }
+    } else {
+      toast('未接伺服器——請人手撳圈揀', 3000);
+    }
+  } catch (e) {
+    toast('AI 失敗：' + (e && e.message || e) + '——請人手撳圈揀', 4000);
+  }
+  DS_PA.step = 'label';
+  DS_PA.labelIdx = 0;
+  dsPaHideLabelPanel();
+  dsPaUpdateChrome();
+  dsPaRedraw();
+  if (nextBtn) nextBtn.disabled = false;
+  if (!aiOk) {
+    /* 引導撳第一個未填 */
+    const miss = DS_PA.answers.findIndex(a => !(a && a.label));
+    if (miss >= 0) setTimeout(() => dsPaEditLabel(miss), 400);
+  }
+}
+
 async function dsPaFinish() {
   dsPaHideLabelPanel();
   const results = [];
@@ -9887,7 +10005,8 @@ function dsPaRedraw() {
     drawC(c, hi ? '#fbbf24' : '#22c55e', hi ? 'rgba(251,191,36,.25)' : 'rgba(34,197,94,.15)');
     g.fillStyle = hi ? '#fbbf24' : '#22c55e';
     g.font = 'bold ' + (16 / (v.scale || 1)) + 'px sans-serif';
-    g.fillText(String(i + 1), c.cx * cv.width + 6, c.cy * cv.height - 6);
+    const lab = (DS_PA.answers[i] && DS_PA.answers[i].label) || '';
+    g.fillText(String(i + 1) + (lab ? ' ' + lab : ''), c.cx * cv.width + 6, c.cy * cv.height - 6);
   });
   if (DS_PA.drawing) drawC(DS_PA.drawing, '#38bdf8', 'rgba(56,189,248,.12)');
   g.setTransform(1, 0, 0, 1, 0, 0);
