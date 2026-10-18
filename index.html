@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.119';
+const APP_VERSION = '0.6.120';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.119：手動揀後該圈唔再俾 AI 覆寫；新圈／下一個空圈跟住上一個手動內容。
+/* 0.6.120：AI 建議被人手改＝錯例，送 dosu_pipe_ai_learn 畀伺服器學習。
+   0.6.119：手動揀後該圈唔再俾 AI 覆寫；新圈／下一個空圈跟住上一個手動內容。
    0.6.118：圈「係咩」改用度數同類下拉＋價目清單（唔再用七粒 label 掣）。
    0.6.117：自動 AI 改鬆手後先排程；撳住／拖移／搬圈時取消。
    0.6.116：加圈後自動 AI（debounce），唔使撳下一步。
@@ -9381,7 +9382,9 @@ const DS_PA = {
   resizeIdx: -1, /* 長按圈邊調大細 */
   aiTimer: null, /* 鬆手後自動 AI debounce */
   aiBusy: false,
-  pendingAutoAi: false
+  pendingAutoAi: false,
+  cropCache: {},
+  learns: []
 };
 function dsPaEntryHtml() {
   return `<div class="card"><h3>📷 影相圈配件</h3>
@@ -9479,6 +9482,8 @@ function dsPaOpen(src) {
       DS_PA.aiTimer = null;
       DS_PA.aiBusy = false;
       DS_PA.pendingAutoAi = false;
+      DS_PA.cropCache = {};
+      DS_PA.learns = [];
       DS_PA.open = true;
       if (!DS.items && typeof dsLoadItems === 'function') { try { dsLoadItems(); } catch (e) {} }
       dsPaMount();
@@ -10025,12 +10030,67 @@ function dsPaCopyAnswer(from) {
     note: from.note || ''
   };
 }
+function dsPaLearnLabelOf(a) {
+  const s = String((a && (a.search || a.label)) || '');
+  for (let k = 0; k < DS_PA_LABELS.length; k++) {
+    if (s.indexOf(DS_PA_LABELS[k]) >= 0) return DS_PA_LABELS[k];
+  }
+  return s.slice(0, 40);
+}
+function dsPaQueueLearn(i, prev, nextA) {
+  if (!prev || !prev.ai) return;
+  const aiLab = prev.aiLabel || prev.label || '';
+  const aiCode = prev.code || '';
+  const userLab = dsPaLearnLabelOf(nextA);
+  const userCode = nextA.code || '';
+  if (!aiLab && !aiCode) return;
+  if (userCode && aiCode && userCode === aiCode) return;
+  if (!userCode && userLab && aiLab && userLab === aiLab) return;
+  if (!DS_PA.learns) DS_PA.learns = [];
+  const crop = (DS_PA.cropCache && DS_PA.cropCache[i]) || null;
+  DS_PA.learns.push({
+    i: i,
+    ai_label: aiLab,
+    ai_size: prev.aiSize || prev.size || '',
+    ai_code: aiCode,
+    user_label: userLab,
+    user_size: nextA.size || '',
+    user_code: userCode,
+    user_search: nextA.search || nextA.label || '',
+    note: prev.note || '',
+    base64: crop ? crop.base64 : '',
+    mime: crop ? (crop.mime || 'image/jpeg') : 'image/jpeg'
+  });
+}
+async function dsPaFlushLearns() {
+  const list = (DS_PA.learns || []).slice();
+  if (!list.length || typeof gasCall !== 'function') return;
+  DS_PA.learns = [];
+  try {
+    const slim = list.map(x => ({
+      i: x.i,
+      ai_label: x.ai_label,
+      ai_size: x.ai_size,
+      ai_code: x.ai_code,
+      user_label: x.user_label,
+      user_size: x.user_size,
+      user_code: x.user_code,
+      user_search: x.user_search,
+      note: x.note,
+      base64: x.base64 || '',
+      mime: x.mime || 'image/jpeg'
+    }));
+    const o = await gasCall({ action: 'dosu_pipe_ai_learn', corrections: slim, app_version: APP_VERSION }, 90000);
+    if (o && o.ok) toast('已記 ' + (o.saved != null ? o.saved : slim.length) + ' 個 AI 錯例學習', 2000);
+  } catch (e) { /* 學習失敗唔擋出單 */ }
+}
 function dsPaApplyItem(it) {
   if (!it || !it.code) return;
   const i = DS_PA.labelIdx;
   while (DS_PA.answers.length <= i) DS_PA.answers.push({ label: '', size: '' });
+  const prev = Object.assign({}, DS_PA.answers[i] || {});
   const lab = String(it.search || it.code);
-  DS_PA.answers[i] = {
+  const nextA = {
     label: lab,
     size: dsPipeSizeOf(it) || '',
     code: it.code,
@@ -10039,9 +10099,12 @@ function dsPaApplyItem(it) {
     ai: false,
     manual: true,
     bill: (it._bill === 'fix' || it._bill === 'takedown') ? it._bill : '',
-    desc: it.desc || ''
+    desc: it.desc || '',
+    aiLabel: prev.aiLabel || '',
+    aiSize: prev.aiSize || ''
   };
-  /* 下一個未填／AI 建議嘅圈跟住呢個手動內容 */
+  dsPaQueueLearn(i, prev, nextA);
+  DS_PA.answers[i] = nextA;
   const next = i + 1;
   if (next < DS_PA.circles.length) {
     while (DS_PA.answers.length <= next) DS_PA.answers.push({ label: '', size: '' });
@@ -10056,7 +10119,9 @@ function dsPaApplyItem(it) {
   dsPaUpdateChrome();
   dsPaRedraw();
   toast('已揀：' + lab + (next < DS_PA.circles.length ? '（下個圈跟住）' : ''), 1400);
+  if (DS_PA.learns && DS_PA.learns.length) dsPaFlushLearns();
 }
+
 function dsPaSaveCurrentLabel(requireLabel) {
   /* 0.6.118：改用價目下拉直接揀 code；呢度淨係有 panel 時檢查已有 code／label */
   const a = DS_PA.answers[DS_PA.labelIdx] || {};
@@ -10221,6 +10286,8 @@ async function dsPaRunAiThenReview() {
   let aiOk = false;
   try {
     const crops = await dsPaCropCircles();
+    DS_PA.cropCache = {};
+    (crops || []).forEach(c => { if (c && c.i != null) DS_PA.cropCache[c.i] = { base64: c.base64, mime: c.mime || 'image/jpeg' }; });
     if (typeof gasCall === 'function') {
       const o = await gasCall({ action: 'dosu_pipe_ai', crops: crops, app_version: APP_VERSION }, 120000);
       if (o && o.ok && Array.isArray(o.items)) {
@@ -10235,6 +10302,7 @@ async function dsPaRunAiThenReview() {
           const resolved = dsPaResolve(lab, sz);
           DS_PA.answers[i] = {
             label: lab, size: sz, ai: true, manual: false, note: it.note || '',
+            aiLabel: lab, aiSize: sz,
             code: resolved.code || '', search: resolved.search || lab, soft: !!(resolved.soft && resolved.soft.length)
           };
         });
@@ -10269,6 +10337,7 @@ async function dsPaRunAiThenReview() {
 
 async function dsPaFinish() {
   dsPaHideLabelPanel();
+  try { await dsPaFlushLearns(); } catch (e) {}
   const results = [];
   for (let i = 0; i < DS_PA.circles.length; i++) {
     const a = DS_PA.answers[i] || {};
