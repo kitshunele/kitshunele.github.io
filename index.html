@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.101';
+const APP_VERSION = '0.6.102';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8169,7 +8169,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* ---------- v0.6.101 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+/* 0.6.102：度數項目卡唔再顯示「參考：…價」（FAN）。
+ ---------- v0.6.101 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
    FAN（2026-10-18 App 群）：Module／裝拆揀頂層即直出安裝／拆除兩項（唔使二層下拉）；同 code FE-MOD-XX-0000，lines 帶 bill:'fix'|'takedown'。
    FAN（2026-10-18 App 群）：Module／裝拆拆成「安裝 Module」（淨 Fix）／「拆除 Module」（淨 Takedown）；同 code FE-MOD-XX-0000，lines 帶 bill:'fix'|'takedown'。
    FAN（2026-10-18 App 群）：電線→電線／針躉（加針躉 EL-CONM）；Module／裝拆（FE-MOD 可揀）。
@@ -8838,14 +8839,6 @@ function dsSearchHits(q) {
   }
   return items.slice(0, DS.show);
 }
-function dsPriceTxt(it) {
-  const bits = [];
-  if (it.a != null) bits.push('供應 ' + it.a);
-  if (it.b != null) bits.push('安裝 ' + it.b);
-  if (it.c != null) bits.push('維修 ' + it.c);
-  if (it.d != null) bits.push('拆除 ' + it.d);
-  return bits.length ? bits.join(' · ') : '';
-}
 async function dsLoadItems(force) {
   if (DS.items && !force) return DS.items;
   if (DS.busy) return DS.items;
@@ -9038,12 +9031,11 @@ function dsHitsHtml() {
   }
   if (!hits.length) return head + '<div class="card mut">呢分類暫時冇項目。試第二個分類，或者改搜尋字。</div>';
   return head + hits.map(it => {
-    const pr = dsPriceTxt(it);
+    /* 0.6.102：參考唔寫價錢（FAN App 群） */
     const billAttr = (it._bill === 'fix' || it._bill === 'takedown') ? ` data-bill="${esc(it._bill)}"` : '';
     return `<button type="button" class="cpcard dsitem" data-ds="add" data-code="${esc(it.code)}"${billAttr}>
       <div class="cpt">${esc(it.search || it.code)}</div>
       <div class="mut">${esc(it.code)}${it.desc ? ' · ' + esc(it.desc) : ''}</div>
-      ${pr ? `<div class="mut dsprice">參考：${esc(pr)}（師傅唔使填價）</div>` : ''}
       <div class="dsadd">＋ 加入</div></button>`;
   }).join('');
 }
@@ -9292,7 +9284,7 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
       '.dscheck{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:16px}.dscheck input{width:20px;height:20px}' +
       '.dsline{border-top:1px solid #eee;padding:10px 0}.dsline:first-of-type{border-top:0}.dslineh{display:flex;justify-content:space-between;align-items:center;gap:8px}' +
       '.dsqty{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:15px}.dsqtylab{flex:0 0 auto;padding-top:10px}.dsqtyboxes{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;flex:1}.dsqty1{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa}.dsqty1 input{width:72px;font-size:18px;min-height:40px;padding:0 8px}.dsqtycam{min-height:36px;padding:0 8px;font-size:16px}.dsqtyphwrap{display:inline-flex;align-items:center;gap:2px}.dsqtyph{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;background:#eee}.dsqtyphrm{font-size:12px;padding:0 2px}.dsqtyadd{min-height:40px;padding:0 12px;font-size:18px;font-weight:700}.dsqtyrm{font-size:20px;padding:0 4px;line-height:1}.dsqtysum{margin-left:4px}' +
-      '.dsitem{text-align:left;width:100%}.dsadd{color:#1d4ed8;font-weight:700;margin-top:4px}.dsprice{font-size:12px}' +
+      '.dsitem{text-align:left;width:100%}.dsadd{color:#1d4ed8;font-weight:700;margin-top:4px}' +
       '.dspre{white-space:pre-wrap;word-break:break-word;background:#f8fafc;border-radius:8px;padding:10px;font-size:12px;max-height:280px;overflow:auto}';
     document.head.appendChild(s);
   } catch (e) {}
