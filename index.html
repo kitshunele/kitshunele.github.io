@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.98';
+const APP_VERSION = '0.6.99';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8169,7 +8169,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* ---------- v0.6.98 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+/* ---------- v0.6.99 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
+   FAN（2026-10-18 App 群）：Module／裝拆拆成「安裝 Module」（淨 Fix）／「拆除 Module」（淨 Takedown）；同 code FE-MOD-XX-0000，lines 帶 bill:'fix'|'takedown'。
    FAN（2026-10-18 App 群）：電線→電線／針躉（加針躉 EL-CONM）；Module／裝拆（FE-MOD 可揀）。
    FAN（2026-10-17 App 群）：已選擇數量格淨係相機，唔使相簿（拎走 🖼；capture=environment）。
    FAN（2026-10-17 App 群）：已揀每格數量旁加影相，記呢個數量係咩位置；上雲時相一齊交（qty_slots）。
@@ -8216,7 +8217,10 @@ const DS_CATS = [
     { id: 'Relay', label: 'Relay（CORY／TIRY／BASK 直出）' },
     { id: '索制', label: '索制（EL-CONR）' }
   ]}, /* Dimbook：Relay 直出三項；索制淨 CONR；唔使 Relay 中層 */
-  { id: 'Module／裝拆', test: 'modfix' }, /* FAN 0.6.98：師傅可揀 FE-MOD；Dimbook 出單仍自動加 */
+  { id: 'Module／裝拆', test: 'modfix', subs: [
+    { id: '安裝 Module', label: '安裝 Module（Fix $62）' },
+    { id: '拆除 Module', label: '拆除 Module（Takedown $25）' }
+  ]}, /* FAN 0.6.99：兩揀；同 code FE-MOD；bill fix|takedown */
   { id: 'Ziton', test: 'ziton' }
 ];
 /* 水喉揀咗尺寸之後：淨係 GI／DI（FAN 0.6.72）；梳夾杯臣喉碼唔再同層，收喺 GI 清單 */
@@ -8243,7 +8247,7 @@ const DS = {
   q: '', cat: '', sub: '', sub2: '', sub3: '', show: 100, items: null, err: '', busy: false,
   job_ref: '', estate: '', estateTxt: '', building: '', buildingTxt: '',
   work_desc: '', is_ecall: false, ecallTouched: false,
-  lines: [], /* {code, qty, qtys:[…], qtyPhotos:[id|null…], search, desc} — qty=qtys 合計；相跟每格 */
+  lines: [], /* {code, qty, qtys:[…], qtyPhotos:[id|null…], search, desc, bill?} — qty=qtys 合計；相跟每格；bill=fix|takedown（FE-MOD） */
   lastPayload: null, lastReply: null, submitting: false,
   draftId: null, /* 而家編緊邊份手機暫存 */
   showDrafts: true
@@ -8321,7 +8325,9 @@ function dsSnapDraft() {
     ecallTouched: !!DS.ecallTouched,
     lines: (DS.lines || []).map(l => {
       dsEnsureQtys(l); dsEnsureQtyPhotos(l); dsSyncQty(l);
-      return { code: l.code, qty: l.qty, qtys: (l.qtys || []).slice(), qtyPhotos: (l.qtyPhotos || []).slice(), search: l.search || '', desc: l.desc || '' };
+      const row = { code: l.code, qty: l.qty, qtys: (l.qtys || []).slice(), qtyPhotos: (l.qtyPhotos || []).slice(), search: l.search || '', desc: l.desc || '' };
+      if (l.bill === 'fix' || l.bill === 'takedown') row.bill = l.bill;
+      return row;
     }),
     updated: Date.now()
   };
@@ -8445,8 +8451,12 @@ function dsIsEcall() {
   return /^K/i.test(String(DS.job_ref || '').trim());
 }
 function dsPayload() {
-  /* Dimbook 合約：lines 只 {code,qty} 合計。相／每格明細喺 qty_slots（要 GAS 轉發）。 */
-  const lines = DS.lines.filter(l => l && l.code).map(l => { dsSyncQty(l); return l; }).filter(l => Number(l.qty) > 0).map(l => ({ code: l.code, qty: Number(l.qty) }));
+  /* Dimbook 合約：lines {code,qty} 合計；FE-MOD 可加 bill:'fix'|'takedown'。相／每格明細喺 qty_slots（要 GAS 轉發 bill）。 */
+  const lines = DS.lines.filter(l => l && l.code).map(l => { dsSyncQty(l); return l; }).filter(l => Number(l.qty) > 0).map(l => {
+    const o = { code: l.code, qty: Number(l.qty) };
+    if (l.bill === 'fix' || l.bill === 'takedown') o.bill = l.bill;
+    return o;
+  });
   const o = {
     job_ref: String(DS.job_ref || '').trim(),
     estate: dsEstName(),
@@ -8485,7 +8495,9 @@ async function dsPayloadWithPhotos() {
           }
         } catch (e) {}
       }
-      qty_slots.push({ code: l.code, qty: n, slot: j, photo: photo ? { name: photo.name, mime: photo.mime, base64: photo.base64 } : null });
+      const slot = { code: l.code, qty: n, slot: j, photo: photo ? { name: photo.name, mime: photo.mime, base64: photo.base64 } : null };
+      if (l.bill === 'fix' || l.bill === 'takedown') slot.bill = l.bill;
+      qty_slots.push(slot);
     }
   }
   o.qty_slots = qty_slots;
@@ -8750,8 +8762,12 @@ function dsInCat(it, catId) {
       return dsBgBellMatch(it);
     case 'relaygroup':
       return dsRelayMatch(it);
-    case 'modfix': /* Module／裝拆：FE-MOD-*（Control module 裝拆） */
-      return /^FE-MOD-/i.test(code);
+    case 'modfix': { /* Module／裝拆：二層安裝／拆除；仍 match FE-MOD-* */
+      const sub = String(DS.sub || '');
+      if (!sub) return false;
+      if (sub === '安裝 Module' || sub === '拆除 Module') return /^FE-MOD-/i.test(code);
+      return false;
+    }
     case 'ziton': /* Ziton 火警 panel／配件：價目 SR（search 含 Ziton） */
       return /ziton/i.test(search) || /ziton/i.test(String(it.desc || ''));
     default:
@@ -8767,6 +8783,29 @@ function dsFireRank(it) {
   const m = code.match(/-(\d+)$/);
   const sz = m ? parseInt(m[1], 10) : 9999;
   return [fam, sz, code];
+}
+function dsModBillClone(it, bill) {
+  /* 0.6.99：同一 FE-MOD code 虛擬成安裝（淨 b）／拆除（淨 d）；唔改假 code */
+  if (!it || (bill !== 'fix' && bill !== 'takedown')) return it;
+  const o = Object.assign({}, it);
+  if (bill === 'fix') {
+    o.a = null; o.c = null; o.d = null;
+    o.search = '安裝 Module ' + (it.search || '');
+    o.desc = '安裝 Module — ' + (it.desc || '');
+    o._bill = 'fix';
+  } else {
+    o.a = null; o.b = null; o.c = null;
+    o.search = '拆除 Module ' + (it.search || '');
+    o.desc = '拆除 Module — ' + (it.desc || '');
+    o._bill = 'takedown';
+  }
+  return o;
+}
+function dsModBillVirtual(it) {
+  const sub = String(DS.sub || '');
+  if (sub === '安裝 Module') return dsModBillClone(it, 'fix');
+  if (sub === '拆除 Module') return dsModBillClone(it, 'takedown');
+  return it;
 }
 function dsSearchHits(q) {
   let items = ((DS.items && DS.items.items) || []).filter(it => dsInCat(it, DS.cat));
@@ -8795,6 +8834,10 @@ function dsSearchHits(q) {
   if (DS.cat === 'Relay／索制' && DS.sub === 'Relay') {
     items = items.slice().sort((a, b) => dsRelayRank(a) - dsRelayRank(b));
   }
+  /* Module／裝拆：虛擬顯示淨 Fix 或淨 Takedown */
+  if (DS.cat === 'Module／裝拆' && (DS.sub === '安裝 Module' || DS.sub === '拆除 Module')) {
+    items = items.map(dsModBillVirtual);
+  }
   return items.slice(0, DS.show);
 }
 function dsPriceTxt(it) {
@@ -8822,14 +8865,19 @@ async function dsLoadItems(force) {
 }
 function dsAddLine(it) {
   if (!it || !it.code) return;
-  const ex = DS.lines.find(l => l.code === it.code);
+  const bill = (it._bill === 'fix' || it._bill === 'takedown') ? it._bill : null;
+  const ex = DS.lines.find(l => l.code === it.code && (l.bill || null) === bill);
   if (ex) {
     dsEnsureQtys(ex); dsEnsureQtyPhotos(ex);
     const n0 = Number(ex.qtys[0]);
     ex.qtys[0] = Math.round(((isFinite(n0) && n0 > 0 ? n0 : 0) + 1) * 1000) / 1000;
     dsSyncQty(ex);
-    toast('已加數量：' + it.code);
-  } else DS.lines.push({ code: it.code, qty: 1, qtys: [1], qtyPhotos: [null], search: it.search || '', desc: it.desc || '' });
+    toast('已加數量：' + it.code + (bill ? '（' + bill + '）' : ''));
+  } else {
+    const row = { code: it.code, qty: 1, qtys: [1], qtyPhotos: [null], search: it.search || '', desc: it.desc || '' };
+    if (bill) row.bill = bill;
+    DS.lines.push(row);
+  }
   dsPaint();
 }
 async function dsSetQtyBox(i, j, v) {
@@ -8965,7 +9013,7 @@ function dsLinesHtml() {
     const tot = (l.qtys.length > 1 && Number(l.qty) > 0) ? `<span class="mut dsqtysum">合 ${esc(l.qty)}</span>` : '';
     return `<div class="dsline" data-i="${i}">
       <div class="dslineh"><b>${esc(l.search || l.code)}</b><button type="button" class="lnk" data-ds="rm" data-i="${i}" aria-label="刪">✕</button></div>
-      <div class="mut">${esc(l.code)}${l.desc ? ' · ' + esc(l.desc) : ''}</div>
+      <div class="mut">${esc(l.code)}${l.bill === 'fix' ? ' · 安裝(Fix)' : (l.bill === 'takedown' ? ' · 拆除(Takedown)' : '')}${l.desc ? ' · ' + esc(l.desc) : ''}</div>
       <div class="dsqty"><span class="dsqtylab">數量</span><div class="dsqtyboxes">${boxes}<button type="button" class="btn dsqtyadd" data-ds="qtyadd" data-i="${i}" aria-label="加數量格">＋</button>${tot}</div></div>
     </div>`;
   }).join('') + '</div>';
@@ -8993,7 +9041,8 @@ function dsHitsHtml() {
   if (!hits.length) return head + '<div class="card mut">呢分類暫時冇項目。試第二個分類，或者改搜尋字。</div>';
   return head + hits.map(it => {
     const pr = dsPriceTxt(it);
-    return `<button type="button" class="cpcard dsitem" data-ds="add" data-code="${esc(it.code)}">
+    const billAttr = (it._bill === 'fix' || it._bill === 'takedown') ? ` data-bill="${esc(it._bill)}"` : '';
+    return `<button type="button" class="cpcard dsitem" data-ds="add" data-code="${esc(it.code)}"${billAttr}>
       <div class="cpt">${esc(it.search || it.code)}</div>
       <div class="mut">${esc(it.code)}${it.desc ? ' · ' + esc(it.desc) : ''}</div>
       ${pr ? `<div class="mut dsprice">參考：${esc(pr)}（師傅唔使填價）</div>` : ''}
@@ -9075,7 +9124,7 @@ function dsCatSelHtml() {
   }
   const path = pathBits.filter(Boolean).join(' · ');
   return `<div class="card"><h3>項目種類（下拉）</h3>
-    <label class="dslbl">一般要度數：水喉（先揀 Ømm，再 GI／DI 即出清單）／螺絲／喉轆／電線／針躉（再分普通線／防火線／針躉）／撳手／警鐘／閃燈（直出五項）／Relay／索制／Module／裝拆（FE-MOD）／Ziton；閘掣撳入再分閘掣／銅掣／波子掣；電配件撳入再分（電只 EL；防火線含 CFR）
+    <label class="dslbl">一般要度數：水喉（先揀 Ømm，再 GI／DI 即出清單）／螺絲／喉轆／電線／針躉（再分普通線／防火線／針躉）／撳手／警鐘／閃燈（直出五項）／Relay／索制／Module／裝拆（再分安裝 Fix／拆除 Takedown；同 FE-MOD）／Ziton；閘掣撳入再分閘掣／銅掣／波子掣；電配件撳入再分（電只 EL；防火線含 CFR）
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
     ${needSub ? `<label class="dslbl">${esc(subLbl)}
@@ -9164,8 +9213,13 @@ document.addEventListener('click', e => {
   if (a === 'reload') return dsLoadItems(true);
   if (a === 'add') {
     const code = b.dataset.code;
-    const it = ((DS.items && DS.items.items) || []).find(x => x.code === code);
-    if (it) dsAddLine(it);
+    const bill = b.dataset.bill || '';
+    let it = ((DS.items && DS.items.items) || []).find(x => x.code === code);
+    if (it) {
+      if (bill === 'fix' || bill === 'takedown') it = dsModBillClone(it, bill);
+      else if (DS.cat === 'Module／裝拆') it = dsModBillVirtual(it);
+      dsAddLine(it);
+    }
     return;
   }
   if (a === 'rm') {
