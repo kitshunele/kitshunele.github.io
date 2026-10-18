@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.110';
+const APP_VERSION = '0.6.111';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.110：圈預設細啲；底欄細／大調最後一圈。
+/* 0.6.111：AI 後圈旁顯示配件名／code；返回上一步可返改圈。
+   0.6.110：圈預設細啲；底欄細／大調最後一圈。
    0.6.109：撳圈揀配件；圈完下一步自動 AI 分析（dosu_pipe_ai）。
    0.6.108：圈配件左上「返回上一步」；下一步淨底欄右。
    0.6.107：影相圈配件雙指放大縮細＋長按拖移圈。
@@ -9503,11 +9504,11 @@ function dsPaMount() {
   style.id = 'dspa_css';
   style.textContent =
     '#dspa_ov{position:fixed;inset:0;z-index:9999;background:#0f172a;display:flex;flex-direction:column;color:#fff}' +
-    '.dspa-bar{display:flex;gap:8px;align-items:center;padding:8px;background:#1e293b}' +
+    '.dspa-bar{display:flex;gap:8px;align-items:center;padding:8px;background:#1e293b;position:relative;z-index:10001}' +
     '.dspa-ttl{flex:1;font-size:14px;text-align:center}' +
     '.dspa-stage{flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000}' +
     '#dspa_cv{max-width:100%;max-height:100%;touch-action:none}' +
-    '.dspa-foot{display:flex;gap:8px;align-items:center;padding:10px;background:#1e293b}' +
+    '.dspa-foot{display:flex;gap:8px;align-items:center;padding:10px;background:#1e293b;position:relative;z-index:10001}' +
     '.dspa-pick{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.92);display:flex;align-items:flex-end;justify-content:center}' +
     '.dspa-pick .card{width:100%;max-width:480px;margin:0;border-radius:16px 16px 0 0;padding:16px;background:#fff;color:#111;max-height:85vh;overflow:auto}' +
     '.dspa-labs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}' +
@@ -9765,28 +9766,22 @@ function dsPaUpdateChrome() {
   }
 }
 function dsPaPrev() {
+  /* 標註／AI 確認 → 一律返相改圈（唔再逐個 label 倒退） */
   if (DS_PA.step === 'label') {
-    /* 存而家呢格先返 */
-    dsPaSaveCurrentLabel();
-    if (DS_PA.labelIdx > 0) {
-      DS_PA.labelIdx--;
-      dsPaShowLabelPanel();
-      dsPaUpdateChrome();
-      dsPaRedraw();
-      return;
-    }
-    /* 返去改圈 */
-    DS_PA.step = 'draw';
+    try { dsPaSaveCurrentLabel(false); } catch (e) {}
     dsPaHideLabelPanel();
+    DS_PA.step = 'draw';
+    DS_PA.labelIdx = 0;
+    DS_PA.moveIdx = -1;
+    DS_PA.drawing = null;
     dsPaUpdateChrome();
     dsPaRedraw();
-    toast('返到圈選——可撤銷或再圈', 2000);
+    toast('已返相——可改圈再下一步', 2000);
     return;
   }
   /* draw：上一步＝換相 */
   if (!confirm('返回重新揀相？（而家嘅圈會清）')) return;
   dsPaUnmount();
-  /* 唔自動再開相機——用返入口兩掣 */
   toast('請再揀相機或相簿', 2000);
 }
 function dsPaNext() {
@@ -9816,7 +9811,13 @@ function dsPaSaveCurrentLabel(requireLabel) {
   labs.querySelectorAll('[data-lab]').forEach(x => { if (x.classList.contains('pri')) picked = x.dataset.lab; });
   if (requireLabel && !picked) { toast('請揀呢個圈係咩配件'); return false; }
   const sz = szEl ? szEl.value : '';
-  DS_PA.answers[DS_PA.labelIdx] = { label: picked, size: sz };
+  const resolved = picked ? dsPaResolve(picked, sz) : { code: '', search: '', soft: [] };
+  DS_PA.answers[DS_PA.labelIdx] = {
+    label: picked, size: sz,
+    code: resolved.code || '', search: resolved.search || picked,
+    soft: !!(resolved.soft && resolved.soft.length),
+    ai: !!(DS_PA.answers[DS_PA.labelIdx] && DS_PA.answers[DS_PA.labelIdx].ai)
+  };
   return true;
 }
 function dsPaHideLabelPanel() {
@@ -9911,7 +9912,10 @@ function dsPaCropCircles() {
 async function dsPaRunAiThenReview() {
   toast('AI 分析緊…', 2000);
   const nextBtn = document.getElementById('dspa_next');
+  const prevBtn = document.getElementById('dspa_prev');
   if (nextBtn) nextBtn.disabled = true;
+  /* 分析期間都可返回改圈 */
+  if (prevBtn) prevBtn.disabled = false;
   let aiOk = false;
   try {
     const crops = await dsPaCropCircles();
@@ -9924,7 +9928,11 @@ async function dsPaRunAiThenReview() {
           const lab = it.label;
           if (DS_PA_LABELS.indexOf(lab) < 0) return;
           const sz = it.size_mm == null ? '' : String(Math.round(Number(it.size_mm)));
-          DS_PA.answers[i] = { label: lab, size: sz, ai: true, note: it.note || '' };
+          const resolved = dsPaResolve(lab, sz);
+          DS_PA.answers[i] = {
+            label: lab, size: sz, ai: true, note: it.note || '',
+            code: resolved.code || '', search: resolved.search || lab, soft: !!(resolved.soft && resolved.soft.length)
+          };
         });
         aiOk = true;
         toast('AI 已填建議——撳圈可改', 2500);
@@ -10023,8 +10031,25 @@ function dsPaRedraw() {
     drawC(c, hi ? '#fbbf24' : '#22c55e', hi ? 'rgba(251,191,36,.25)' : 'rgba(34,197,94,.15)');
     g.fillStyle = hi ? '#fbbf24' : '#22c55e';
     g.font = 'bold ' + (16 / (v.scale || 1)) + 'px sans-serif';
-    const lab = (DS_PA.answers[i] && DS_PA.answers[i].label) || '';
-    g.fillText(String(i + 1) + (lab ? ' ' + lab : ''), c.cx * cv.width + 6, c.cy * cv.height - 6);
+    const ans = DS_PA.answers[i] || {};
+    const lab = ans.label || '';
+    const code = ans.code || '';
+    const tag = lab ? (lab + (code ? ' · ' + code : '') + (ans.size ? ' Ø' + ans.size : '')) : '';
+    const tx = c.cx * cv.width + c.r * Math.min(cv.width, cv.height) + 6;
+    const ty = c.cy * cv.height;
+    g.font = 'bold ' + (13 / (v.scale || 1)) + 'px sans-serif';
+    g.fillText(String(i + 1), c.cx * cv.width + 4, c.cy * cv.height - 4);
+    if (tag) {
+      const fs = 12 / (v.scale || 1);
+      g.font = 'bold ' + fs + 'px sans-serif';
+      const tw = g.measureText(tag).width;
+      const pad = 4 / (v.scale || 1);
+      const bh = fs + pad * 2;
+      g.fillStyle = 'rgba(15,23,42,.78)';
+      g.fillRect(tx - pad, ty - bh / 2, tw + pad * 2, bh);
+      g.fillStyle = ans.soft ? '#fbbf24' : '#a7f3d0';
+      g.fillText(tag, tx, ty + fs * 0.35);
+    }
   });
   if (DS_PA.drawing) drawC(DS_PA.drawing, '#38bdf8', 'rgba(56,189,248,.12)');
   g.setTransform(1, 0, 0, 1, 0, 0);
