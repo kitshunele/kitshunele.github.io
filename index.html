@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.89';
+const APP_VERSION = '0.6.90';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8179,7 +8179,7 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    FAN（2026-10-17）：燈喉＋過路箱放埋一齊，加埋梳／夾／杯臣／喉碼；撳入去再分類。燈喉／梳結／過路箱用 EL-*；各類跟價目字頭（水喉 PI、掣 VA、電 EL、喉轆 FM）。
    FAN（2026-10-17）：水喉下一層用尺寸（Ømm，跟 ss search）；再淨係 GI／DI；揀完即出價目（*-GI-*／*-DI-*／*-CD-* 球墨）；梳／夾／杯臣／喉碼收喺 GI 清單，唔再多一層下拉。
    FAN（2026-10-17）：Ø50／65 等只有 *-CD-*（生鐵球墨）時都要出 DI；code／search／desc 標球墨／ductile 亦納入 DI。
-   FAN（2026-10-18）：度數「BG警鐘閃燈」二層：聲閃一體 WP／警鐘 EL·YO／閃燈 VFA·BU／扲手 BG EG·WG·AG；唔係 BG-PIPE。
+   FAN（2026-10-18）：度數「BG警鐘閃燈」二層：警鐘（EL·YO·WP）／閃燈（VFA·BU）／撳手（EG·WG·AG）；唔係 BG-PIPE。
    價目底：合約 20259005 ss＋Rate Book（ss_items.json）。清單剔除 FI-*（消防檢／火警 panel 類），其餘用分類下拉篩。
    師傅：揀分類 →（可再分）→（可再搜）→ 加項目 → 填數量 → job_ref／屋邨／樓 → 送出。
    提交：gasCall `dimbook_measure`（GAS v1.59+）→ Dimbook webhook（Script Properties）。 */
@@ -8209,11 +8209,10 @@ const DS_CATS = [
     { id: '線碼', label: '線碼（EL）' }
   ]},
   { id: 'BG警鐘閃燈', test: 'bgbell', subs: [
-    { id: '聲閃一體', label: '聲閃一體（FE-ALAM-WP）' },
-    { id: '警鐘', label: '警鐘（FE-ALAM-EL／YO）' },
+    { id: '警鐘', label: '警鐘（FE-ALAM-EL／YO／WP）' },
     { id: '閃燈', label: '閃燈（FE-VFA／FE-BU）' },
-    { id: '扲手 BG', label: '扲手 BG（FE-ALAM-EG／WG／AG）' }
-  ]}, /* Dimbook 二層；唔係 BG-PIPE */
+    { id: '撳手', label: '撳手（FE-ALAM-EG／WG／AG）' }
+  ]}, /* FAN：最低層只要警鐘／閃燈／撳手；WP 歸警鐘；唔係 BG-PIPE */
   { id: 'Ziton', test: 'ziton' }
 ];
 /* 水喉揀咗尺寸之後：淨係 GI／DI（FAN 0.6.72）；梳夾杯臣喉碼唔再同層，收喺 GI 清單 */
@@ -8654,16 +8653,15 @@ function dsValveSub(it, sub) {
   }
 }
 function dsBgBellSub(it, sub) {
-  /* BG警鐘閃燈細類（Dimbook）：聲閃一體／警鐘／閃燈／扲手 BG；唔撈 BG-PIPE */
+  /* BG警鐘閃燈細類：警鐘（含 WP 聲閃）／閃燈／撳手；唔撈 BG-PIPE */
   const code = String((it && it.code) || '');
   switch (sub) {
-    case '聲閃一體':
-      return /^FE-ALAM-WP-/i.test(code);
     case '警鐘':
-      return /^FE-ALAM-EL-/i.test(code) || /^FE-ALAM-YO-/i.test(code);
+      return /^FE-ALAM-EL-/i.test(code) || /^FE-ALAM-YO-/i.test(code) || /^FE-ALAM-WP-/i.test(code);
     case '閃燈':
       return /^FE-VFA-/i.test(code) || /^FE-BU-/i.test(code);
-    case '扲手 BG':
+    case '撳手':
+    case '扲手 BG': /* 舊草稿／舊字 */
       return /^FE-ALAM-EG-/i.test(code) || /^FE-ALAM-WG-/i.test(code) || /^FE-ALAM-AG-/i.test(code);
     default:
       return false;
@@ -9041,7 +9039,7 @@ function dsCatSelHtml() {
   }
   const path = pathBits.filter(Boolean).join(' · ');
   return `<div class="card"><h3>項目種類（下拉）</h3>
-    <label class="dslbl">一般要度數：水喉（先揀 Ømm，再 GI／DI 即出清單）／螺絲／喉轆／電線／BG警鐘閃燈（撳入再分聲閃一體／警鐘／閃燈／扲手 BG）／Ziton；閘掣撳入再分閘掣／銅掣／波子掣；電配件撳入再分（電只 EL；防火線含 CFR）
+    <label class="dslbl">一般要度數：水喉（先揀 Ømm，再 GI／DI 即出清單）／螺絲／喉轆／電線／BG警鐘閃燈（撳入再分警鐘／閃燈／撳手）／Ziton；閘掣撳入再分閘掣／銅掣／波子掣；電配件撳入再分（電只 EL；防火線含 CFR）
       <select class="inp" id="ds_cat" aria-label="度數分類">${opts.join('')}</select>
     </label>
     ${needSub ? `<label class="dslbl">${esc(subLbl)}
