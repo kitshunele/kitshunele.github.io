@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.124';
+const APP_VERSION = '0.6.125';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.124：人手揀 item 唔自動完成加入／唔跳返度數；淨 AI 齊先自動入。
+/* 0.6.125：完成加入後留喺相繼續圈（清圈重置）；撳關閉先返度數。
+   0.6.124：人手揀 item 唔自動完成加入／唔跳返度數；淨 AI 齊先自動入。
    0.6.123：圈選暫存（相＋圈＋答案）——關閉可「繼續」；完成加入先清。
    0.6.122：AI（或全部已有內容）完自動完成加入，唔停確認畫面；頂／底欄掣再加強對比。
    0.6.121：圈選底欄「細／大／關閉」暗底白掣加字色，唔再似空白格。
@@ -9479,7 +9480,7 @@ function dsPaEntryHtml() {
     if (has && sav.updated) whenTxt = new Date(sav.updated).toLocaleString('zh-HK', { hour12: false });
   } catch (e) {}
   return `<div class="card"><h3>📷 影相圈配件</h3>
-    <div class="mut" style="margin-bottom:8px">影相／相簿 → 長按加圈 → AI 完自動加入；關閉會暫存，可繼續。</div>
+    <div class="mut" style="margin-bottom:8px">影相／相簿 → 長按加圈 → AI／完成加入後可繼續圈；撳關閉先返度數。</div>
     ${has ? `<div class="okbox" style="margin-bottom:10px;font-size:14px">有暫存：${n} 個圈${whenTxt ? ' · ' + esc(whenTxt) : ''}
       <div style="display:flex;gap:8px;margin-top:8px">
         <button type="button" class="btn pri" style="flex:1" data-ds="paresume">▶ 繼續圈選</button>
@@ -10498,19 +10499,42 @@ async function dsPaFinish() {
     }
   }
   const skipped = results.length - added;
+  let msg = '';
   if (flags.length) {
     const note = flags.join('；');
     DS.work_desc = (DS.work_desc ? DS.work_desc + '\n' : '') + '[圈選 soft-flag] ' + note;
-    toast('已加 ' + added + ' 項' + (skipped ? '（' + skipped + ' 項缺碼／缺徑未入單）' : '') + '；soft-flag 已寫工作說明', 4500);
+    msg = '已加 ' + added + ' 項' + (skipped ? '（' + skipped + ' 項缺碼未入）' : '') + '；soft-flag 已記';
   } else if (skipped) {
-    toast('已加 ' + added + ' 項；另有 ' + skipped + ' 項未入單（缺碼）', 4000);
+    msg = '已加 ' + added + ' 項；另有 ' + skipped + ' 項未入單';
   } else {
-    toast('已加 ' + added + ' 項入度數', 2500);
+    msg = '已加 ' + added + ' 項入度數';
   }
   dsSaveDraft(true);
-  dsPaClearSaved();
-  dsPaUnmount();
-  dsPaint();
+  /* 留喺相繼續圈——唔 unmount／唔跳返度數；關閉先返 */
+  DS_PA.circles = [];
+  DS_PA.answers = [];
+  DS_PA.step = 'draw';
+  DS_PA.labelIdx = 0;
+  DS_PA.drawing = null;
+  DS_PA.moveIdx = -1;
+  DS_PA.resizeIdx = -1;
+  DS_PA.pendingAutoAi = false;
+  DS_PA.cropCache = {};
+  DS_PA.learns = [];
+  DS_PA.softFlags = [];
+  dsPaCancelAutoAi();
+  dsPaHideLabelPanel();
+  dsPaPersist(true);
+  if (document.getElementById('dspa_ov')) {
+    dsPaUpdateChrome();
+    dsPaRedraw();
+    toast(msg + '——可繼續圈，關閉先返度數', 3500);
+  } else {
+    dsPaClearSaved();
+    dsPaUnmount();
+    dsPaint();
+    toast(msg, 2500);
+  }
 }
 
 function dsPaClampView() {
