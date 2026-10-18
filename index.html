@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.115';
+const APP_VERSION = '0.6.116';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.115：空白長按加圈改 0.5 秒。
+/* 0.6.116：加圈後自動 AI（debounce），唔使撳下一步。
+   0.6.115：空白長按加圈改 0.5 秒。
    0.6.114：空白長按加圈改 1 秒（原 1.5）。
    0.6.113：單指拖＝移相；空白處長按先加圈（唔再短撳／拖畫圈）。
    0.6.112：長按圈邊拖移＝放大縮細；長按圈心＝拖位。
@@ -9374,11 +9375,13 @@ const DS_PA = {
   /* 畫面：雙指 pinch／平移；圈座標仍係 0–1 相對原相 */
   view: { scale: 1, tx: 0, ty: 0 },
   moveIdx: -1, /* 長按拖緊邊個圈 */
-  resizeIdx: -1 /* 長按圈邊調大細 */
+  resizeIdx: -1, /* 長按圈邊調大細 */
+  aiTimer: null, /* 加圈後自動 AI debounce */
+  aiBusy: false
 };
 function dsPaEntryHtml() {
   return `<div class="card"><h3>📷 影相圈配件</h3>
-    <div class="mut" style="margin-bottom:8px">影相／相簿 → 單指拖移相、長按 0.5 秒加圈（撳圈改種類）→ 下一步 AI → 確認。跟 map 0.2。</div>
+    <div class="mut" style="margin-bottom:8px">影相／相簿 → 單指拖移相、長按 0.5 秒加圈 → 停一停自動 AI → 確認。跟 map 0.2。</div>
     <div style="display:flex;gap:8px">
       <button type="button" class="btn pri" style="flex:1" data-ds="paopen" data-src="cam">📷 相機</button>
       <button type="button" class="btn" style="flex:1" data-ds="paopen" data-src="album">🖼 相簿</button>
@@ -9469,6 +9472,8 @@ function dsPaOpen(src) {
       DS_PA.view = { scale: 1, tx: 0, ty: 0 };
       DS_PA.moveIdx = -1;
       DS_PA.resizeIdx = -1;
+      DS_PA.aiTimer = null;
+      DS_PA.aiBusy = false;
       DS_PA.open = true;
       dsPaMount();
     } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
@@ -9477,13 +9482,33 @@ function dsPaOpen(src) {
   inp.click();
 }
 function dsPaUnmount() {
+  dsPaCancelAutoAi();
   const el = document.getElementById('dspa_ov');
   if (el) el.remove();
   const p = document.getElementById('dspa_labpanel');
   if (p) p.remove();
   DS_PA.open = false;
   DS_PA.step = 'draw';
+  DS_PA.aiBusy = false;
 }
+
+function dsPaCancelAutoAi() {
+  if (DS_PA.aiTimer) { clearTimeout(DS_PA.aiTimer); DS_PA.aiTimer = null; }
+}
+function dsPaScheduleAutoAi() {
+  /* 加圈後稍等，方便連加幾個先一次 AI；唔使撳下一步 */
+  if (DS_PA.step !== 'draw' || DS_PA.aiBusy) return;
+  if (!DS_PA.circles.length) return;
+  dsPaCancelAutoAi();
+  DS_PA.aiTimer = setTimeout(() => {
+    DS_PA.aiTimer = null;
+    if (DS_PA.step !== 'draw' || DS_PA.aiBusy || !DS_PA.circles.length) return;
+    while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
+    if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
+    dsPaRunAiThenReview();
+  }, 700);
+}
+
 function dsPaMount() {
   dsPaUnmount();
   DS_PA.open = true;
@@ -9641,9 +9666,10 @@ function dsPaMount() {
           DS_PA.drawing = null;
           DS_PA.moveIdx = -1;
           DS_PA.resizeIdx = -1;
-          toast('已加圈（單指拖移相／長按 0.5 秒加圈）', 1600);
+          toast('已加圈——停一停會自動 AI', 1400);
           dsPaRedraw();
           dsPaUpdateChrome();
+          dsPaScheduleAutoAi();
         }
       }, holdMs);
     }
@@ -9755,10 +9781,12 @@ function dsPaMount() {
   };
   document.getElementById('dspa_undo').onclick = () => {
     if (DS_PA.step !== 'draw') return;
+    dsPaCancelAutoAi();
     DS_PA.circles.pop();
     DS_PA.answers.pop();
     dsPaRedraw();
     dsPaUpdateChrome();
+    if (DS_PA.circles.length) dsPaScheduleAutoAi();
   };
   document.getElementById('dspa_prev').onclick = () => dsPaPrev();
   document.getElementById('dspa_next').onclick = () => dsPaNext();
@@ -9787,13 +9815,17 @@ function dsPaUpdateChrome() {
   const lg = document.getElementById('dspa_lg');
   if (!n) return;
   if (DS_PA.step === 'draw') {
-    if (ttl) ttl.textContent = '① 單指移相 · 長按 0.5s 加圈';
+    if (ttl) ttl.textContent = '① 長按加圈 · 停一停自動 AI';
     if (undo) undo.style.visibility = 'visible';
     if (sm) sm.style.display = '';
     if (lg) lg.style.display = '';
     n.textContent = '已圈 ' + DS_PA.circles.length + ' 個';
     if (prev) prev.disabled = false;
-    if (next) { next.disabled = !DS_PA.circles.length; next.textContent = '下一步 ›'; }
+    if (next) {
+      /* 自動 AI：下一步改做「立即分析」（可選）；無圈就 disable */
+      next.disabled = !DS_PA.circles.length || !!DS_PA.aiBusy;
+      next.textContent = '立即分析';
+    }
   } else {
     if (ttl) ttl.textContent = '② AI／確認 · 撳圈可改';
     if (undo) undo.style.visibility = 'hidden';
@@ -9816,11 +9848,12 @@ function dsPaPrev() {
     DS_PA.drawing = null;
     dsPaUpdateChrome();
     dsPaRedraw();
-    toast('已返相——可改圈再下一步', 2000);
+    toast('已返相——可再加圈（停一停會自動 AI）', 2000);
     return;
   }
   /* draw：上一步＝換相 */
   if (!confirm('返回重新揀相？（而家嘅圈會清）')) return;
+  dsPaCancelAutoAi();
   dsPaUnmount();
   toast('請再揀相機或相簿', 2000);
 }
@@ -9950,6 +9983,9 @@ function dsPaCropCircles() {
   });
 }
 async function dsPaRunAiThenReview() {
+  if (DS_PA.aiBusy) return;
+  dsPaCancelAutoAi();
+  DS_PA.aiBusy = true;
   toast('AI 分析緊…', 2000);
   const nextBtn = document.getElementById('dspa_next');
   const prevBtn = document.getElementById('dspa_prev');
@@ -9989,6 +10025,7 @@ async function dsPaRunAiThenReview() {
   } catch (e) {
     toast('AI 失敗：' + (e && e.message || e) + '——請人手撳圈揀', 4000);
   }
+  DS_PA.aiBusy = false;
   DS_PA.step = 'label';
   DS_PA.labelIdx = 0;
   dsPaHideLabelPanel();
