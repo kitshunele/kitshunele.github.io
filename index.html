@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.109';
+const APP_VERSION = '0.6.110';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.109：撳圈揀配件；圈完下一步自動 AI 分析（dosu_pipe_ai）。
+/* 0.6.110：圈預設細啲；底欄細／大調最後一圈。
+   0.6.109：撳圈揀配件；圈完下一步自動 AI 分析（dosu_pipe_ai）。
    0.6.108：圈配件左上「返回上一步」；下一步淨底欄右。
    0.6.107：影相圈配件雙指放大縮細＋長按拖移圈。
    0.6.106：影相圈配件加上下步（圈錯可返；標註可返改圈）。
@@ -9491,7 +9492,9 @@ function dsPaMount() {
       <canvas id="dspa_cv"></canvas>
     </div>
     <div class="dspa-foot">
-      <div class="mut" id="dspa_n" style="flex:1">已圈 0 個</div>
+      <div class="mut" id="dspa_n" style="flex:1;font-size:12px">已圈 0 個</div>
+      <button type="button" class="btn" id="dspa_sm">細</button>
+      <button type="button" class="btn" id="dspa_lg">大</button>
       <button type="button" class="btn" id="dspa_close" style="margin-right:4px">關閉</button>
       <button type="button" class="btn pri" id="dspa_next">下一步 ›</button>
     </div>`;
@@ -9556,7 +9559,7 @@ function dsPaMount() {
     DS_PA.circles.forEach((c, i) => {
       const dx = nx - c.cx, dy = ny - c.cy;
       const d = Math.sqrt(dx * dx + dy * dy);
-      if (d <= c.r * 1.35 && d < bestD) { best = i; bestD = d; }
+      if (d <= Math.max(c.r * 1.6, 0.028) && d < bestD) { best = i; bestD = d; }
     });
     return best;
   };
@@ -9636,7 +9639,7 @@ function dsPaMount() {
         clearLong();
         /* 短距離移動：若撳中圈 → 當畫新圈取消；改開始畫圈（由原點）或 pan */
         mode = 'draw';
-        DS_PA.drawing = { cx: pending.n.x, cy: pending.n.y, r: 0.02 };
+        DS_PA.drawing = { cx: pending.n.x, cy: pending.n.y, r: 0.012 };
         pending = null;
       }
     }
@@ -9656,7 +9659,7 @@ function dsPaMount() {
     if (mode === 'draw' && DS_PA.drawing) {
       const n = toNorm(e.clientX, e.clientY);
       const dx = n.x - DS_PA.drawing.cx, dy = n.y - DS_PA.drawing.cy;
-      DS_PA.drawing.r = Math.max(0.015, Math.min(0.35, Math.sqrt(dx * dx + dy * dy)));
+      DS_PA.drawing.r = Math.max(0.008, Math.min(0.25, Math.sqrt(dx * dx + dy * dy)));
       dsPaRedraw();
     }
   };
@@ -9670,7 +9673,7 @@ function dsPaMount() {
       mode = null; pinch0 = null;
       return;
     }
-    if (mode === 'draw' && DS_PA.drawing && DS_PA.drawing.r >= 0.018) {
+    if (mode === 'draw' && DS_PA.drawing && DS_PA.drawing.r >= 0.008) {
       DS_PA.circles.push({ cx: DS_PA.drawing.cx, cy: DS_PA.drawing.cy, r: DS_PA.drawing.r });
       DS_PA.answers.push({ label: '', size: '' });
     }
@@ -9688,7 +9691,7 @@ function dsPaMount() {
       }
       /* 短按空白：加細圈 */
       const n = pending.n;
-      DS_PA.circles.push({ cx: n.x, cy: n.y, r: 0.045 });
+      DS_PA.circles.push({ cx: n.x, cy: n.y, r: 0.022 });
       DS_PA.answers.push({ label: '', size: '' });
       toast('已加圈（撳圈揀配件／長按拖移）', 1400);
     }
@@ -9719,7 +9722,20 @@ function dsPaMount() {
   };
   document.getElementById('dspa_prev').onclick = () => dsPaPrev();
   document.getElementById('dspa_next').onclick = () => dsPaNext();
+  const sm = document.getElementById('dspa_sm');
+  const lg = document.getElementById('dspa_lg');
+  if (sm) sm.onclick = () => dsPaResizeLast(0.82);
+  if (lg) lg.onclick = () => dsPaResizeLast(1.22);
   dsPaUpdateChrome();
+}
+function dsPaResizeLast(factor) {
+  if (DS_PA.step !== 'draw' || !DS_PA.circles.length) return;
+  const i = DS_PA.moveIdx >= 0 ? DS_PA.moveIdx : DS_PA.circles.length - 1;
+  const c = DS_PA.circles[i];
+  if (!c) return;
+  c.r = Math.max(0.008, Math.min(0.25, c.r * factor));
+  dsPaRedraw();
+  toast('圈 ' + (i + 1) + ' 大細調咗', 800);
 }
 function dsPaUpdateChrome() {
   const n = document.getElementById('dspa_n');
@@ -9727,23 +9743,25 @@ function dsPaUpdateChrome() {
   const undo = document.getElementById('dspa_undo');
   const prev = document.getElementById('dspa_prev');
   const next = document.getElementById('dspa_next');
+  const sm = document.getElementById('dspa_sm');
+  const lg = document.getElementById('dspa_lg');
   if (!n) return;
   if (DS_PA.step === 'draw') {
-    if (ttl) ttl.textContent = '① 圈配件 · 雙指放大 · 長按移圈';
+    if (ttl) ttl.textContent = '① 圈配件 · 細／大調圈';
     if (undo) undo.style.visibility = 'visible';
+    if (sm) sm.style.display = '';
+    if (lg) lg.style.display = '';
     n.textContent = '已圈 ' + DS_PA.circles.length + ' 個';
     if (prev) prev.disabled = false;
     if (next) { next.disabled = !DS_PA.circles.length; next.textContent = '下一步 ›'; }
   } else {
-    if (ttl) ttl.textContent = '② 標註 ' + (DS_PA.labelIdx + 1) + '/' + DS_PA.circles.length;
+    if (ttl) ttl.textContent = '② AI／確認 · 撳圈可改';
     if (undo) undo.style.visibility = 'hidden';
+    if (sm) sm.style.display = 'none';
+    if (lg) lg.style.display = 'none';
     n.textContent = DS_PA.circles.map((_,i)=>(DS_PA.answers[i]&&DS_PA.answers[i].label)||('?'+(i+1))).join(' · ');
     if (prev) prev.disabled = false;
-    if (next) {
-      const last = DS_PA.labelIdx >= DS_PA.circles.length - 1;
-      next.textContent = last ? '完成加入 ›' : '下一步 ›';
-      next.disabled = false;
-    }
+    if (next) { next.textContent = '完成加入 ›'; next.disabled = false; }
   }
 }
 function dsPaPrev() {
