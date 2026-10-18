@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.125';
+const APP_VERSION = '0.6.126';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.125：完成加入後留喺相繼續圈（清圈重置）；撳關閉先返度數。
+/* 0.6.126：圈完必須自動 AI；畫圈模式短按圈唔再開下拉選項。
+   0.6.125：完成加入後留喺相繼續圈（清圈重置）；撳關閉先返度數。
    0.6.124：人手揀 item 唔自動完成加入／唔跳返度數；淨 AI 齊先自動入。
    0.6.123：圈選暫存（相＋圈＋答案）——關閉可「繼續」；完成加入先清。
    0.6.122：AI（或全部已有內容）完自動完成加入，唔停確認畫面；頂／底欄掣再加強對比。
@@ -9480,7 +9481,7 @@ function dsPaEntryHtml() {
     if (has && sav.updated) whenTxt = new Date(sav.updated).toLocaleString('zh-HK', { hour12: false });
   } catch (e) {}
   return `<div class="card"><h3>📷 影相圈配件</h3>
-    <div class="mut" style="margin-bottom:8px">影相／相簿 → 長按加圈 → AI／完成加入後可繼續圈；撳關閉先返度數。</div>
+    <div class="mut" style="margin-bottom:8px">長按加圈 → 鬆手自動 AI → 入單後可再圈；關閉返度數。</div>
     ${has ? `<div class="okbox" style="margin-bottom:10px;font-size:14px">有暫存：${n} 個圈${whenTxt ? ' · ' + esc(whenTxt) : ''}
       <div style="display:flex;gap:8px;margin-top:8px">
         <button type="button" class="btn pri" style="flex:1" data-ds="paresume">▶ 繼續圈選</button>
@@ -9622,15 +9623,7 @@ function dsPaScheduleAutoAi() {
     if (DS_PA.step !== 'draw' || DS_PA.aiBusy || !DS_PA.circles.length) return;
     while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
     if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-    if (!dsPaNeedsAi()) {
-      DS_PA.step = 'label';
-      DS_PA.labelIdx = 0;
-      dsPaHideLabelPanel();
-      dsPaUpdateChrome();
-      dsPaRedraw();
-      toast('已跟手動內容——撳圈可改，確認後撳完成加入', 2500);
-      return;
-    }
+    /* 有圈就跑 AI（手動揀過嘅圈 AI 唔會覆寫） */
     dsPaRunAiThenReview();
   }, 700);
 }
@@ -9794,7 +9787,8 @@ function dsPaMount() {
           const prevA = DS_PA.answers.length ? DS_PA.answers[DS_PA.answers.length - 1] : null;
           if (prevA && prevA.manual && (prevA.code || prevA.label)) {
             DS_PA.answers.push(dsPaCopyAnswer(prevA));
-            toast('已加圈——跟住上一個：' + (prevA.search || prevA.label), 1400);
+            toast('已加圈——跟住上一個（鬆手後自動處理）', 1400);
+            DS_PA.pendingAutoAi = true; /* 有未 AI 嘅圈會分析；全人手則直接加入 */
             dsPaPersist(true);
           } else {
             DS_PA.answers.push({ label: '', size: '' });
@@ -9887,15 +9881,14 @@ function dsPaMount() {
     }
     if (mode === 'pending' && pending) {
       if (pending.hi >= 0) {
-        /* 短按已有圈 → 揀配件 */
-        const hi = pending.hi;
+        /* 畫圈模式短按圈：唔開選項（要等 AI；改配件喺 AI 後／確認步） */
         DS_PA.drawing = null;
         DS_PA.moveIdx = -1;
         DS_PA.resizeIdx = -1;
         mode = null; pending = null; pinch0 = null; pan0 = null;
         dsPaRedraw();
         dsPaUpdateChrome();
-        dsPaEditLabel(hi);
+        toast('鬆手後會自動 AI；要改請等分析完再撳圈', 2200);
         return;
       }
       /* 短按空白：唔再加圈（要長按 0.5 秒） */
@@ -10010,15 +10003,6 @@ function dsPaNext() {
     if (!DS_PA.circles.length) { toast('未圈任何配件'); return; }
     while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
     if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-    if (!dsPaNeedsAi()) {
-      DS_PA.step = 'label';
-      DS_PA.labelIdx = 0;
-      dsPaHideLabelPanel();
-      dsPaUpdateChrome();
-      dsPaRedraw();
-      toast('已跟手動內容——撳圈可改，確認後撳完成加入', 2500);
-      return;
-    }
     dsPaRunAiThenReview();
     return;
   }
@@ -10397,6 +10381,18 @@ async function dsPaAutoFinishIfReady(why) {
 async function dsPaRunAiThenReview() {
   if (DS_PA.aiBusy) return;
   dsPaCancelAutoAi();
+  while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
+  if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
+  /* 全部已係人手／已有內容 → 唔打 AI，直接跟內容自動加入 */
+  if (!dsPaNeedsAi()) {
+    DS_PA.step = 'label';
+    DS_PA.labelIdx = 0;
+    dsPaHideLabelPanel();
+    dsPaUpdateChrome();
+    dsPaRedraw();
+    await dsPaAutoFinishIfReady('已齊');
+    return;
+  }
   DS_PA.aiBusy = true;
   toast('AI 分析緊…', 2000);
   const nextBtn = document.getElementById('dspa_next');
