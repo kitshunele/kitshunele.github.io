@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.126';
+const APP_VERSION = '0.6.127';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.126：圈完必須自動 AI；畫圈模式短按圈唔再開下拉選項。
+/* 0.6.127：立即分析／自動 AI 完唔再開下拉；失敗留畫圈可再試；認齊先自動加入。
+   0.6.126：圈完必須自動 AI；畫圈模式短按圈唔再開下拉選項。
    0.6.125：完成加入後留喺相繼續圈（清圈重置）；撳關閉先返度數。
    0.6.124：人手揀 item 唔自動完成加入／唔跳返度數；淨 AI 齊先自動入。
    0.6.123：圈選暫存（相＋圈＋答案）——關閉可「繼續」；完成加入先清。
@@ -9647,6 +9648,7 @@ function dsPaMount() {
       <button type="button" class="btn" id="dspa_sm" title="最後一圈細啲">圈細</button>
       <button type="button" class="btn" id="dspa_lg" title="最後一圈大啲">圈大</button>
       <button type="button" class="btn" id="dspa_close" style="margin-right:4px">關閉</button>
+      <button type="button" class="btn" id="dspa_manual" style="margin-right:4px;display:none">人手揀</button>
       <button type="button" class="btn pri" id="dspa_next">下一步 ›</button>
     </div>`;
   document.body.appendChild(ov);
@@ -9931,6 +9933,19 @@ function dsPaMount() {
   };
   document.getElementById('dspa_prev').onclick = () => dsPaPrev();
   document.getElementById('dspa_next').onclick = () => dsPaNext();
+  const manBtn0 = document.getElementById('dspa_manual');
+  if (manBtn0) manBtn0.onclick = () => {
+    if (!DS_PA.circles.length) { toast('未圈任何配件'); return; }
+    dsPaCancelAutoAi();
+    DS_PA.step = 'label';
+    while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
+    if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
+    const miss = DS_PA.answers.findIndex(a => !(a && (a.label || a.code)));
+    DS_PA.labelIdx = miss >= 0 ? miss : 0;
+    dsPaUpdateChrome();
+    dsPaRedraw();
+    dsPaShowLabelPanel();
+  };
   const sm = document.getElementById('dspa_sm');
   const lg = document.getElementById('dspa_lg');
   if (sm) sm.onclick = () => dsPaResizeLast(0.82);
@@ -9967,6 +9982,11 @@ function dsPaUpdateChrome() {
       next.disabled = !DS_PA.circles.length || !!DS_PA.aiBusy;
       next.textContent = '立即分析';
     }
+    const man = document.getElementById('dspa_manual');
+    if (man) {
+      man.style.display = DS_PA.circles.length ? '' : 'none';
+      man.disabled = !!DS_PA.aiBusy;
+    }
   } else {
     if (ttl) ttl.textContent = '② AI／確認 · 撳圈用下拉改';
     if (undo) undo.style.visibility = 'hidden';
@@ -9975,6 +9995,8 @@ function dsPaUpdateChrome() {
     n.textContent = DS_PA.circles.map((_,i)=>(DS_PA.answers[i]&&DS_PA.answers[i].label)||('?'+(i+1))).join(' · ');
     if (prev) prev.disabled = false;
     if (next) { next.textContent = '完成加入 ›'; next.disabled = false; }
+    const man2 = document.getElementById('dspa_manual');
+    if (man2) man2.style.display = 'none';
   }
 }
 function dsPaPrev() {
@@ -10385,12 +10407,12 @@ async function dsPaRunAiThenReview() {
   if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
   /* 全部已係人手／已有內容 → 唔打 AI，直接跟內容自動加入 */
   if (!dsPaNeedsAi()) {
-    DS_PA.step = 'label';
-    DS_PA.labelIdx = 0;
     dsPaHideLabelPanel();
+    if (await dsPaAutoFinishIfReady('已齊')) return;
+    DS_PA.step = 'draw';
     dsPaUpdateChrome();
     dsPaRedraw();
-    await dsPaAutoFinishIfReady('已齊');
+    toast('內容未齊——可再撳立即分析或人手揀', 2500);
     return;
   }
   DS_PA.aiBusy = true;
@@ -10408,12 +10430,15 @@ async function dsPaRunAiThenReview() {
     if (typeof gasCall === 'function') {
       const o = await gasCall({ action: 'dosu_pipe_ai', crops: crops, app_version: APP_VERSION }, 120000);
       if (o && o.ok && Array.isArray(o.items)) {
+        let applied = 0;
         o.items.forEach(it => {
           const i = Number(it.i);
           if (!(i >= 0) || i >= DS_PA.circles.length) return;
           const cur = DS_PA.answers[i];
           if (cur && cur.manual) return; /* 手動揀過唔覆寫 */
-          const lab = it.label;
+          let lab = String(it.label || '').trim();
+          if (lab === '三叉') lab = '令叉';
+          if (lab.indexOf('喉碼') === 0) lab = '喉碼';
           if (DS_PA_LABELS.indexOf(lab) < 0) return;
           const sz = it.size_mm == null ? '' : String(Math.round(Number(it.size_mm)));
           const resolved = dsPaResolve(lab, sz);
@@ -10422,39 +10447,44 @@ async function dsPaRunAiThenReview() {
             aiLabel: lab, aiSize: sz,
             code: resolved.code || '', search: resolved.search || lab, soft: !!(resolved.soft && resolved.soft.length)
           };
+          applied++;
         });
-        aiOk = true;
+        aiOk = applied > 0;
         dsPaPersist(true);
-        toast('AI 完成——自動加入', 1600);
+        if (aiOk) toast('AI 認到 ' + applied + ' 個', 1600);
+        else toast('AI 有回但認唔到配件——可再試或人手揀', 3500);
       } else {
         const err = (o && o.error) || 'ai_fail';
-        const msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.71 dosu_pipe_ai）——請人手撳圈揀'
-          : err === 'ai_no_key' ? '未設 AI key——請人手撳圈揀'
-          : 'AI 暫時唔得（' + err + '）——請人手撳圈揀';
+        const msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.71+）——撳「人手揀」'
+          : err === 'ai_no_key' ? '未設 AI key——撳「人手揀」'
+          : 'AI 暫時唔得（' + err + '）——可再試或撳「人手揀」';
         toast(msg, 4500);
       }
     } else {
-      toast('未接伺服器——請人手撳圈揀', 3000);
+      toast('未接伺服器——撳「人手揀」', 3000);
     }
   } catch (e) {
-    toast('AI 失敗：' + (e && e.message || e) + '——請人手撳圈揀', 4000);
+    toast('AI 失敗：' + (e && e.message || e) + '——可再試或撳「人手揀」', 4000);
   }
   DS_PA.aiBusy = false;
-  DS_PA.step = 'label';
-  DS_PA.labelIdx = 0;
+  DS_PA.aiTried = true;
   dsPaHideLabelPanel();
+  if (nextBtn) nextBtn.disabled = false;
+  /* 認齊 → 直接加入，唔出選項 */
+  if (aiOk && await dsPaAutoFinishIfReady('AI 完成')) return;
+  /* 失敗／唔齊：留喺畫圈，唔彈下拉（避免「撳分析就畀選項」） */
+  DS_PA.step = 'draw';
+  DS_PA.labelIdx = 0;
   dsPaUpdateChrome();
   dsPaRedraw();
-  if (nextBtn) nextBtn.disabled = false;
-  /* AI 完（或已齊）→ 自動完成加入，唔 hold 確認畫面 */
-  if (aiOk && await dsPaAutoFinishIfReady('AI 完成')) return;
   if (!aiOk) {
-    const miss = DS_PA.answers.findIndex(a => !(a && a.label));
-    if (miss >= 0) setTimeout(() => dsPaEditLabel(miss), 400);
-  } else {
-    /* AI 有回但唔齊 → 先補未填 */
-    const miss = DS_PA.answers.findIndex(a => !(a && (a.label || a.code)));
-    if (miss >= 0) setTimeout(() => dsPaEditLabel(miss), 400);
+    toast('AI 未得——可再撳「立即分析」；要人手就撳「人手揀」', 4000);
+    return;
+  }
+  const miss = [];
+  DS_PA.answers.forEach((a, i) => { if (!(a && (a.label || a.code))) miss.push(i + 1); });
+  if (miss.length) {
+    toast('第 ' + miss.join('、') + ' 個未認到——可再分析，或撳「人手揀」補', 4000);
   }
 }
 
