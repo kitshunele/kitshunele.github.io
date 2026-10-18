@@ -159,8 +159,9 @@ h3 .revtag{display:inline;font-size:13px}
 .empty{text-align:center;color:var(--mut);padding:40px 10px}
 .q{padding:12px 0;border-top:1px solid #edf1f5}
 .q:first-of-type{border-top:0}
-.q .ql{font-size:17px;font-weight:600;margin-bottom:8px}
+.q .ql{font-size:17px;font-weight:600;margin-bottom:4px}
 .q .ql .c{font-size:12px;color:var(--mut);font-weight:400;margin-left:6px}
+.q .qfsd{font-size:12px;color:var(--mut);margin:0 0 8px;line-height:1.35;font-weight:400}
 .q .note{font-size:13px;color:var(--mut);margin:-4px 0 8px}
 .seg{display:flex;gap:8px;flex-wrap:wrap}
 .seg button{flex:1;min-width:64px;min-height:54px;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:19px;font-weight:800}
@@ -386,7 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.130';
+const APP_VERSION = '0.6.131';
+/* v0.6.131：問卷每題顯示對應邊個消防處位置（runtime 反查 fsd q_def／q_skip／gate） */
 /* v0.6.130：消防處·水缸 2.e／2.f 預設不適用（def_v=NA） */
 /* v0.6.129：栓轆問卷／預設批次——q_def／def_v／q_skip／def_skip；F6 下龍頭／喉轆、隱藏喉轆、Inlet門、閘制訊號；F24「有冇水種缸」；F26 改名
    v0.6.128：問卷一般系統加 FIXED_HR「有冇固定喉轆」；消防處·栓轆 5.d 跟答預設是／不適用（q_def）；AI 失敗唔再開下拉仍沿用 0.6.127 */
@@ -1317,7 +1319,7 @@ function stepQ(r) {
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
     return `<div class="card" id="sec-${s.key}"><h3>${esc(s.title)} <span class="mut">${p}/${need}</span></h3>
-      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
+      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
 }
@@ -1482,8 +1484,44 @@ function stepSubmit(r) {
    條文照官方核對表；答案：是／否／不適用（✓ 項：只剔適用）。讀數全部由師傅輸入（一個小數位），程式唔會產生任何數值。
    資料存喺 r.fsd[key] = { a:{itemKey:{v,note}}, skip:{secId:true}, t:{表格}, h:{表頭}, off }；提交 JSON 用新 key「fsd_checklists」。 */
 let FSD = DATA.fsd || [];
-const FSD_BY = {}; function fsdDataApply() { /* v0.6.15 */ FSD = DATA.fsd || []; Object.keys(FSD_BY).forEach(k => delete FSD_BY[k]); FSD.forEach(c => { FSD_BY[c.key] = c; }); fsdTopInit(); }
+let Q_FSD_MAP = null; /* v0.6.131：問卷 cell → 消防處位置（由 fsd q_def／q_skip／gate 反查） */
+const FSD_BY = {}; function fsdDataApply() { /* v0.6.15 */ FSD = DATA.fsd || []; Object.keys(FSD_BY).forEach(k => delete FSD_BY[k]); FSD.forEach(c => { FSD_BY[c.key] = c; }); Q_FSD_MAP = null; fsdTopInit(); }
 FSD.forEach(c => { FSD_BY[c.key] = c; });
+const fsdChipShort = chip => { const s = String(chip || ''); return s.replace(/^消防處·/, '') || s; };
+function qFsdMapBuild() {
+  const m = {};
+  const ens = cell => (m[cell] || (m[cell] = { defs: {}, skips: [], gates: [] }));
+  (FSD || []).forEach(c => {
+    const sh = fsdChipShort(c.chip);
+    if (c.gate) ens(c.gate).gates.push(sh);
+    const walk = s => {
+      if (s.q_skip && s.q_skip[0]) ens(s.q_skip[0]).skips.push({ sh, id: s.id, ans: s.q_skip[1] || '冇' });
+      (s.items || []).forEach(it => {
+        if (it.q_def && it.q_def[0]) {
+          const e = ens(it.q_def[0]);
+          (e.defs[sh] || (e.defs[sh] = [])).push(it.k);
+        }
+      });
+      (s.subs || []).forEach(walk);
+    };
+    (c.sections || []).forEach(walk);
+  });
+  Object.keys(m).forEach(cell => {
+    const d = m[cell].defs;
+    m[cell].defs = Object.keys(d).map(sh => ({ sh, keys: d[sh] }));
+  });
+  return m;
+}
+const qFsdMap = () => Q_FSD_MAP || (Q_FSD_MAP = qFsdMapBuild());
+function qFsdHintHtml(cell) {
+  const e = qFsdMap()[cell]; if (!e) return '';
+  const parts = [];
+  (e.defs || []).forEach(d => parts.push('回應→' + d.sh + ' ' + d.keys.join('／')));
+  (e.skips || []).forEach(s => parts.push((s.ans || '冇') + '→第' + s.id + '節不適用'));
+  (e.gates || []).forEach(sh => parts.push('有→開·' + sh));
+  if (!parts.length) return '';
+  return `<div class="qfsd">${esc(parts.join(' · '))}</div>`;
+}
 const FSD_V = { Y: '是', N: '否', NA: '不適用', T: '✓' };
 const fsdKeyOf = step => (step && String(step).startsWith('FSD-') && FSD_BY[step.slice(4)]) ? step.slice(4) : null;
 const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：消防處年檢核對表只限年檢（CL-A B 部「FSD's Annual Inspection Checklists」半年檢係「-」）
