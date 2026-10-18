@@ -387,8 +387,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.132';
-/* v0.6.132：TANK_FLOAT→水缸 2.g；F24→水缸 1.b／1.c；水缸 2.j／2.k 預設 NA */
+const APP_VERSION = '0.6.133';
+/* v0.6.133：消防檢查核對表每頁記住上下拉位置（記錄＋步驟），返嚟還原 */
+/* v0.6.132：TANK_FLOAT→水缸 2.g；F24→水缸 1.b／1.c／3.f；水缸 2.j／2.k 預設 NA */
 /* v0.6.131：問卷每題顯示對應邊個消防處位置（runtime 反查 fsd q_def／q_skip／gate） */
 /* v0.6.130：消防處·水缸 2.e／2.f 預設不適用（def_v=NA） */
 /* v0.6.129：栓轆問卷／預設批次——q_def／def_v／q_skip／def_skip；F6 下龍頭／喉轆、隱藏喉轆、Inlet門、閘制訊號；F24「有冇水種缸」；F26 改名
@@ -1170,12 +1171,48 @@ function parseHash() {
 window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cur.view !== 'ecall') { EC.live = false; EC.err = ''; } if (cur.view !== 'wo') { WO.live = false; WO.err = ''; WO.perr = ''; WO.show = WO_PAGE; woPriceOff(); } if (cur.view !== 'clock') ckReset(); if (cur.view !== 'sched') { SC.live = false; SC.err = ''; } if (cur.view !== 'echist') { EH.err = ''; EH.show = EH_PAGE; if (typeof EH !== 'undefined') { EH.det = null; EH.fold = null; EH.ferr = ''; EH.ferrCode = ''; EH.thumbs = {}; } } if (cur.view !== 'pend') { PW.live = false; PW.err = ''; } render(true); if ((typeof accLocked === 'function' && accLocked()) || (typeof APPD !== 'undefined' && !APPD.ready)) return; lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); });
 
 /* ---------- render ---------- */
+/* v0.6.133：消防檢查核對表（view=rec）每頁記住 scrollY；key = 紀錄id|步驟（含 FSD-…） */
+const LS_REC_SCROLL = 'fsapp20259005.recScroll.v1';
+let REC_SCROLL = {};
+try { REC_SCROLL = JSON.parse(localStorage.getItem(LS_REC_SCROLL) || '{}') || {}; } catch (e) { REC_SCROLL = {}; }
+let recScrollAt = '', recScrollT = 0;
+function recScrollKey(id, step) {
+  id = id != null ? id : (cur.view === 'rec' ? cur.id : null);
+  step = step != null ? step : (cur.view === 'rec' ? cur.step : null);
+  return (id && step) ? (String(id) + '|' + String(step)) : '';
+}
+function recScrollPersist() {
+  try {
+    const ids = new Set((Store.recs || []).map(r => r.id));
+    const next = {};
+    Object.keys(REC_SCROLL).forEach(k => { if (ids.has(k.split('|')[0])) next[k] = REC_SCROLL[k] | 0; });
+    const keys = Object.keys(next);
+    if (keys.length > 240) keys.slice(0, keys.length - 200).forEach(k => delete next[k]);
+    REC_SCROLL = next;
+    localStorage.setItem(LS_REC_SCROLL, JSON.stringify(REC_SCROLL));
+  } catch (e) {}
+}
+function recScrollSave() {
+  if (!recScrollAt) return;
+  REC_SCROLL[recScrollAt] = window.scrollY | 0;
+  clearTimeout(recScrollT);
+  recScrollT = setTimeout(recScrollPersist, 350);
+}
+function recScrollRestoreY() {
+  const k = recScrollKey();
+  return (k && REC_SCROLL[k] != null) ? (REC_SCROLL[k] | 0) : null;
+}
+window.addEventListener('scroll', () => { if (!recScrollAt) return; REC_SCROLL[recScrollAt] = window.scrollY | 0; clearTimeout(recScrollT); recScrollT = setTimeout(recScrollPersist, 350); }, { passive: true });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { recScrollSave(); clearTimeout(recScrollT); recScrollPersist(); } });
 function render(toTop) {
+  recScrollSave(); /* 換頁前先記低舊頁位置（recScrollAt 仍係舊 key；hash 已改 cur） */
   const y = window.scrollY;
   const LK = typeof accLocked === 'function' && accLocked() && cur.view !== 'accmgr'; /* v0.6.14.3 未批准：任何 hash 都只顯示鎖住頁 */
   const LD = !LK && typeof APPD !== 'undefined' && !APPD.ready && cur.view !== 'accmgr'; /* v0.6.15 未有公司資料：載入資料中／錯誤＋再試 */
   $('#app').innerHTML = LK ? viewLock() : LD ? viewDataLoad() : cur.view === 'wait' ? viewGrid() : cur.view === 'rec' ? viewRec(Store.get(cur.id)) : cur.view === 'lookup' ? viewLookup() : cur.view === 'ecall' ? viewEcall() : cur.view === 'echist' ? viewEchist() : cur.view === 'wo' ? viewWo() : cur.view === 'clock' ? viewClock() : cur.view === 'sched' ? viewSched() : cur.view === 'pend' ? viewPend() : cur.view === 'bldg' ? viewBldg() : cur.view === 'wait' ? viewWait() : cur.view === 'accmgr' ? viewAccMgr() : cur.view === 'home' ? viewHome() : viewGrid();
-  window.scrollTo(0, toTop ? 0 : y);
+  const restore = (cur.view === 'rec' && toTop) ? recScrollRestoreY() : null;
+  window.scrollTo(0, restore != null ? restore : (toTop ? 0 : y));
+  recScrollAt = recScrollKey();
   if (LK || LD) return;
   hydrateThumbs();
   if (cur.view === 'rec') { markMiss(Store.get(cur.id)); paintOpt(Store.get(cur.id)); }
