@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.105';
+const APP_VERSION = '0.6.106';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -8222,7 +8222,8 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.105：影相圈配件可相機或相簿揀相。
+/* 0.6.106：影相圈配件加上下步（圈錯可返；標註可返改圈）。
+   0.6.105：影相圈配件可相機或相簿揀相。
    0.6.104：度數「影相圈配件」——影相→圈→揀七 label（map 0.2）→確認加入行；缺徑 soft-flag。
    0.6.102：度數項目卡唔再顯示「參考：…價」（FAN）。
  ---------- v0.6.101 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
@@ -9357,7 +9358,10 @@ const DS_PA = {
   open: false, photoId: null, dataUrl: '', w: 0, h: 0,
   circles: [], /* {cx,cy,r} 0–1 相對相 */
   drawing: null, /* {cx,cy,r} while drag */
-  softFlags: []
+  softFlags: [],
+  step: 'draw', /* draw | label */
+  labelIdx: 0,
+  answers: [] /* {label, size} parallel to circles */
 };
 function dsPaEntryHtml() {
   return `<div class="card"><h3>📷 影相圈配件</h3>
@@ -9446,6 +9450,9 @@ function dsPaOpen(src) {
       DS_PA.circles = [];
       DS_PA.drawing = null;
       DS_PA.softFlags = [];
+      DS_PA.step = 'draw';
+      DS_PA.labelIdx = 0;
+      DS_PA.answers = [];
       DS_PA.open = true;
       dsPaMount();
     } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
@@ -9456,7 +9463,10 @@ function dsPaOpen(src) {
 function dsPaUnmount() {
   const el = document.getElementById('dspa_ov');
   if (el) el.remove();
+  const p = document.getElementById('dspa_labpanel');
+  if (p) p.remove();
   DS_PA.open = false;
+  DS_PA.step = 'draw';
 }
 function dsPaMount() {
   dsPaUnmount();
@@ -9466,15 +9476,16 @@ function dsPaMount() {
   ov.innerHTML = `
     <div class="dspa-bar">
       <button type="button" class="btn" id="dspa_close">關閉</button>
-      <div class="dspa-ttl">圈配件 · 鬆手完成一圈 · 再撳確認</div>
-      <button type="button" class="btn" id="dspa_undo">撤銷</button>
+      <div class="dspa-ttl" id="dspa_ttl">① 圈配件 · 拖動畫圈</div>
+      <button type="button" class="btn" id="dspa_undo">撤銷一圈</button>
     </div>
     <div class="dspa-stage">
       <canvas id="dspa_cv"></canvas>
     </div>
     <div class="dspa-foot">
-      <div class="mut" id="dspa_n">已圈 0 個</div>
-      <button type="button" class="btn pri" id="dspa_ok" style="flex:1">確認標註 ›</button>
+      <button type="button" class="btn" id="dspa_prev">‹ 上一步</button>
+      <div class="mut" id="dspa_n" style="flex:1;text-align:center">已圈 0 個</div>
+      <button type="button" class="btn pri" id="dspa_next">下一步 ›</button>
     </div>`;
   document.body.appendChild(ov);
   const style = document.getElementById('dspa_css') || document.createElement('style');
@@ -9489,7 +9500,8 @@ function dsPaMount() {
     '.dspa-pick{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.92);display:flex;align-items:flex-end;justify-content:center}' +
     '.dspa-pick .card{width:100%;max-width:480px;margin:0;border-radius:16px 16px 0 0;padding:16px;background:#fff;color:#111;max-height:85vh;overflow:auto}' +
     '.dspa-labs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}' +
-    '.dspa-labs button{flex:1 1 40%;min-height:44px}';
+    '.dspa-labs button{flex:1 1 40%;min-height:44px}' +
+    '.dspa-hi{stroke:#fbbf24!important}';
   if (!style.parentNode) document.head.appendChild(style);
 
   const cv = document.getElementById('dspa_cv');
@@ -9514,6 +9526,7 @@ function dsPaMount() {
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   };
   cv.addEventListener('pointerdown', e => {
+    if (DS_PA.step !== 'draw') return;
     e.preventDefault();
     cv.setPointerCapture(e.pointerId);
     const p = toNorm(e);
@@ -9522,7 +9535,7 @@ function dsPaMount() {
     dsPaRedraw();
   });
   cv.addEventListener('pointermove', e => {
-    if (!ptr.down || !DS_PA.drawing) return;
+    if (DS_PA.step !== 'draw' || !ptr.down || !DS_PA.drawing) return;
     e.preventDefault();
     const p = toNorm(e);
     const dx = p.x - DS_PA.drawing.cx;
@@ -9533,58 +9546,155 @@ function dsPaMount() {
   const endPtr = e => {
     if (!ptr.down) return;
     ptr.down = false;
-    if (DS_PA.drawing && DS_PA.drawing.r >= 0.018) {
+    if (DS_PA.step === 'draw' && DS_PA.drawing && DS_PA.drawing.r >= 0.018) {
       DS_PA.circles.push({ cx: DS_PA.drawing.cx, cy: DS_PA.drawing.cy, r: DS_PA.drawing.r });
+      DS_PA.answers.push({ label: '', size: '' });
     }
     DS_PA.drawing = null;
     dsPaRedraw();
-    const n = document.getElementById('dspa_n');
-    if (n) n.textContent = '已圈 ' + DS_PA.circles.length + ' 個';
+    dsPaUpdateChrome();
   };
   cv.addEventListener('pointerup', endPtr);
   cv.addEventListener('pointercancel', endPtr);
 
   document.getElementById('dspa_close').onclick = () => {
-    if (DS_PA.circles.length && !confirm('關閉會唔加入呢啲圈。確定？')) return;
+    if ((DS_PA.circles.length || DS_PA.step === 'label') && !confirm('關閉會唔加入呢啲圈。確定？')) return;
     dsPaUnmount();
   };
   document.getElementById('dspa_undo').onclick = () => {
+    if (DS_PA.step !== 'draw') return;
     DS_PA.circles.pop();
+    DS_PA.answers.pop();
     dsPaRedraw();
-    const n = document.getElementById('dspa_n');
-    if (n) n.textContent = '已圈 ' + DS_PA.circles.length + ' 個';
+    dsPaUpdateChrome();
   };
-  document.getElementById('dspa_ok').onclick = () => dsPaConfirmFlow();
+  document.getElementById('dspa_prev').onclick = () => dsPaPrev();
+  document.getElementById('dspa_next').onclick = () => dsPaNext();
+  dsPaUpdateChrome();
 }
-function dsPaRedraw() {
-  const cv = document.getElementById('dspa_cv');
-  if (!cv || !DS_PA._img) return;
-  const g = cv.getContext('2d');
-  g.clearRect(0, 0, cv.width, cv.height);
-  g.drawImage(DS_PA._img, 0, 0, cv.width, cv.height);
-  const drawC = (c, col, fill) => {
-    g.beginPath();
-    g.arc(c.cx * cv.width, c.cy * cv.height, c.r * Math.min(cv.width, cv.height), 0, Math.PI * 2);
-    g.strokeStyle = col;
-    g.lineWidth = 3;
-    g.stroke();
-    if (fill) { g.fillStyle = fill; g.fill(); }
+function dsPaUpdateChrome() {
+  const n = document.getElementById('dspa_n');
+  const ttl = document.getElementById('dspa_ttl');
+  const undo = document.getElementById('dspa_undo');
+  const prev = document.getElementById('dspa_prev');
+  const next = document.getElementById('dspa_next');
+  if (!n) return;
+  if (DS_PA.step === 'draw') {
+    if (ttl) ttl.textContent = '① 圈配件 · 拖動畫圈';
+    if (undo) undo.style.visibility = 'visible';
+    n.textContent = '已圈 ' + DS_PA.circles.length + ' 個';
+    if (prev) prev.disabled = false;
+    if (next) { next.disabled = !DS_PA.circles.length; next.textContent = '下一步 ›'; }
+  } else {
+    if (ttl) ttl.textContent = '② 標註 ' + (DS_PA.labelIdx + 1) + '/' + DS_PA.circles.length;
+    if (undo) undo.style.visibility = 'hidden';
+    n.textContent = '第 ' + (DS_PA.labelIdx + 1) + ' 個圈';
+    if (prev) prev.disabled = false;
+    if (next) {
+      const last = DS_PA.labelIdx >= DS_PA.circles.length - 1;
+      next.textContent = last ? '完成加入 ›' : '下一步 ›';
+      next.disabled = false;
+    }
+  }
+}
+function dsPaPrev() {
+  if (DS_PA.step === 'label') {
+    /* 存而家呢格先返 */
+    dsPaSaveCurrentLabel();
+    if (DS_PA.labelIdx > 0) {
+      DS_PA.labelIdx--;
+      dsPaShowLabelPanel();
+      dsPaUpdateChrome();
+      dsPaRedraw();
+      return;
+    }
+    /* 返去改圈 */
+    DS_PA.step = 'draw';
+    dsPaHideLabelPanel();
+    dsPaUpdateChrome();
+    dsPaRedraw();
+    toast('返到圈選——可撤銷或再圈', 2000);
+    return;
+  }
+  /* draw：上一步＝換相 */
+  if (!confirm('返回重新揀相？（而家嘅圈會清）')) return;
+  dsPaUnmount();
+  /* 唔自動再開相機——用返入口兩掣 */
+  toast('請再揀相機或相簿', 2000);
+}
+function dsPaNext() {
+  if (DS_PA.step === 'draw') {
+    if (!DS_PA.circles.length) { toast('未圈任何配件'); return; }
+    while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
+    if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
+    DS_PA.step = 'label';
+    DS_PA.labelIdx = 0;
+    dsPaShowLabelPanel();
+    dsPaUpdateChrome();
+    dsPaRedraw();
+    return;
+  }
+  /* label step */
+  if (!dsPaSaveCurrentLabel(true)) return;
+  if (DS_PA.labelIdx < DS_PA.circles.length - 1) {
+    DS_PA.labelIdx++;
+    dsPaShowLabelPanel();
+    dsPaUpdateChrome();
+    dsPaRedraw();
+    return;
+  }
+  dsPaFinish();
+}
+function dsPaSaveCurrentLabel(requireLabel) {
+  const labs = document.getElementById('dspa_labs');
+  const szEl = document.getElementById('dspa_sz');
+  if (!labs) return true;
+  let picked = '';
+  labs.querySelectorAll('[data-lab]').forEach(x => { if (x.classList.contains('pri')) picked = x.dataset.lab; });
+  if (requireLabel && !picked) { toast('請揀呢個圈係咩配件'); return false; }
+  const sz = szEl ? szEl.value : '';
+  DS_PA.answers[DS_PA.labelIdx] = { label: picked, size: sz };
+  return true;
+}
+function dsPaHideLabelPanel() {
+  const p = document.getElementById('dspa_labpanel');
+  if (p) p.remove();
+}
+function dsPaShowLabelPanel() {
+  dsPaHideLabelPanel();
+  const i = DS_PA.labelIdx;
+  const ans = DS_PA.answers[i] || { label: '', size: '' };
+  const wrap = document.createElement('div');
+  wrap.id = 'dspa_labpanel';
+  wrap.className = 'dspa-pick';
+  const sizeOpts = ['<option value="">— 可留空（缺徑會 soft-flag）—</option>']
+    .concat(DS_PA_SIZES.map(s => `<option value="${s}" ${String(ans.size) === String(s) ? 'selected' : ''}>Ø${s} mm</option>`)).join('');
+  wrap.innerHTML = `<div class="card">
+      <h3>第 ${i + 1}／${DS_PA.circles.length} 個圈係咩？</h3>
+      <div class="mut">跟 map 0.2：令叉＝TE · 上牙＝MT · 喉碼預設 SS · 用底欄「上一步／下一步」</div>
+      <div class="dspa-labs" id="dspa_labs">${DS_PA_LABELS.map(l =>
+        `<button type="button" class="btn${ans.label === l ? ' pri' : ''}" data-lab="${l}">${l}</button>`).join('')}</div>
+      <label class="dslbl">尺寸 Ømm（花灑頭／警鐘唔使）
+        <select class="inp" id="dspa_sz">${sizeOpts}</select>
+      </label>
+      <div class="mut" style="margin-top:8px">圈錯？撳底欄「‹ 上一步」返去改圈或撤銷。</div>
+    </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#dspa_labs').onclick = e => {
+    const b = e.target.closest('[data-lab]'); if (!b) return;
+    wrap.querySelectorAll('[data-lab]').forEach(x => x.classList.toggle('pri', x.dataset.lab === b.dataset.lab));
   };
-  DS_PA.circles.forEach((c, i) => {
-    drawC(c, '#22c55e', 'rgba(34,197,94,.15)');
-    g.fillStyle = '#22c55e';
-    g.font = 'bold 16px sans-serif';
-    g.fillText(String(i + 1), c.cx * cv.width + 6, c.cy * cv.height - 6);
-  });
-  if (DS_PA.drawing) drawC(DS_PA.drawing, '#38bdf8', 'rgba(56,189,248,.12)');
+  /* 唔擋住底欄：panel 留底，但底欄喺 ov 入面 z 較低——將 pick 改成唔蓋 foot */
+  wrap.style.alignItems = 'center';
+  wrap.style.paddingBottom = '70px';
 }
-async function dsPaConfirmFlow() {
-  if (!DS_PA.circles.length) { toast('未圈任何配件'); return; }
+async function dsPaFinish() {
+  dsPaHideLabelPanel();
   const results = [];
   for (let i = 0; i < DS_PA.circles.length; i++) {
-    const ans = await dsPaAskOne(i + 1);
-    if (ans === null) return; /* cancel whole */
-    results.push(Object.assign({ circle: DS_PA.circles[i] }, ans));
+    const a = DS_PA.answers[i] || {};
+    if (!a.label) { toast('第 ' + (i + 1) + ' 個未揀種類'); DS_PA.labelIdx = i; dsPaShowLabelPanel(); dsPaUpdateChrome(); return; }
+    results.push(Object.assign({ circle: DS_PA.circles[i] }, a));
   }
   let added = 0, flags = [];
   for (const r of results) {
@@ -9592,15 +9702,11 @@ async function dsPaConfirmFlow() {
     flags = flags.concat(resolved.soft || []);
     if (resolved.ok && resolved.code) {
       const it = { code: resolved.code, search: resolved.search, desc: '影相圈選 · map0.2' };
-      /* attach photo to first qty slot if new line */
-      const before = DS.lines.length;
       dsAddLine(it);
       const line = DS.lines.find(l => l.code === resolved.code) || DS.lines[DS.lines.length - 1];
       if (line && DS_PA.photoId) {
         dsEnsureQtyPhotos(line);
-        if (!line.qtyPhotos[0]) {
-          line.qtyPhotos[0] = DS_PA.photoId;
-        }
+        if (!line.qtyPhotos[0]) line.qtyPhotos[0] = DS_PA.photoId;
       }
       added++;
     }
@@ -9616,43 +9722,30 @@ async function dsPaConfirmFlow() {
   dsPaUnmount();
   dsPaint();
 }
-function dsPaAskOne(n) {
-  return new Promise(resolve => {
-    const wrap = document.createElement('div');
-    wrap.className = 'dspa-pick';
-    const sizeOpts = ['<option value="">— 可留空（缺徑會 soft-flag）—</option>']
-      .concat(DS_PA_SIZES.map(s => `<option value="${s}">Ø${s} mm</option>`)).join('');
-    wrap.innerHTML = `<div class="card">
-      <h3>第 ${n} 個圈係咩？</h3>
-      <div class="mut">跟 map 0.2：令叉＝TE · 上牙＝MT · 喉碼預設 SS</div>
-      <div class="dspa-labs" id="dspa_labs">${DS_PA_LABELS.map(l =>
-        `<button type="button" class="btn" data-lab="${l}">${l}</button>`).join('')}</div>
-      <label class="dslbl">尺寸 Ømm（花灑頭／警鐘唔使）
-        <select class="inp" id="dspa_sz">${sizeOpts}</select>
-      </label>
-      <button type="button" class="btn pri" style="width:100%;margin-top:10px" id="dspa_next" disabled>下一個</button>
-      <button type="button" class="btn" style="width:100%;margin-top:8px" id="dspa_cancel">取消全部</button>
-    </div>`;
-    document.body.appendChild(wrap);
-    let picked = '';
-    wrap.querySelector('#dspa_labs').onclick = e => {
-      const b = e.target.closest('[data-lab]'); if (!b) return;
-      picked = b.dataset.lab;
-      wrap.querySelectorAll('[data-lab]').forEach(x => {
-        x.classList.toggle('pri', x.dataset.lab === picked);
-      });
-      wrap.querySelector('#dspa_next').disabled = !picked;
-    };
-    wrap.querySelector('#dspa_next').onclick = () => {
-      const sz = wrap.querySelector('#dspa_sz').value;
-      wrap.remove();
-      resolve({ label: picked, size: sz });
-    };
-    wrap.querySelector('#dspa_cancel').onclick = () => { wrap.remove(); resolve(null); };
+
+function dsPaRedraw() {
+  const cv = document.getElementById('dspa_cv');
+  if (!cv || !DS_PA._img) return;
+  const g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.drawImage(DS_PA._img, 0, 0, cv.width, cv.height);
+  const drawC = (c, col, fill) => {
+    g.beginPath();
+    g.arc(c.cx * cv.width, c.cy * cv.height, c.r * Math.min(cv.width, cv.height), 0, Math.PI * 2);
+    g.strokeStyle = col;
+    g.lineWidth = 3;
+    g.stroke();
+    if (fill) { g.fillStyle = fill; g.fill(); }
+  };
+  DS_PA.circles.forEach((c, i) => {
+    const hi = DS_PA.step === 'label' && i === DS_PA.labelIdx;
+    drawC(c, hi ? '#fbbf24' : '#22c55e', hi ? 'rgba(251,191,36,.25)' : 'rgba(34,197,94,.15)');
+    g.fillStyle = hi ? '#fbbf24' : '#22c55e';
+    g.font = 'bold 16px sans-serif';
+    g.fillText(String(i + 1), c.cx * cv.width + 6, c.cy * cv.height - 6);
   });
+  if (DS_PA.drawing) drawC(DS_PA.drawing, '#38bdf8', 'rgba(56,189,248,.12)');
 }
-
-
 /* ---------- v0.6.100 單據報銷（FAN 2026-10-17：開頁出編號；影相→AI加總；Sheet＋Drive；撞單） ----------
    FAN（2026-10-18）：影相上限 20；手機暫存（跟度數：localStorage＋PhotoDB；autosave；送出成功先清；可繼續）。
    FAN 0.6.100：reload／AI 撈緊保相——影相即存 draft；pagehide／visibilitychange flush；AI 前後存；還原時剔冇 blob 嘅 id。
