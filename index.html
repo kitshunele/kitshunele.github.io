@@ -386,7 +386,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.99';
+const APP_VERSION = '0.6.100';
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -9300,8 +9300,9 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   } catch (e) {}
 })();
 
-/* ---------- v0.6.95 單據報銷（FAN 2026-10-17：開頁出編號；影相→AI加總；Sheet＋Drive；撞單） ----------
+/* ---------- v0.6.100 單據報銷（FAN 2026-10-17：開頁出編號；影相→AI加總；Sheet＋Drive；撞單） ----------
    FAN（2026-10-18）：影相上限 20；手機暫存（跟度數：localStorage＋PhotoDB；autosave；送出成功先清；可繼續）。
+   FAN 0.6.100：reload／AI 撈緊保相——影相即存 draft；pagehide／visibilitychange flush；AI 前後存；還原時剔冇 blob 嘅 id。
    主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.69+ 認 20 張）。 */
 const EX_MAX_PHOTOS = 20;
 const EX_DRAFT_LS = 'fsapp20259005.expense.drafts.v1';
@@ -9393,6 +9394,27 @@ function exScheduleDraftSave() {
     try { exSaveDraft(true); } catch (e) {}
   }, 500);
 }
+/** 還原後非同步剔 PhotoDB 冇 blob 嘅 id（唔擋 paint） */
+async function exPruneMissingPhotos() {
+  const ids = (EX.photoIds || []).slice();
+  if (!ids.length) return;
+  const keep = [];
+  let lost = 0;
+  for (const id of ids) {
+    try {
+      const ph = await PhotoDB.get(id);
+      if (ph && ph.dataUrl) keep.push(id);
+      else lost++;
+    } catch (e) { lost++; }
+  }
+  if (!lost) return;
+  EX.photoIds = keep;
+  try { exSaveDraft(true); } catch (e) {}
+  try { toast('有 ' + lost + ' 張暫存相讀唔到（已清），請再影', 4000); } catch (e) {}
+  if (typeof cur !== 'undefined' && cur.view === 'expense') {
+    try { exPaint(); } catch (e) {}
+  }
+}
 function exOpenDraft(rid) {
   const d = exDraftsAll()[rid];
   if (!d) return toast('搵唔到呢份暫存');
@@ -9411,6 +9433,7 @@ function exOpenDraft(rid) {
   EX.lastReply = null;
   toast('已開手機暫存——可改；撳「送出報銷」先上雲', 3000);
   exPaint();
+  try { exPruneMissingPhotos(); } catch (e) {}
 }
 async function exDeleteDraft(rid) {
   const all = exDraftsAll();
@@ -9480,6 +9503,7 @@ function exTryRestoreOnEnter() {
   EX.aiAmount = (d.aiAmount != null && d.aiAmount > 0) ? d.aiAmount : null;
   EX.aiNote = d.aiNote || '';
   EX.amountFromAi = !!d.amountFromAi;
+  try { exPruneMissingPhotos(); } catch (e) {}
 }
 function exEnsureDate() {
   if (!EX.date) EX.date = typeof hkDate === 'function' ? hkDate() : '';
@@ -9596,7 +9620,7 @@ async function exOnPhotoFile(file) {
     thumbs.set(id, c.dataUrl);
     EX.photoIds.push(id);
     exPaint();
-    exScheduleDraftSave();
+    try { exSaveDraft(true); } catch (e) {}
     toast('已加單據相 ✓', 1200);
     exScheduleAiSum();
   } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
@@ -9611,7 +9635,7 @@ async function exRmPhoto(id) {
   } else {
     exScheduleAiSum();
   }
-  exScheduleDraftSave();
+  try { exSaveDraft(true); } catch (e) {}
   exPaint();
 }
 function exScheduleAiSum() {
@@ -9639,6 +9663,7 @@ async function exRunAiSum() {
   EX.aiBusy = true; EX.aiPending = false; EX.msg = '';
   const nAtStart = EX.photoIds.length;
   EX.aiPhotoN = nAtStart;
+  try { exSaveDraft(true); } catch (e) {}
   exPaint();
   try {
     const photos = await exPhotosPayload();
@@ -9657,6 +9682,7 @@ async function exRunAiSum() {
       } else {
         toast('AI 加總 $' + o.ai_amount + '（你已填 $' + EX.amount + '，唔會覆寫）', 3000);
       }
+      try { exSaveDraft(true); } catch (e) {}
     } else {
       const err = (o && o.error) || '';
       if (err === 'bad_action' || err === 'ai_no_key') {
@@ -9783,6 +9809,8 @@ parseHash = function () {
 const viewGridRaw_ex = viewGrid;
 viewGrid = function () { return cur.view === 'expense' ? viewExpense() : viewGridRaw_ex(); };
 if (/^#\/expense\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
+window.addEventListener('pagehide', () => { try { if (cur.view === 'expense') exSaveDraft(true); } catch (e) {} });
+document.addEventListener('visibilitychange', () => { try { if (document.visibilityState === 'hidden' && cur.view === 'expense') exSaveDraft(true); } catch (e) {} });
 (function () {
   try {
     const s = document.createElement('style');
