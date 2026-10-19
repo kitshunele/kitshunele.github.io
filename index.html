@@ -387,8 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.147';
-/* v0.6.147：隱藏 wcpd（預設 0）；表二×N＋floors↔cover；高度欄 */
+const APP_VERSION = '0.6.148';
+/* v0.6.148：取消 F31；F30↔水簾；表二 floors／高度米／供水來源✓ 置頂可見 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -806,6 +806,13 @@ function floorKind(bind) {
   if (FLOOR_Q.has(bind) || FLOOR_PURE.some(x => x.test(bind))) return 'pure';
   if (FLOOR_MIX.some(x => x.test(bind))) return 'mix';
   return null;
+}
+/* v0.6.148：舊稿 F31→F30；F30 ↔ SPR_WATER_CURTAIN 補齊（兩邊都有值時以 F30 為準） */
+function qMigrateF30(r) {
+  if (!r || !r.q) return;
+  if (has(r.q.F31)) { if (!has(r.q.F30)) r.q.F30 = r.q.F31; delete r.q.F31; }
+  if (has(r.q.F30)) r.q.SPR_WATER_CURTAIN = r.q.F30;
+  else if (has(r.q.SPR_WATER_CURTAIN)) r.q.F30 = r.q.SPR_WATER_CURTAIN;
 }
 function normRecFloors(r) { // 撳「下一頁」／提交前：成份紀錄所有樓層欄位再整理一次；回傳改咗幾多格
   let n = 0;
@@ -1274,6 +1281,7 @@ function viewHome() { /* 🧯 消防檢查模組入口（#/fire） */
   <div class="foot"><div class="in"><button class="btn" data-act="copyprev">📋 選擇樓宇</button><button class="btn pri" data-act="new">＋ 新增一座</button></div></div>`;
 }
 function viewRec(r) {
+  if (r && typeof qMigrateF30 === 'function') qMigrateF30(r);
   const steps = stepList(r); if (!steps.find(s => s.k === cur.step)) cur.step = 'basic';
   const i = steps.findIndex(s => s.k === cur.step);
   const chips = steps.map(s => { const p = prog(r, s.k); const full = p && p.total > 0 && p.done >= p.total && !p.err; const err = p && p.err;
@@ -1864,7 +1872,7 @@ function fsdTableMissing(r, c, s) {
   }
   return out;
 }
-function fsdTables(c) { const L = []; const rec = s => { if (s.table) L.push(s); (s.subs || []).forEach(rec); }; c.sections.forEach(rec); return L; }
+function fsdTables(c) { const L = []; const rec = s => { const tab = s.table || (s.id === 'T1' ? 'spr_t1' : s.id === 'T2' ? 'spr_t2' : ''); if (tab) L.push(Object.assign({}, s, { table: tab })); (s.subs || []).forEach(rec); }; c.sections.forEach(rec); return L; }
 function fsdMissing(r, key) {
   const c = FSD_BY[key], d = fsdGet(r, key), out = [];
   const M = optMap(r);
@@ -1948,17 +1956,18 @@ function fsdTableHtml(r, c, s) {
     }).join('')}${N > 1 ? `<div class="mut" style="margin-top:6px">要加／減系統份數：改問卷花灑系統數量（而家 ${N}）。減數量會刪走後面系統已填資料。</div>` : ''}</div>`;
   }
   if (s.table === 'spr_t2') {
-    /* v0.6.147：跟 SPR_MULTI_SYS 開 N 份表二；所覆蓋的樓層跟 valves[0].cover；每份有高度（米） */
+    /* v0.6.148：每份表二必顯示：所覆蓋的樓層（↔cover）、高度（米）、供水來源 ✓；欄位全寬置頂 */
     const its = sprT2Sync(r), N = its.length;
     return `<div id="ft-${c.key}-t2">${its.map((z, i) => { const zb = `${b}.sitems.${i}`, src = z.src || {};
-      const head = N > 1 ? `表二　供水流量和壓力測試記錄（系統 ${i + 1}／${N}）` : '項目編號 ' + (i + 1);
+      const head = N > 1 ? `表二　供水流量和壓力測試記錄（系統 ${i + 1}／${N}）` : '表二　供水流量和壓力測試記錄';
       return `<div class="sub" id="ft-${c.key}-s${i}"><h4>${esc(head)}</h4>
-        ${N > 1 ? `<div class="mut" style="margin-bottom:6px">共 ${N} 個花灑系統；「所覆蓋的樓層」跟表一／問卷控制閥覆蓋（兩邊改一邊另一方跟）。</div>` : ''}
-        <div class="g2">${txtField(zb + '.floors', z.floors, '所覆蓋的樓層', '例：G/F–3/F')}${fNum(zb + '.height', z.height, '', '花灑控制閥與所屬最高的花灑的高度（米）')}</div>
-        <div class="mut">供水來源（在適用的供水來源種類內加上「✓」）</div>
+        <div class="mut" style="margin-bottom:6px">${N > 1 ? `共 ${N} 個花灑系統；` : ''}「所覆蓋的樓層」跟表一／問卷「控制閥所覆蓋的樓層／位置／區域」（兩邊改一邊另一方跟）。</div>
+        ${txtField(zb + '.floors', z.floors, '所覆蓋的樓層', '例：G/F–3/F')}
+        ${fNum(zb + '.height', z.height, '米', '花灑控制閥與所屬最高的花灑的高度')}
+        <div class="mut" style="margin:10px 0 4px;font-weight:700">供水來源（在適用的供水來源種類內加上「✓」）</div>
         ${noSprTank(r) ? `<div class="notank">冇花灑水缸 → 花灑泵 1／2、花灑中途泵 1／2 已隱藏（提交記 NA）</div>` : ''}
         ${sprSrc(r).map(([k, l, n, numbered]) => { const v = src[k] || {}, sb = `${zb}.src.${k}`;
-          return `<div class="fsrc ${v.on ? 'on' : ''}"><button class="fchk ${v.on ? 'on' : ''}" data-act="ans" data-bind="${sb}.on" data-v="1">${v.on ? '☑' : '☐'} ${esc(l)}${numbered && has(v.no) ? ' ' + esc(v.no) : ''}</button>
+          return `<div class="fsrc ${v.on ? 'on' : ''}"><button type="button" class="fchk ${v.on ? 'on' : ''}" data-act="ans" data-bind="${sb}.on" data-v="1">${v.on ? '☑' : '☐'} ${esc(l)}${numbered && has(v.no) ? ' ' + esc(v.no) : ''}</button>
           ${v.on ? `${n ? `<div class="opth" data-optfor="${sb}.f1"></div>` : ''}${numbered ? txtField(sb + '.no', v.no, l.replace('：', ''), '例：1') : ''}
             ${!n ? `<div class="g2"><div class="fld"><label>流量（升／分鐘）</label><div class="inp" style="color:#64748b">不適用</div></div>${fNum(sb + '.p1', v.p1, '', '壓力（巴）')}</div>`
               : Array.from({ length: n }, (_, j) => `<div class="g2">${fNum(`${sb}.f${j + 1}`, v['f' + (j + 1)], '', `流量 ${j + 1}（升／分鐘）`)}${fNum(`${sb}.p${j + 1}`, v['p' + (j + 1)], '', `壓力 ${j + 1}（巴）`)}</div>`).join('')}` : ''}</div>`; }).join('')}</div>`; }).join('')}
@@ -1987,8 +1996,13 @@ function stepFsd(r, key) {
       : why === 'q' ? `<div class="skipnote">問卷 ${esc(qSkipLabel(s))} → 自動不適用</div>`
       : why === 'def' ? '<div class="skipnote">預設不適用</div>'
       : why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」，本附錄略過。</div>` : '';
-    body += `<div class="${dep === 0 ? 'card' : 'sub'} fsec" id="fs-${key}-${String(s.id).replace(/[^A-Za-z0-9]/g, '-')}"><${H}>${esc(s.title)}</${H}>${s.note ? `<div class="mut fsn">${esc(s.note)}</div>` : ''}${skipBtn}${skipNote}
-      ${sk ? '' : s.items.map(it => fsdItemHtml(r, c, s, it)).join('') + (s.table ? fsdTableHtml(r, c, s) : '')}</div>`;
+    /* v0.6.148：表一／表二 → 表格欄位放喺長註之前（避免淨見註唔見欄）；T1/T2 id 後備 table；items 防空 */
+    const tab = s.table || (s.id === 'T1' ? 'spr_t1' : s.id === 'T2' ? 'spr_t2' : '');
+    const isTab = !!tab;
+    const noteHtml = s.note ? `<div class="mut fsn">${esc(s.note)}</div>` : '';
+    const formHtml = sk ? '' : (s.items || []).map(it => fsdItemHtml(r, c, s, it)).join('') + (tab ? fsdTableHtml(r, c, Object.assign({}, s, { table: tab })) : '');
+    body += `<div class="${dep === 0 ? 'card' : 'sub'} fsec" id="fs-${key}-${String(s.id).replace(/[^A-Za-z0-9_-]/g, '-')}"><${H}>${esc(s.title)}</${H}>${skipBtn}${skipNote}
+      ${isTab ? formHtml + noteHtml : noteHtml + formHtml}</div>`;
   }, off, fsdHide(r, c), r);
   const fs251 = r.block.fs251 || '', addr = [nameOf(r.block), nameOf(r.estate)].filter(Boolean).join('，');
   return `<div class="hint"><b>${esc(c.title)}</b>（${esc(c.circular)}${c.revision ? '，' + esc(c.revision) : ''}）<br>發出 ${esc(c.issued)} · 生效 ${esc(c.effective)} · <a href="${esc(c.source)}" target="_blank" rel="noopener">官方 PDF</a><br>
@@ -2845,7 +2859,7 @@ function xGateOf(n) { /* → [類別, 問卷格 或 表格 key] */
   if (/Street Hydrant Pump/.test(n)) return ['q', 'AH7'];
   const Q = { D: 'F9', E: 'F15', F: 'F28', I: 'AH6', K: 'AA6', M: 'F11', N: 'F20', O: 'F18', P: 'F29', 'Fire Hydrant Hose Reel Systems': 'F6', 'Annex A': 'F6', 'Supply Tanks': 'F6', 'Annex B': 'F6', 'Checklist for Water Supplies': 'F24', 'Annual Inspection Checklist for': 'F24', 'Sprinkler checklist（修訂 01 )': 'AA6', 'Sprinkler checklist（修訂 01 ) (2)': 'F9' }; /* v0.5.7：「(2)」其實係火警偵測系統年檢核對表 → 跟 F9 煙霧頭熱力頭 */
   if (Q[n]) return ['q', Q[n]];
-  if (/^(G[12]|H[12])-?/.test(n)) return ['q', 'F6']; if (/^J-/.test(n)) return ['q', 'AA6']; if (/^L-/.test(n)) return ['q', 'F31'];
+  if (/^(G[12]|H[12])-?/.test(n)) return ['q', 'F6']; if (/^J-/.test(n)) return ['q', 'AA6']; if (/^L-/.test(n)) return ['q', 'F30']; /* v0.6.148：L- 改跟 F30（F31 已取消） */
   return null;
 }
 function xPlan(o) {
@@ -10178,7 +10192,7 @@ document.addEventListener('visibilitychange', () => { try { if (document.visibil
 
 /* ---------- 樓層 /F ---------- */
 function floorSync(r) { // 記錄 + 畫面上嘅樓層欄位一齊整理（下一頁／提交前）
-  if (r) normRecFloors(r);
+  if (r) { if (typeof qMigrateF30 === 'function') qMigrateF30(r); normRecFloors(r); }
   document.querySelectorAll('input[data-floor]').forEach(x => { const w = normFloor(x.value); if (w !== x.value) x.value = w; floorHint(x); });
 }
 let _fcx = null;
@@ -10488,7 +10502,11 @@ document.addEventListener('click', async e => {
         cb = { open: null, all: false }; Store.touch(r); render(); if (!r.block.preset && !nameOf(r.block)) { cb = { open: 'block', all: true }; cbPaint(r); } return; }
       const ed = estateDef(r), b = ed && ed.blocks.find(x => x.code === el.dataset.code); if (!b) return;
       r.block = Object.assign({ preset: true }, b); cb = { open: null, all: false }; Store.touch(r); return render(); }
-    case 'ans': { const was = getP(r, el.dataset.bind); setP(r, el.dataset.bind, was === el.dataset.v ? '' : el.dataset.v); Store.touch(r); return render(); }
+    case 'ans': { const was = getP(r, el.dataset.bind), v = was === el.dataset.v ? '' : el.dataset.v; setP(r, el.dataset.bind, v);
+      /* v0.6.148：F30「有冇水廉?」↔ SPR_WATER_CURTAIN「有冇水簾？」兩向同一值（含清空） */
+      if (el.dataset.bind === 'q.F30') r.q.SPR_WATER_CURTAIN = v;
+      else if (el.dataset.bind === 'q.SPR_WATER_CURTAIN') r.q.F30 = v;
+      Store.touch(r); return render(); }
     case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); setP(r, el.dataset.bind, was == null ? Math.max(0, d) : Math.max(0, Number(was) + d)); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); } Store.touch(r); return render(); }
     case 'tick': { const k = el.dataset.key, a = r.items[k] || {}; if (a.v === el.dataset.v) delete r.items[k]; else { a.v = el.dataset.v; r.items[k] = a; } Store.touch(r); render();
       if (el.dataset.v === 'X' && r.items[k]) setTimeout(() => { const t = $(`#it-${k.replace(/\./g, '-')} textarea`); if (t) t.focus(); }, 50); return; }
@@ -10709,6 +10727,10 @@ async function recFromJson(o, opt) {
   r.itype = o.inspection_type === 'half_yearly' ? 'half' : o.inspection_type === 'annual' ? 'annual' : (!('inspection_type' in o) ? 'annual' : ''); // 舊 JSON（v0.4.8 之前）全部係年檢
   Object.keys(o.questionnaire || {}).forEach(c => { if (!o.questionnaire[c].na && !o.questionnaire[c].implied) r.q[c] = o.questionnaire[c].a; });
   if (has(r.q.AA10) && !has(r.q.AA36)) r.q.AA36 = r.q.AA10; delete r.q.AA10; // v0.5.4：舊 JSON 嘅 AA10（花洒水缸是否在天台，重複題）→ AA36 // v0.5.2 implied（冇花灑水缸當冇／否）唔存
+  /* v0.6.148：F31 已取消 → 併入 F30；F30 ↔ SPR_WATER_CURTAIN */
+  if (has(r.q.F31) && !has(r.q.F30)) r.q.F30 = r.q.F31; delete r.q.F31;
+  if (has(r.q.F30) && !has(r.q.SPR_WATER_CURTAIN)) r.q.SPR_WATER_CURTAIN = r.q.F30;
+  else if (has(r.q.SPR_WATER_CURTAIN) && !has(r.q.F30)) r.q.F30 = r.q.SPR_WATER_CURTAIN;
   Object.keys(o.forms || {}).forEach(k => Object.keys(o.forms[k].items || {}).forEach(id => { const it = o.forms[k].items[id]; if (it.result && !it.auto && it.set_by !== 'default') r.items[k + '.' + id] = { v: it.result, note: it.reason || '' }; else if (it.input && it.value != null && it.value !== '') r.items[k + '.' + id] = { n: it.value }; })); // v0.4.8 預設（set_by=default）唔存 → 跟返問卷 // 舊 v0.4.4 JSON 嘅 source／default_tick 欄位會被忽略
   const c2 = (o.readings || {}).tr_c2 || {}, c2u = (o.readings || {}).tr_c2_upfeed || {}, c2s = (o.readings || {}).tr_c2_sprinkler || {}; [c2, c2u, c2s].forEach(src => Object.keys(src).forEach(k => { const d = Object.assign({}, src[k]); delete d.label; delete d.part; delete d.kind; r.c2[k] = d; }));
   r.irAudit = ((o.readings || {}).ir_bulk_audit || []).slice();
