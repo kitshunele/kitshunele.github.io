@@ -387,8 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.137';
-/* v0.6.137：還原問卷有／冇掣（撤銷 0.6.136／137 打剔 UI）；q_def／deps／FSD 照 0.6.135+ */
+const APP_VERSION = '0.6.143';
+/* v0.6.143：spr AA25→6.1.h+6.2.d+9.f+9.g；AA38→8.f+9.h；AA20「有冇花灑泵」→11.c/d/e/f；11.g／11.h def_v NA；取消 AA27；AA28 dep AA31>0→9.c；AA31＜1→§9；6.3／6.4／6.5／§7／§10.2 def_skip；水簾→6.6；放水掣→8.c；10.1.c／10.1.d／10.3.b def_v NA；保留 6.2.c／6.1.f／§5／Inlet／multi／4.i／j／k／m */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -567,10 +567,11 @@ const h2Visible = r => formVisible(r, 'H1') || formVisible(r, 'G1'); // TR-H2（
 function itemDef(r, it) {
   if (itemMode(r, it) !== 'ask') return '';
   if (it.na_unless && qA(r, it.na_unless) !== '有') return '';            // 問卷未答 → 唔預設
+  if (it.na_lt && !has(r.q[it.na_lt[0]])) return '';                      // v0.6.143：count 未答 → 唔預設
   if (it.na_any && !it.na_any.some(c => qA(r, c) === '有')) return '';
   return it.tdef || '✓';
 }
-function defWhy(r, k, it) { const cs = [FORMS[k].show_if].concat(FORMS[k].need || [], it.na_any || (it.na_unless ? [it.na_unless] : [])).filter(Boolean); return it.tdef === 'NA' ? '範本預設 NA' : '問卷 ' + cs.map(c => c + '＝' + (r.q[c] || '')).join('、'); }
+function defWhy(r, k, it) { const cs = [FORMS[k].show_if].concat(FORMS[k].need || [], it.na_any || (it.na_unless ? [it.na_unless] : []), it.na_lt ? [it.na_lt[0]] : []).filter(Boolean); return it.tdef === 'NA' ? '範本預設 NA' : '問卷 ' + cs.map(c => c + '＝' + (r.q[c] || '')).join('、'); }
 const inVal = (r, k, it) => (r.items[k + '.' + it.id] || {}).n; /* v0.4.9 輸入項目（數目／讀數） */
 function itemVal(r, k, it) { // → { v, note, by: 'technician' | 'default' | '' }
   const a = r.items[k + '.' + it.id] || {};
@@ -581,7 +582,15 @@ function itemVal(r, k, it) { // → { v, note, by: 'technician' | 'default' | ''
 /* ---------- visibility ---------- */
 function qVisible(r, it, sec) {
   if (sec.gate && it.cell !== sec.gate && r.q[sec.gate] !== '有') return false;
-  if (it.dep && r.q[it.dep[0]] !== it.dep[1]) return false;
+  /* v0.6.143：dep 支援 [cell, ans] 全等，或 [cell, 'gt', n]（已答且 Number(答) > n 先顯示；未答／≤n 隱藏） */
+  if (it.dep) {
+    if (it.dep.length >= 3 && it.dep[1] === 'gt') {
+      const qv = r.q[it.dep[0]];
+      if (!has(qv)) return false;
+      const n = Number(qv);
+      if (Number.isNaN(n) || !(n > Number(it.dep[2]))) return false;
+    } else if (r.q[it.dep[0]] !== it.dep[1]) return false;
+  }
   if ((NOTANK_Q.includes(it.cell) || it.cell in NOTANK_IMP) && noSprTank(r)) return false; // v0.4.1：冇花灑水缸 → 花灑泵題目隱藏（JSON 記 NA）
   return true;
 }
@@ -593,6 +602,11 @@ function itemMode(r, it) {
   if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8 半年檢：CL-E *k–*n（REW）只限年檢 → 隱藏、記 NA
   if (it.na_any && it.na_any.every(c => qA(r, c) === '冇')) return 'autona';
   if (it.na_if && qA(r, it.na_if[0]) === it.na_if[1]) return 'autona';
+  /* v0.6.143：na_lt = [cell, n] → 已答且 Number(答) < n → 自動 NA（未答唔觸發；CL-J n 跟 AA31） */
+  if (it.na_lt && has(r.q[it.na_lt[0]])) {
+    const n = Number(r.q[it.na_lt[0]]);
+    if (!Number.isNaN(n) && n < Number(it.na_lt[1])) return 'autona';
+  }
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏（例如 CL-K *b–*d 跟 AA20） */
   if (it.na_unless && qA(r, it.na_unless) === '冇' && (it.measure || it.input)) return 'autona';
   if (it.measure) return 'measure';
@@ -1405,7 +1419,7 @@ function stepForm(r, k) {
   ${ask_.length ? (unanswered ? `<button class="btn" style="width:100%;margin:4px 0" data-act="allok" data-form="${k}">✓ 未揀嘅 ${unanswered} 項全部剔 ✓</button>` : (inMiss ? `<div class="warnbox">仲有 ${inMiss} 項數目／讀數未填（${ask_.filter(it => itemMode(r, it) === 'input' && !it.optional && !has(inVal(r, k, it))).map(it => esc(it.id)).join('、')}）。</div>` : `<div class="okbox">呢份表全部項目已有答案${nDef ? '（包括預設）' : ''}。</div>`)) : ''}
   ${ask_.map(one).join('')}
   ${meas.map(it => `<div class="meas"><span class="iid">${esc(it.id)}</span><div style="flex:1"><div class="zh">${esc(it.zh)}</div><div class="en">${esc(it.en)}</div>${it.measure === 'REW' ? '<div class="mut">REW 項目：範本自動寫「Test result to be filled in the attached Test Report C2」，讀數由 REW 另填（App 唔會預設）</div>' : ''}</div>${it.measure === 'REW' ? '' : `<button class="btn sm" data-act="step" data-k="${toStep}">去填 ›</button>`}</div>`).join('')}
-  ${auto.length ? `<div class="card autona"><b>自動 NA（問卷答「冇」）：</b><ul class="list">${auto.map(it => `<li><b>${esc(it.id)}</b> ${esc(it.zh)}（${esc((it.na_any || [it.na_unless]).map(c => (QBY[c] || {}).label || c).join('／'))} → 冇）</li>`).join('')}</ul></div>` : ''}
+  ${auto.length ? `<div class="card autona"><b>自動 NA（問卷）：</b><ul class="list">${auto.map(it => { const lab = it.na_lt ? ((QBY[it.na_lt[0]] || {}).label || it.na_lt[0]) + '＜' + it.na_lt[1] : (it.na_any || [it.na_unless]).map(c => (QBY[c] || {}).label || c).join('／') + ' → 冇'; return `<li><b>${esc(it.id)}</b> ${esc(it.zh)}（${esc(lab)}）</li>`; }).join('')}</ul></div>` : ''}
   ${k === 'CL-J' ? `<div class="card"><div class="kv"><b>Hazard</b><span>${esc(r.q.AA8 || '（問卷 AA8 未答）')}</span><b>Low flow</b><span>${has(r.q.AA11) ? esc(show1(+r.q.AA11)) + ' bar（問卷 AA11）' : '（問卷 AA11）'}</span><b>High flow</b><span>${has(r.q.AA12) ? esc(show1(+r.q.AA12)) + ' bar（問卷 AA12）' : '（問卷 AA12）'}</span></div><div class="mut">m 項：範本 J-2 由問卷自動帶出 Hazard、流量同壓力（bar × 100 = kPa）。</div></div>` : ''}
   ${!ask_.length && !meas.length ? '<div class="empty">根據問卷，呢份表冇需要填嘅項目。請先答問卷。</div>' : ''}`;
 }
@@ -1529,7 +1543,11 @@ function qFsdMapBuild() {
     const sh = fsdChipShort(c.chip);
     if (c.gate) ens(c.gate).gates.push(sh);
     const walk = s => {
-      if (s.q_skip && s.q_skip[0]) ens(s.q_skip[0]).skips.push({ sh, id: s.id, ans: s.q_skip[1] || '冇' });
+      if (s.q_skip && s.q_skip[0]) {
+        const qs = s.q_skip;
+        const ans = qs.length >= 3 && qs[1] === 'lt' ? ('<' + qs[2]) : (qs[1] != null && qs[1] !== '' ? qs[1] : '冇');
+        ens(qs[0]).skips.push({ sh, id: s.id, ans });
+      }
       (s.items || []).forEach(it => {
         if (it.q_def && it.q_def[0]) {
           const e = ens(it.q_def[0]);
@@ -1564,6 +1582,23 @@ function qFsdHintHtml(cell) {
   return `<div class="qfsd">${esc(parts.join(' · '))}</div>`;
 }
 const FSD_V = { Y: '是', N: '否', NA: '不適用', T: '✓' };
+/* v0.6.143：q_skip 支援 [cell, ans] 全等，或 [cell, 'lt', n]（已答且 Number(答) < n → 整部不適用；未答唔觸發） */
+const qSkipMatch = (s, r) => {
+  if (!s.q_skip || !r) return false;
+  const qs = s.q_skip, qv = r.q[qs[0]];
+  if (qs.length >= 3 && qs[1] === 'lt') {
+    if (!has(qv)) return false;
+    const n = Number(qv);
+    return !Number.isNaN(n) && n < Number(qs[2]);
+  }
+  return qv === qs[1];
+};
+const qSkipLabel = s => {
+  if (!s.q_skip) return '';
+  const qs = s.q_skip;
+  if (qs.length >= 3 && qs[1] === 'lt') return `${qs[0]}＜${qs[2]}`;
+  return `${qs[0]}＝${qs[1]}`;
+};
 const fsdKeyOf = step => (step && String(step).startsWith('FSD-') && FSD_BY[step.slice(4)]) ? step.slice(4) : null;
 const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：消防處年檢核對表只限年檢（CL-A B 部「FSD's Annual Inspection Checklists」半年檢係「-」）
 /* v0.4.8：問卷「有」→ 是/否/不適用 項目預設「是」（✓ 剔選項目唔預設；可留空嘅互斥部分唔預設）；師傅揀過先記 technician */
@@ -1580,8 +1615,18 @@ const fsdDefault = (r, c, s, it, M) => {
     /* 未齊答／唔齊 → 跌落單格 q_def／通用預設 */
   }
   if (it.q_def) {
-    const qv = r.q[it.q_def[0]], map = it.q_def[1] || {};
-    if (qv && map[qv]) return { v: map[qv], by: 'default' };
+    const qd = it.q_def, qv = r.q[qd[0]];
+    /* v0.6.143：[cell, 'lt'|'lte'|'gt'|'gte', n, whenTrue, whenFalse] — 數量比較（例 SPR_MULTI_SYS≤1→NA／>1→Y） */
+    if (qd.length >= 5 && typeof qd[1] === 'string' && /^(lt|lte|gt|gte)$/.test(qd[1])) {
+      if (!has(qv)) return { v: '', by: '' };
+      const n = Number(qv); if (Number.isNaN(n)) return { v: '', by: '' };
+      const thr = Number(qd[2]), op = qd[1];
+      const ok = op === 'lt' ? n < thr : op === 'lte' ? n <= thr : op === 'gt' ? n > thr : n >= thr;
+      return { v: ok ? qd[3] : qd[4], by: 'default' };
+    }
+    const map = qd[1] || {};
+    /* v0.6.143：has(qv) 令 count＝0 都可對 map（唔再 `qv &&` 食死 0） */
+    if (has(qv) && map[qv]) return { v: map[qv], by: 'default' };
     return { v: '', by: '' };
   }
   if (it.def_v) return { v: it.def_v, by: 'default' };
@@ -1617,7 +1662,7 @@ const fsdOffAllowed = (r, c) => c.key === 'fa' && r.q.F9 === '有';
 const fsdIsOff = (r, c) => !!(fsdGet(r, c.key).off && fsdOffAllowed(r, c));
 function fsdWalk(c, d, fn, off, hide, r) { // fn(sec, depth, skipped, why) — why: '' | 'own' | 'q' | 'def' | 'link' | 'parent' | 'off' | 'notank'
   const byId = {}; const idx = s => { byId[s.id] = s; (s.subs || []).forEach(idx); }; c.sections.forEach(idx);
-  const autoWhy = s => { if ((d.skip || {})[s.id]) return 'own'; if (s.q_skip && r && r.q[s.q_skip[0]] === s.q_skip[1]) return 'q'; if (s.def_skip && !(d.force_on || {})[s.id]) return 'def'; return ''; };
+  const autoWhy = s => { if ((d.skip || {})[s.id]) return 'own'; if (qSkipMatch(s, r)) return 'q'; if (s.def_skip && !(d.force_on || {})[s.id]) return 'def'; return ''; };
   const linkedSkip = s => { if (!s.link) return false; const p = byId[s.link]; if (!p) return !!(d.skip || {})[s.link]; return !!autoWhy(p) || linkedSkip(p); };
   const rec = (s, depth, pwhy) => {
     const aw = autoWhy(s);
@@ -1800,7 +1845,7 @@ function stepFsd(r, key) {
     const skipOn = why === 'own' || why === 'q' || why === 'def';
     const skipBtn = s.skip ? `<button class="fskip ${skipOn ? 'on' : ''}" data-act="fsdskip" data-c="${key}" data-s="${esc(s.id)}">${skipOn ? '☑' : '☐'} 不適用${s.skip_label ? '（' + esc(s.skip_label) + '）' : ''}</button>` : '';
     const skipNote = why === 'own' ? '<div class="skipnote">已揀「不適用」，呢部分略過。</div>'
-      : why === 'q' ? `<div class="skipnote">問卷 ${esc(s.q_skip[0])}＝${esc(s.q_skip[1])} → 自動不適用</div>`
+      : why === 'q' ? `<div class="skipnote">問卷 ${esc(qSkipLabel(s))} → 自動不適用</div>`
       : why === 'def' ? '<div class="skipnote">預設不適用</div>'
       : why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」，本附錄略過。</div>` : '';
     body += `<div class="${dep === 0 ? 'card' : 'sub'} fsec" id="fs-${key}-${String(s.id).replace(/[^A-Za-z0-9]/g, '-')}"><${H}>${esc(s.title)}</${H}>${s.note ? `<div class="mut fsn">${esc(s.note)}</div>` : ''}${skipBtn}${skipNote}
@@ -10001,8 +10046,8 @@ async function buildExport(r, when) {
       if (m === 'measure') items[it.id] = { result: null, measure: it.measure };
       else if (m === 'input') { const n = inVal(r, k, it); items[it.id] = Object.assign({ result: null, input: it.input, unit: it.unit || '', value: has(n) ? n : null }, has(n) ? { set_by: 'technician' } : it.optional ? { optional: true, blank_means: 'NA' } : {}); } /* v0.4.9 數目／讀數（唔會預設） */
       else if (m === 'autona' && it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) items[it.id] = { result: 'NA', auto: true, by: 'SPR_TANK', answer: r.q.SPR_TANK, write: true, why: NOTANK_HINT };
-      else if (m === 'autona' && it.wna && !it.always_na && !(it.annual_only && isHalf(r)) && !it.na_if) items[it.id] = { result: 'NA', auto: true, by: it.na_unless, answer: r.q[it.na_unless] || '', write: true }; /* 範本係常數 √（CL-J／CL-K a）→ 自動 NA 要寫入 */
-      else if (m === 'autona') items[it.id] = (it.annual_only && isHalf(r)) ? { result: 'NA', auto: true, by: 'half_yearly', write: true, why: HALF_NA } : it.always_na ? { result: 'NA', auto: true, by: 'fixed', write: true, why: ALWAYS_NA } : it.na_if ? { result: 'NA', auto: true, by: it.na_if[0], answer: r.q[it.na_if[0]], write: true, why: ROOF_NA } : { result: 'NA', auto: true, by: it.na_unless };
+      else if (m === 'autona' && it.wna && !it.always_na && !(it.annual_only && isHalf(r)) && !it.na_if) items[it.id] = { result: 'NA', auto: true, by: it.na_unless || (it.na_lt && it.na_lt[0]) || '', answer: (it.na_unless ? r.q[it.na_unless] : (it.na_lt ? r.q[it.na_lt[0]] : '')) || '', write: true }; /* 範本係常數 √（CL-J／CL-K a）→ 自動 NA 要寫入；v0.6.143 na_lt */
+      else if (m === 'autona') items[it.id] = (it.annual_only && isHalf(r)) ? { result: 'NA', auto: true, by: 'half_yearly', write: true, why: HALF_NA } : it.always_na ? { result: 'NA', auto: true, by: 'fixed', write: true, why: ALWAYS_NA } : it.na_if ? { result: 'NA', auto: true, by: it.na_if[0], answer: r.q[it.na_if[0]], write: true, why: ROOF_NA } : it.na_lt ? { result: 'NA', auto: true, by: it.na_lt[0], answer: r.q[it.na_lt[0]] || '', write: true } : { result: 'NA', auto: true, by: it.na_unless };
       else items[it.id] = Object.assign({ result: a.v || null, reason: a.v === 'X' ? (a.note || '').trim() : '' }, a.by ? { set_by: a.by } : {}, a.by === 'default' ? { default_why: defWhy(r, k, it) } : {}); // v0.4.8：預設（問卷）定師傅揀
     });
     forms[k] = { applicable: true, items };
