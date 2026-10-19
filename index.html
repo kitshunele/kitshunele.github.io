@@ -172,15 +172,17 @@ h3 .revtag{display:inline;font-size:13px}
 .seg button.on.v-no{background:#334155;border-color:#334155}
 .seg button.on.v-bad{background:var(--x);border-color:var(--x)}
 .seg button.on.v-opt{background:var(--pri);border-color:var(--pri)}
-/* v0.6.136 問卷打剔：一行顯示多啲 */
+/* v0.6.137 問卷單一剔掣：剔＝有／是，唔剔＝冇／否 */
 .qtick{display:flex;gap:4px;flex-shrink:0;align-items:center}
-.qtick button{min-height:34px;min-width:48px;padding:4px 10px;border-radius:8px;border:1.5px solid var(--line);background:#fff;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap}
-.qtick button::before{content:"☐ ";font-weight:400}
-.qtick button.on::before{content:"☑ "}
-.qtick button.on{color:#fff}
-.qtick button.on.v-yes{background:var(--ok);border-color:var(--ok)}
-.qtick button.on.v-no{background:#334155;border-color:#334155}
-.qtick button.on.v-opt{background:var(--pri);border-color:var(--pri)}
+.qtick button,.qcheck{min-height:34px;min-width:44px;padding:4px 10px;border-radius:8px;border:1.5px solid var(--line);background:#fff;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap}
+.qcheck::before{content:"☐ ";font-weight:400}
+.qcheck.on::before{content:"☑ "}
+.qcheck.on{color:#fff;background:var(--ok);border-color:var(--ok)}
+.qcheck.set:not(.on){border-color:#334155;color:#334155;background:#f8fafc}
+.qcheck.set:not(.on)::after{content:" → 冇";font-weight:600;font-size:11px;opacity:.85}
+.qtick button.v-opt::before{content:"☐ ";font-weight:400}
+.qtick button.v-opt.on::before{content:"☑ "}
+.qtick button.v-opt.on{color:#fff;background:var(--pri);border-color:var(--pri)}
 .q.q-in .qtick{display:none}
 .q.unans .ql::before{content:"● ";color:#f59e0b}
 .skipnote{color:var(--mut);font-size:15px;padding:8px 0}
@@ -400,7 +402,7 @@ a.jump{color:var(--pri);font-weight:700}
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
 const APP_VERSION = '0.6.137';
-/* v0.6.137：問卷字還原；打剔 UI 保留；v0.6.136 密排 */
+/* v0.6.137：問卷字還原；單一剔掣（剔＝有／唔剔＝冇）；v0.6.136 密排 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1349,10 +1351,11 @@ function stepBasic(r) {
 /* ----- step: questionnaire ----- */
 function qInput(r, it) {
   const v = r.q[it.cell], b = 'q.' + it.cell;
+  /* v0.6.137：單一剔掣 — 剔＝有／是，唔剔＝冇／否（撳一下喺兩者之間轉） */
+  const qCheck = (yes, no) => `<button type="button" class="qcheck v-yes ${v === yes ? 'on' : ''} ${has(v) ? 'set' : ''}" data-act="qcheck" data-bind="${b}" data-yes="${esc(yes)}" data-no="${esc(no)}" aria-pressed="${v === yes ? 'true' : 'false'}" aria-label="${esc(yes)}／${esc(no)}">${esc(yes)}</button>`;
   const tickBtn = (val, cls) => `<button class="v-${cls} ${v === val ? 'on' : ''}" data-act="ans" data-bind="${b}" data-v="${esc(val)}">${esc(val)}</button>`;
-  const segBtn = (val, cls) => `<button class="v-${cls} ${v === val ? 'on' : ''}" data-act="ans" data-bind="${b}" data-v="${esc(val)}">${esc(val)}</button>`;
-  if (it.type === 'yn') return `<div class="qtick">${tickBtn('有', 'yes')}${tickBtn('冇', 'no')}</div>`;
-  if (it.type === 'sf') return `<div class="qtick">${tickBtn('是', 'yes')}${tickBtn('否', 'no')}</div>`;
+  if (it.type === 'yn') return `<div class="qtick">${qCheck('有', '冇')}</div>`;
+  if (it.type === 'sf') return `<div class="qtick">${qCheck('是', '否')}</div>`;
   if (it.type === 'hazard') return `<div class="qtick">${['LH', 'OH1', 'OH2', 'OH3', 'OH4'].map(x => tickBtn(x, 'opt')).join('')}</div>`;
   if (it.type === 'count') return `<div class="stepper"><button data-act="inc" data-bind="${b}" data-d="-1" aria-label="減">−</button><input class="inp ${has(v) ? 'filled' : ''}" inputmode="numeric" data-bind="${b}" data-kind="int" value="${has(v) ? esc(v) : ''}" placeholder="數量"><button data-act="inc" data-bind="${b}" data-d="1" aria-label="加">＋</button></div>`;
   if (it.type === 'bar') return numField(b, v, 'bar', '', true);
@@ -1360,7 +1363,7 @@ function qInput(r, it) {
   return `<input class="inp ${has(v) ? 'filled' : ''}" data-bind="${b}" value="${esc(v || '')}" placeholder="例：G/F、5/F、R/F">`;
 }
 function stepQ(r) {
-  return `<div class="hint">照公司 Excel「工作表2」問卷。打剔答「有／冇」；答「冇」嘅系統會自動略過或者 NA。再撳已揀可以取消。</div>` + QS.map(s => {
+  return `<div class="hint">照公司 Excel「工作表2」問卷。打剔：剔＝有／是，唔剔＝冇／否。答「冇」嘅系統會自動略過或者 NA。</div>` + QS.map(s => {
     const items = s.items.filter(it => qVisible(r, it, s)), OM = optMap(r);
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
@@ -10294,6 +10297,7 @@ document.addEventListener('click', async e => {
       const ed = estateDef(r), b = ed && ed.blocks.find(x => x.code === el.dataset.code); if (!b) return;
       r.block = Object.assign({ preset: true }, b); cb = { open: null, all: false }; Store.touch(r); return render(); }
     case 'ans': { const was = getP(r, el.dataset.bind); setP(r, el.dataset.bind, was === el.dataset.v ? '' : el.dataset.v); Store.touch(r); return render(); }
+    case 'qcheck': { /* v0.6.137 單一剔：空／冇→有，有→冇（是／否同理） */ const was = getP(r, el.dataset.bind), yes = el.dataset.yes, no = el.dataset.no; setP(r, el.dataset.bind, was === yes ? no : yes); Store.touch(r); return render(); }
     case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); setP(r, el.dataset.bind, was == null ? Math.max(0, d) : Math.max(0, Number(was) + d)); Store.touch(r); return render(); }
     case 'tick': { const k = el.dataset.key, a = r.items[k] || {}; if (a.v === el.dataset.v) delete r.items[k]; else { a.v = el.dataset.v; r.items[k] = a; } Store.touch(r); render();
       if (el.dataset.v === 'X' && r.items[k]) setTimeout(() => { const t = $(`#it-${k.replace(/\./g, '-')} textarea`); if (t) t.focus(); }, 50); return; }
