@@ -157,12 +157,14 @@ h3 .revtag{display:inline;font-size:13px}
 .pbar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:8px}
 .pbar i{display:block;height:100%;background:var(--ok)}
 .empty{text-align:center;color:var(--mut);padding:40px 10px}
-.q{padding:12px 0;border-top:1px solid #edf1f5}
+.q{padding:6px 0;border-top:1px solid #edf1f5}
 .q:first-of-type{border-top:0}
-.q .ql{font-size:17px;font-weight:600;margin-bottom:4px}
-.q .ql .c{font-size:12px;color:var(--mut);font-weight:400;margin-left:6px}
-.q .qfsd{font-size:12px;color:var(--mut);margin:0 0 8px;line-height:1.35;font-weight:400}
-.q .note{font-size:13px;color:var(--mut);margin:-4px 0 8px}
+.q .qrow{display:flex;align-items:flex-start;gap:8px}
+.q .ql{font-size:15px;font-weight:600;margin:0;flex:1;min-width:0;line-height:1.35;padding-top:6px}
+.q .ql .c{font-size:11px;color:var(--mut);font-weight:400;margin-left:5px}
+.q .qfsd{font-size:11px;color:var(--mut);margin:2px 0 0;line-height:1.3;font-weight:400}
+.q .note{font-size:12px;color:var(--mut);margin:2px 0 0;line-height:1.3}
+.q .qbody{flex:1;min-width:0}
 .seg{display:flex;gap:8px;flex-wrap:wrap}
 .seg button{flex:1;min-width:64px;min-height:54px;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:19px;font-weight:800}
 .seg button.on{color:#fff}
@@ -170,6 +172,16 @@ h3 .revtag{display:inline;font-size:13px}
 .seg button.on.v-no{background:#334155;border-color:#334155}
 .seg button.on.v-bad{background:var(--x);border-color:var(--x)}
 .seg button.on.v-opt{background:var(--pri);border-color:var(--pri)}
+/* v0.6.136 問卷打剔：一行顯示多啲 */
+.qtick{display:flex;gap:4px;flex-shrink:0;align-items:center}
+.qtick button{min-height:34px;min-width:48px;padding:4px 10px;border-radius:8px;border:1.5px solid var(--line);background:#fff;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap}
+.qtick button::before{content:"☐ ";font-weight:400}
+.qtick button.on::before{content:"☑ "}
+.qtick button.on{color:#fff}
+.qtick button.on.v-yes{background:var(--ok);border-color:var(--ok)}
+.qtick button.on.v-no{background:#334155;border-color:#334155}
+.qtick button.on.v-opt{background:var(--pri);border-color:var(--pri)}
+.q.q-in .qtick{display:none}
 .q.unans .ql::before{content:"● ";color:#f59e0b}
 .skipnote{color:var(--mut);font-size:15px;padding:8px 0}
 .item{border-left:6px solid #cbd5e1;padding:12px;margin:10px 0;background:#fff;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.08)}
@@ -387,8 +399,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.135';
-/* v0.6.135：fsdEff 優先 def_v／q_def（NA）蓋過 bulk／legacy「是」；fsdv 記 by=technician；fsdallok 記 by=bulk 且跳過已有預設 */
+const APP_VERSION = '0.6.136';
+/* v0.6.136：問卷打剔密排＋淺白話；v0.6.135：fsdEff 優先 def_v／q_def（NA）蓋過 bulk／legacy「是」 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1337,22 +1349,32 @@ function stepBasic(r) {
 /* ----- step: questionnaire ----- */
 function qInput(r, it) {
   const v = r.q[it.cell], b = 'q.' + it.cell;
+  const tickBtn = (val, cls) => `<button class="v-${cls} ${v === val ? 'on' : ''}" data-act="ans" data-bind="${b}" data-v="${esc(val)}">${esc(val)}</button>`;
   const segBtn = (val, cls) => `<button class="v-${cls} ${v === val ? 'on' : ''}" data-act="ans" data-bind="${b}" data-v="${esc(val)}">${esc(val)}</button>`;
-  if (it.type === 'yn') return `<div class="seg">${segBtn('有', 'yes')}${segBtn('冇', 'no')}</div>`;
-  if (it.type === 'sf') return `<div class="seg">${segBtn('是', 'yes')}${segBtn('否', 'no')}</div>`;
-  if (it.type === 'hazard') return `<div class="seg">${['LH', 'OH1', 'OH2', 'OH3', 'OH4'].map(x => segBtn(x, 'opt')).join('')}</div>`;
+  if (it.type === 'yn') return `<div class="qtick">${tickBtn('有', 'yes')}${tickBtn('冇', 'no')}</div>`;
+  if (it.type === 'sf') return `<div class="qtick">${tickBtn('是', 'yes')}${tickBtn('否', 'no')}</div>`;
+  if (it.type === 'hazard') return `<div class="qtick">${['LH', 'OH1', 'OH2', 'OH3', 'OH4'].map(x => tickBtn(x, 'opt')).join('')}</div>`;
   if (it.type === 'count') return `<div class="stepper"><button data-act="inc" data-bind="${b}" data-d="-1" aria-label="減">−</button><input class="inp ${has(v) ? 'filled' : ''}" inputmode="numeric" data-bind="${b}" data-kind="int" value="${has(v) ? esc(v) : ''}" placeholder="數量"><button data-act="inc" data-bind="${b}" data-d="1" aria-label="加">＋</button></div>`;
   if (it.type === 'bar') return numField(b, v, 'bar', '', true);
   if (it.type === 'floor') return floorField(b, v, '', '只打數字／字母，例如 5、G、R → 5/F、G/F、R/F', 'pure');
   return `<input class="inp ${has(v) ? 'filled' : ''}" data-bind="${b}" value="${esc(v || '')}" placeholder="例：G/F、5/F、R/F">`;
 }
 function stepQ(r) {
-  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。</div>` + QS.map(s => {
+  return `<div class="hint">照公司 Excel「工作表2」問卷。打剔答「有／冇」；答「冇」嘅系統會自動略過或者 NA。再撳已揀可以取消。</div>` + QS.map(s => {
     const items = s.items.filter(it => qVisible(r, it, s)), OM = optMap(r);
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
     return `<div class="card" id="sec-${s.key}"><h3>${esc(s.title)} <span class="mut">${p}/${need}</span></h3>
-      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
+      ${items.map(it => {
+        const tick = it.type === 'yn' || it.type === 'sf' || it.type === 'hazard';
+        const ans = has(r.q[it.cell]) || OM.has('q.' + it.cell);
+        const inp = qInput(r, it);
+        const meta = `${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}`;
+        const row = tick
+          ? `<div class="qrow"><div class="qbody"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${meta}</div>${inp}</div>`
+          : `<div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${meta}${inp}`;
+        return `<div class="q ${tick ? 'q-tick' : 'q-in'} ${ans ? '' : 'unans'}" id="q-${it.cell}">${row}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q q-in" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`;
+      }).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
 }
