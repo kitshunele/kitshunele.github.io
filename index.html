@@ -387,8 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.150';
-/* v0.6.150：取消表二高度（米）；保留 floors＋供水來源✓ */
+const APP_VERSION = '0.6.151';
+/* v0.6.151：表二每 systems[i] 還原高度（米）；floors＋供水來源✓ */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1856,6 +1856,7 @@ function fsdTableMissing(r, c, s) {
     if (!its.length) out.push({ code: '表二 未加項目', sel: '#ft-' + c.key + '-t2' });
     its.forEach((z, i) => { const zc = N > 1 ? `表二 系統${i + 1}` : `表二 項目${i + 1}`, zb = `${b}.sitems.${i}`;
       if (!has(z.floors)) out.push({ code: zc + ' 所覆蓋的樓層', sel: `[data-bind="${zb}.floors"]` });
+      if (!has(z.height)) out.push({ code: zc + ' 高度', sel: `[data-bind="${zb}.height"]` });
       const src = z.src || {}, on = sprSrc(r).filter(([k]) => (src[k] || {}).on);
       if (!on.length) out.push({ code: zc + ' 未揀供水來源', sel: `#ft-${c.key}-s${i}` });
       const M = optMap(r);
@@ -1906,7 +1907,7 @@ function fsdItemHtml(r, c, s, it) {
 }
 const fNum = (bind, v, unit, label) => numField(bind, v, unit, label, false);
 
-/* v0.6.150：每份表二 floors／供水來源✓（已取消高度欄） */
+/* v0.6.151：每份表二 floors／高度（米）／供水來源✓ */
 function sprT2OneHtml(r, c, b, z, i, N) {
   const zb = b + '.sitems.' + i, src = (z && z.src) || {};
   const head = N > 1
@@ -1941,6 +1942,7 @@ function sprT2OneHtml(r, c, b, z, i, N) {
   return '<div class="sub" id="ft-' + c.key + '-s' + i + '"><h4>' + esc(head) + '</h4>'
     + '<div class="mut" style="margin-bottom:6px">' + tip + '</div>'
     + txtField(zb + '.floors', z && z.floors, '所覆蓋的樓層', '例：G/F–3/F')
+    + fNum(zb + '.height', z && z.height, '米', '花灑控制閥與所屬最高的花灑的高度（米）')
     + '<div class="mut" style="margin:10px 0 4px;font-weight:700">供水來源（在適用的供水來源種類內加上「✓」）</div>'
     + (noSprTank(r) ? '<div class="notank">冇花灑水缸 → 花灑泵 1／2、花灑中途泵 1／2 已隱藏（提交記 NA）</div>' : '')
     + srcHtml + '</div>';
@@ -1996,7 +1998,7 @@ function fsdTableHtml(r, c, s) {
     }).join('')}${N > 1 ? `<div class="mut" style="margin-top:6px">要加／減系統份數：改問卷花灑系統數量（而家 ${N}）。減數量會刪走後面系統已填資料。</div>` : ''}</div>`;
   }
   if (s.table === 'spr_t2') {
-    /* v0.6.150：每份 systems[i] 用 sprT2OneHtml（floors／供水來源✓；唔再要高度） */
+    /* v0.6.151：每份 systems[i] 用 sprT2OneHtml（floors／高度／供水來源✓） */
     const its = sprT2Sync(r), N = Math.max(1, its.length);
     let parts = '';
     for (let i = 0; i < N; i++) parts += sprT2OneHtml(r, c, b, its[i] || {}, i, N);
