@@ -387,8 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.145';
-/* v0.6.145：花灑 表一　設備明細表跟 SPR_MULTI_SYS 開 N 份（systems[]）；疊喺 0.6.144 shellBump 上 */
+const APP_VERSION = '0.6.146';
+/* v0.6.146：SPR_MULTI_SYS 未答／0 → 隱藏花灑 i 位置／覆蓋／總數欄；表一空／0 仍當 1 份 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1728,8 +1728,12 @@ function sprT1Sync(r) {
   return t.systems;
 }
 function sprSysFloorHtml(r) {
-  /* v0.6.145：問卷 SPR_MULTI_SYS 下每系統：位置／覆蓋／設備總數量；直綁 systems[i] valves[0]＋totals（同表一兩向） */
+  /* v0.6.145／146：問卷 SPR_MULTI_SYS 下每系統欄；未答／0 → 隱藏（表一空／0 仍當 1 份） */
   if (!r || r.q.AA6 !== '有') return '';
+  const raw = r.q.SPR_MULTI_SYS;
+  if (!has(raw)) return '';
+  const n = Number(raw);
+  if (Number.isNaN(n) || n < 1) return '';
   const systems = sprT1Sync(r);
   return `<div class="sub" style="margin-top:8px"><div class="mut" style="margin-bottom:4px">每系統控制閥位置／覆蓋／設備總數量（對應表一每份）</div>${systems.map((sys, si) => {
     const v0 = (sys.valves || [])[0] || {}, tot = sys.totals || {};
