@@ -387,7 +387,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.143';
+const APP_VERSION = '0.6.144';
 /* v0.6.143：spr AA25→6.1.h+6.2.d+9.f+9.g；AA38→8.f+9.h；AA20「有冇花灑泵」→11.c/d/e/f；11.g／11.h def_v NA；取消 AA27；AA28 dep AA31>0→9.c；AA31＜1→§9；6.3／6.4／6.5／§7／§10.2 def_skip；水簾→6.6；放水掣→8.c；10.1.c／10.1.d／10.3.b def_v NA；保留 6.2.c／6.1.f／§5／Inlet／multi／4.i／j／k／m */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
@@ -5771,8 +5771,12 @@ const appdShow = () => !accLocked() && !APPD.ready && cur.view !== 'accmgr';
 function appdRr() { if (appdShow()) render(); }
 async function appDataBoot() { /* start()：Store.load()、accBoot() 之後、第一次 render 之前 */
   const c = await appdGet();
+  /* v0.6.144：App 殼版本一變就強制重拉公司資料（have:''），避免 IndexedDB／edge 仲用舊問卷／def_v */
+  const prevShell = (Store.prefs && Store.prefs.appShellVer) || '';
+  const shellBump = prevShell !== APP_VERSION; /* 冇記過／版本唔同都強制重拉一次 */
   if (c && appdValid(c.d)) { try { appDataApply(c.d); APPD.at = c.at || ''; } catch (e) { APPD.ready = false; } }
-  if (!accLocked()) setTimeout(() => appDataFetch(), 0);
+  if (Store.prefs) { Store.prefs.appShellVer = APP_VERSION; try { Store.flush(); } catch (e) { } }
+  if (!accLocked()) setTimeout(() => appDataFetch(shellBump), 0);
 }
 const APPD_ERR = {
   bad_action: '公司伺服器未更新到 v1.15（未有「App 資料」）。Work Order 部署之後撳「再試」。',
@@ -5782,15 +5786,16 @@ const APPD_ERR = {
   no_pin: '未設定師傅 PIN：☰ → ⚙️ 設定。',
   offline: '冇網／連唔到公司伺服器。第一次用要有網下載公司資料，之後冇網都用得。'
 };
-async function appDataFetch() {
+async function appDataFetch(force) {
   if (APPD.busy || accLocked()) return;
   const c = upCfg(), fail = code => { APPD.errCode = code; APPD.err = APPD_ERR[code] || upErrText(code); };
   if (!c.url || !c.pin) { if (!APPD.ready) { fail('no_pin'); appdRr(); } return; }
   if (navigator.onLine === false) { if (!APPD.ready) { fail('offline'); appdRr(); } return; }
   APPD.busy = true; APPD.chkAt = Date.now(); if (!APPD.ready) { APPD.err = ''; APPD.errCode = ''; appdRr(); }
   try {
-    const o = await gasCall({ action: 'app_data', have: APPD.ready ? APPD.v : '' }, 120000);
-    if (o && o.ok && o.unchanged && APPD.ready) { /* 版本一樣 */ }
+    /* v0.6.144：force／殼換版 → have:'' 逼伺服器交齊份 app_data（唔信 edge unchanged） */
+    const o = await gasCall({ action: 'app_data', have: (force || !APPD.ready) ? '' : APPD.v }, 120000);
+    if (o && o.ok && o.unchanged && APPD.ready && !force) { /* 版本一樣 */ }
     else if (o && o.ok && appdValid(o.data)) {
       const was = APPD.ready, at = new Date().toISOString(); appDataApply(o.data); APPD.at = at;
       if (!(await appdPut({ v: APPD.v, at, d: o.data }))) toast('⚠️ 手機儲存空間唔夠：公司資料冇存低，下次開 App 要再下載', 5000);
