@@ -417,7 +417,11 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.222';
+const APP_VERSION = '0.6.226';
+/* v0.6.226：SPR_TANK有＋M6有 → 花灑 §1.c 剔適用（T） */
+/* v0.6.225：SPR_TANK有＋AA36否 → 花灑 §1.b 剔適用（T） */
+/* v0.6.224：AA36「花灑缸是否在天台」重用，放 SPR_TANK 正下方 */
+/* v0.6.223：SPR_STREET_MAIN＝是 → 花灑 §1.a 剔適用（T） */
 /* v0.6.222：FSD 承辦商參考編號全部預填 RC1/0044、RC2/0037 */
 /* v0.6.221：FA_MCP_PANEL＝冇 → §1.e 剔適用（T），兼 1.a–d 清／禁剔 */
 /* v0.6.220：F15＝有 → §1.a 剔適用（T）；1.b／1.d 已接 */
