@@ -387,13 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.133';
-/* v0.6.133：消防檢查核對表每頁記住上下拉位置（記錄＋步驟），返嚟還原 */
-/* v0.6.132：TANK_FLOAT→水缸 2.g；F24→水缸 1.b／1.c／3.f；水缸 2.j／2.k 預設 NA */
-/* v0.6.131：問卷每題顯示對應邊個消防處位置（runtime 反查 fsd q_def／q_skip／gate） */
-/* v0.6.130：消防處·水缸 2.e／2.f 預設不適用（def_v=NA） */
-/* v0.6.129：栓轆問卷／預設批次——q_def／def_v／q_skip／def_skip；F6 下龍頭／喉轆、隱藏喉轆、Inlet門、閘制訊號；F24「有冇水種缸」；F26 改名
-   v0.6.128：問卷一般系統加 FIXED_HR「有冇固定喉轆」；消防處·栓轆 5.d 跟答預設是／不適用（q_def）；AI 失敗唔再開下拉仍沿用 0.6.127 */
+const APP_VERSION = '0.6.134';
+/* v0.6.134：供水道問卷跟答（M12／M18／M19／M9／M7／M8；M7+M8→2.8.k／l）；WS_DEF_V 2.8.q／r／3.e／3.f／4.e 預設 NA；核對表 scroll 沿用 0.6.133 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1539,6 +1534,13 @@ function qFsdMapBuild() {
           const e = ens(it.q_def[0]);
           (e.defs[sh] || (e.defs[sh] = [])).push(it.k);
         }
+        /* v0.6.134：q_def_all = [[cell…], {答:Y/NA}] → 全部 cell 同答先預設 */
+        if (it.q_def_all && Array.isArray(it.q_def_all[0])) {
+          it.q_def_all[0].forEach(cell => {
+            const e = ens(cell);
+            (e.defs[sh] || (e.defs[sh] = [])).push(it.k + '(同時)');
+          });
+        }
       });
       (s.subs || []).forEach(walk);
     };
@@ -1566,7 +1568,26 @@ const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：�
 /* v0.4.8：問卷「有」→ 是/否/不適用 項目預設「是」（✓ 剔選項目唔預設；可留空嘅互斥部分唔預設）；師傅揀過先記 technician */
 /* v0.6.128：it.q_def = [問卷 cell, {答:Y/NA}] → 跟問卷預設；未答唔跌落通用「是」 */
 /* v0.6.129：it.def_v（如 'NA'）靜態預設；s.q_skip／s.def_skip 部分自動不適用 */
-const fsdEff = (r, c, s, it, M) => { const a = (fsdGet(r, c.key).a || {})[it.k] || {}; if (a.v) return { v: a.v, by: 'technician' }; if (it.q_def) { const qv = r.q[it.q_def[0]], map = it.q_def[1] || {}; if (qv && map[qv]) return { v: map[qv], by: 'default' }; return { v: '', by: '' }; } if (it.def_v) return { v: it.def_v, by: 'default' }; const dv = it.mode === 'ynn' && !fsdItemOpt(M || optMap(r), c, s) ? 'Y' : ''; return { v: dv, by: dv ? 'default' : '' }; };
+/* v0.6.134：it.q_def_all = [[cell…], {答:Y/NA}] → 全部 cell 同答先預設（例如 M7+M8 同時冇→2.8.k／2.8.l NA）；優先於單格 q_def */
+const fsdEff = (r, c, s, it, M) => {
+  const a = (fsdGet(r, c.key).a || {})[it.k] || {};
+  if (a.v) return { v: a.v, by: 'technician' };
+  if (it.q_def_all && Array.isArray(it.q_def_all[0])) {
+    const cells = it.q_def_all[0], map = it.q_def_all[1] || {};
+    const vals = cells.map(cell => r.q[cell]);
+    if (vals.every(Boolean) && vals.every(v => v === vals[0]) && map[vals[0]])
+      return { v: map[vals[0]], by: 'default' };
+    /* 未齊答／唔齊 → 唔用呢條；跌落單格 q_def／通用預設 */
+  }
+  if (it.q_def) {
+    const qv = r.q[it.q_def[0]], map = it.q_def[1] || {};
+    if (qv && map[qv]) return { v: map[qv], by: 'default' };
+    return { v: '', by: '' };
+  }
+  if (it.def_v) return { v: it.def_v, by: 'default' };
+  const dv = it.mode === 'ynn' && !fsdItemOpt(M || optMap(r), c, s) ? 'Y' : '';
+  return { v: dv, by: dv ? 'default' : '' };
+};
 const fsdGet = (r, key) => { const d = r.fsd && r.fsd[key]; return d ? (d.a && d.skip && d.t && d.h && d.force_on ? d : Object.assign({ a: {}, skip: {}, t: {}, h: {}, force_on: {} }, d)) : { a: {}, skip: {}, t: {}, h: {}, force_on: {} }; }; // 唯讀（改用 fsdRec）
 function fsdRec(r, key) { r.fsd = r.fsd || {}; const d = r.fsd[key] || (r.fsd[key] = {}); d.a = d.a || {}; d.skip = d.skip || {}; d.t = d.t || {}; d.h = d.h || {}; d.force_on = d.force_on || {}; return d; }
 const fsdDom = (key, k) => 'fi-' + key + '-' + String(k).replace(/[^A-Za-z0-9]/g, '-');
@@ -2008,7 +2029,7 @@ function settings() {
   <input id="cfgUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(c.url)}">
   ${UPLOAD_URL_BUILTIN ? `<div class="mut">已預設公司網址，一般唔使改。${upCfg().url !== UPLOAD_URL_BUILTIN ? ' <a class="jump" href="#" data-s="reset">還原公司網址</a>' : ''}</div>` : ''}
   <div class="cfgck" id="cfgck">👷 打卡名：<b>${esc(Store.prefs.ckName || '（未輸入）')}</b> <button class="lnk" data-s="ckname" type="button">${Store.prefs.ckName ? '換名' : '輸入名'}</button><div class="mut">換咗人／名打錯先改；新手機輸入返同一個名就得。</div></div>
-  <div class="cfgck" id="cfgacc">🔐 <button class="lnk" data-s="accmgr" type="button">管理：批准手機</button> <span class="badge pend" id="accbadge" hidden></span>${(typeof ACC !== 'undefined' && (ACC.mgrOk || ACC.mgrPin || mgrRemembered())) ? ` <button class="lnk" data-s="acclogout" type="button">🚪 登出主管</button>` : ''}<div class="mut">主管用：批准新手機（要 MANAGER_PIN）。登入成功會記住，唔使每次再入。</div></div>
+  <div class="cfgck" id="cfgacc">🔐 <button class="lnk" data-s="accmgr" type="button">管理：批准手機</button> <span class="badge pend" id="accbadge" hidden></span><div class="mut">主管用：批准新手機（要 MANAGER_PIN）。</div></div>
   <div id="cfgMsg" class="mut" style="margin-top:8px;min-height:1.2em"></div>
   <div class="acts"><button class="btn" data-s="close">關閉</button><button class="btn" data-s="test">測試連線</button><button class="btn pri" data-s="save">儲存</button></div></div>`;
   m.classList.add('show'); if (typeof accBadge === 'function') accBadge();
@@ -2024,7 +2045,6 @@ function settings() {
     if (s === 'close') { m.classList.remove('show'); m.onclick = null; return; }
     if (s === 'ckname') { m.classList.remove('show'); m.onclick = null; return ckChangeName(); } /* v0.6.13 換打卡名 */
     if (s === 'accmgr') { m.classList.remove('show'); m.onclick = null; return go('#/accmgr'); } /* v0.6.14 管理：批准手機（只喺設定入面） */
-    if (s === 'acclogout') { mgrRememberClear(); m.classList.remove('show'); m.onclick = null; toast('已登出主管'); render(); return; }
     if (s === 'eye') { const i = $('#cfgPin'); i.type = i.type === 'password' ? 'text' : 'password'; return; }
     if (s === 'reset') { e.preventDefault(); $('#cfgUrl').value = UPLOAD_URL_BUILTIN; msg('已還原公司網址，撳「儲存」。'); return; }
     if (s === 'save') { if (!save()) return; m.classList.remove('show'); m.onclick = null; toast('已儲存上傳設定 ✓'); render(); setTimeout(() => autoRetry(true), 300); return; }
@@ -3316,7 +3336,7 @@ document.addEventListener('click', e => { const b = e.target.closest && e.target
   if (a === 'barx') { Store.prefs.ckBarHide = 1; Store.flush(); const x = $('#ckbar'); if (x) x.remove(); return; }
   if (a === 'geo') { delete Store.prefs.ckGeoDenied; CKG.perm = CKG.perm === 'denied' ? 'denied' : ''; Store.flush(); ckGpsWarm(true); return; }
   if (a === 'stat') { cksReset(); CKS.tab = b.dataset.t === 'rec' ? 'rec' : 'stat'; CK.step = 'stat'; CK.err = ''; CK.errCode = ''; if (cur.view === 'clock') render(); else go('#/clock'); setTimeout(() => { const i = $('#ckspin'); if (i) i.focus(); }, 50); return; }
-  if (a === 'stopen') { const i = $('#ckspin'), p = i ? i.value.trim() : ''; if (!p) return toast('請輸入主管密碼'); CKS.pin = p; if (typeof ACC !== 'undefined') ACC.mgrPin = p; CKS.date = ''; return CKS.tab === 'rec' ? ckrLoad() : cksLoad(); }
+  if (a === 'stopen') { const i = $('#ckspin'), p = i ? i.value.trim() : ''; if (!p) return toast('請輸入主管密碼'); CKS.pin = p; CKS.date = ''; return CKS.tab === 'rec' ? ckrLoad() : cksLoad(); }
   if (a === 'sttab') { CKS.tab = b.dataset.t === 'rec' ? 'rec' : 'stat'; CKS.err = ''; CKR.err = ''; render(); if (CKS.pin && CKS.tab === 'rec' && !CKR.data) ckrLoad(); else if (CKS.pin && CKS.tab === 'stat' && !CKS.data) cksLoad(); return; } /* v0.6.21-test4 */
   if (a === 'rreload') return ckrLoad();
   if (a === 'rrq') { const n = Number(b.dataset.d) || 7, t = ckDay(); CKR.to = t; CKR.from = ckAddDay(t, 1 - n); return ckrLoad(); }
@@ -3448,33 +3468,28 @@ PKH.ck_blk = (v, how) => { if (cur.view !== 'clock' || CK.step !== 'estate') ret
   ckGoLbl(); };
 (function () { try { const st = document.createElement('style'); st.textContent = '.badge.ckno{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-size:12px;padding:1px 6px;border-radius:9px;margin-left:4px}.ckh3{margin:12px 0 4px;font-size:16px}.ckday .ckdh{margin-bottom:4px}.cklbl{font-size:13px;margin:2px 0}'; document.head.appendChild(st); } catch (e) {} })();
 
-/* v0.6.21 👥 今日打卡情況（主管）：FAN 2026-10-05。主管密碼（MANAGER_PIN）；v0.6.103 成功後記住（同批准手機共用），離開頁唔清；「登出主管」先清。
+/* v0.6.21 👥 今日打卡情況（主管）：FAN 2026-10-05。主管密碼（MANAGER_PIN）只喺記憶體，離開呢頁就清；唔儲存、唔寫 log。
    伺服器 v1.20 clock_status（已批准手機 ＋ MANAGER_PIN，只讀）；伺服器 v1.19 → bad_action → 提示要更新。 */
 const CKS = { pin: '', data: null, date: '', busy: false, err: '', old: false, tab: 'stat' };
-function cksReset() { /* v0.6.103：有記住／已有 ACC.mgrPin → 保留 PIN */
-  const keep = (typeof ACC !== 'undefined' && ACC.mgrPin) ? ACC.mgrPin : '';
-  CKS.pin = keep; CKS.data = null; CKS.date = ''; CKS.busy = false; CKS.err = ''; CKS.old = false; CKS.tab = 'stat'; ckrReset(); }
+function cksReset() { CKS.pin = ''; CKS.data = null; CKS.date = ''; CKS.busy = false; CKS.err = ''; CKS.old = false; CKS.tab = 'stat'; ckrReset(); }
 const CKS_ERR = { bad_manager_pin: '主管密碼唔啱', manager_locked: '主管密碼錯太多次，鎖咗 15 分鐘', manager_pin_not_set: '公司未設定 MANAGER_PIN', bad_date: '日期唔啱（唔可以揀未來日子）',
   bad_action: '要公司伺服器更新到 v1.20 先睇到「今日打卡情況」（打卡照常用得）' };
 async function cksLoad() {
   if (CKS.busy || !CKS.pin) return; CKS.busy = true; CKS.err = ''; CKS.old = false; render();
   try {
     const o = await gasCall(Object.assign({ action: 'clock_status', manager_pin: CKS.pin }, CKS.date ? { date: CKS.date } : {}), 30000);
-    if (o && o.ok && Array.isArray(o.members)) { CKS.data = o; CKS.date = o.date; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; if (typeof mgrRememberSave === 'function') mgrRememberSave(CKS.pin); }
+    if (o && o.ok && Array.isArray(o.members)) { CKS.data = o; CKS.date = o.date; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; }
     else { const c = (o && o.error) || 'bad_reply'; CKS.old = c === 'bad_action';
       CKS.err = (CKS_ERR[c] || upErrText(c)) + (o && o.remaining != null ? `（仲有 ${Number(o.remaining)} 次機會）` : '');
-      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.pin = ''; CKS.data = null; CKR.data = null; if (typeof mgrRememberClear === 'function') mgrRememberClear(); } }
+      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.pin = ''; CKS.data = null; CKR.data = null; } }
   } catch (e) { CKS.err = ckErrText(e); }
   CKS.busy = false; if (cur.view === 'clock' && CK.step === 'stat') render();
 }
 function viewCkStat(top) {
   const pinBox = `<div class="card" id="ckspinbox"><h3>輸入主管密碼（MANAGER_PIN）</h3><input id="ckspin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼" style="width:100%;font-size:18px">
     <button class="btn pri" style="width:100%;margin-top:10px;min-height:54px" data-cka="stopen">開啟</button>${CKS.err ? `<div class="errbox" id="ckserr" style="margin-top:8px">${esc(CKS.err)}</div>` : ''}
-    <div class="mut" style="margin-top:6px">登入成功之後會記住（呢部手機）；重開 App 唔使再入。要解除：☰ → 設定 → 登出主管。</div></div>`;
-  if (!CKS.pin) {
-    if (typeof ACC !== 'undefined' && ACC.mgrPin) { CKS.pin = ACC.mgrPin; setTimeout(() => { if (cur.view === 'clock' && CK.step === 'stat' && CKS.pin && !CKS.busy && !CKR.busy) (CKS.tab === 'rec' ? ckrLoad() : cksLoad()); }, 0); }
-    else return top + `<main><h2>${CKS.tab === 'rec' ? '📋 全部打卡紀錄' : '👥 今日打卡情況'}</h2>${pinBox}</main>`;
-  }
+    <div class="mut" style="margin-top:6px">密碼只用嚟開呢頁，唔會儲存喺手機；離開呢頁就要再輸入。</div></div>`;
+  if (!CKS.pin) return top + `<main><h2>${CKS.tab === 'rec' ? '📋 全部打卡紀錄' : '👥 今日打卡情況'}</h2>${pinBox}</main>`;
   if (CKS.tab === 'rec') return viewCkRec(top); /* v0.6.21-test4 */
   const d = CKS.data, today = (d && d.today) || ckDay(), date = CKS.date || today, hm = t => esc(String(t || '').slice(0, 5));
   const bar = `<div class="card cksbar" id="cksbar"><label for="cksdate" class="mut">日期</label><input type="date" id="cksdate" value="${esc(date)}" max="${esc(today)}">${date === today ? '<span class="badge done">今日</span>' : ''}
@@ -3492,7 +3507,7 @@ function viewCkStat(top) {
     <div id="ckslist">${d.members.length ? d.members.map(row).join('') : '<div class="card mut">冇已批准嘅成員。</div>'}</div>
     <div class="mut">成員 =「師傅名單」已批准嘅人。時間係公司伺服器時間（HKT）；讀取：${esc(d.now_hkt || '')}。</div></main>`;
 }
-/* v0.6.21-test4 📋 全部打卡紀錄（主管）：FAN 2026-10-05 15:09。同「今日打卡情況」共用主管密碼（v0.6.103 記住登入）。
+/* v0.6.21-test4 📋 全部打卡紀錄（主管）：FAN 2026-10-05 15:09。同「今日打卡情況」共用主管密碼（只喺記憶體，離開打卡頁就清）。
    伺服器 v1.20 clock_records（已批准手機 ＋ MANAGER_PIN，只讀；唔回手機ID）；日期最多 31 日（預設最近 7 日 HKT），揀人；新到舊；之前日子冇落班 → 紅框。 */
 const CKR = { data: null, from: '', to: '', name: '', busy: false, err: '', old: false };
 function ckrReset() { CKR.data = null; CKR.from = ''; CKR.to = ''; CKR.name = ''; CKR.busy = false; CKR.err = ''; CKR.old = false; }
@@ -3509,10 +3524,10 @@ async function ckrLoad() {
   CKR.busy = true; CKR.err = ''; CKR.old = false; render();
   try {
     const o = await gasCall(Object.assign({ action: 'clock_records', manager_pin: CKS.pin, from: CKR.from, to: CKR.to }, CKR.name ? { name: CKR.name } : {}), 60000);
-    if (o && o.ok && Array.isArray(o.items)) { CKR.data = o; CKR.from = o.from; CKR.to = o.to; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; if (typeof mgrRememberSave === 'function') mgrRememberSave(CKS.pin); }
+    if (o && o.ok && Array.isArray(o.items)) { CKR.data = o; CKR.from = o.from; CKR.to = o.to; ckSkewDay(o.today); if (typeof ACC !== 'undefined') ACC.mgrOk = true; }
     else { const c = (o && o.error) || 'bad_reply'; CKR.old = c === 'bad_action';
       CKR.err = (CKR_ERR[c] || CKS_ERR[c] || upErrText(c)) + (o && o.remaining != null ? `（仲有 ${Number(o.remaining)} 次機會）` : '');
-      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.err = CKR.err; CKS.pin = ''; CKS.data = null; CKR.data = null; if (typeof mgrRememberClear === 'function') mgrRememberClear(); } }
+      if (['bad_manager_pin', 'manager_locked', 'manager_pin_not_set'].includes(c)) { CKS.err = CKR.err; CKS.pin = ''; CKS.data = null; CKR.data = null; } }
   } catch (e) { CKR.err = ckErrText(e); }
   CKR.busy = false; if (cur.view === 'clock' && CK.step === 'stat') render();
 }
@@ -5419,46 +5434,11 @@ if (typeof bdLoadSaved === 'function') bdLoadSaved();
 /* ---------- v0.6.14 新手機要公司批准（FAN 2026-10-04 18:09／18:11）----------
    伺服器 v1.14：每個資料動作要 device_id（ckDev）＋ dtoken（register_name 時發；手機只存喺 localStorage「fsapp20259005.acc.v1」，唔入備份）。
    未批准 → need_approval：顯示「已登記，等公司批准」（#/wait，有「重新檢查」）；手機上未上傳嘅嘢照留，批准之後自動上傳。
-   主管頁：☰ → ⚙️ 設定 →「管理：批准手機」（#/accmgr，要 MANAGER_PIN）。
-   v0.6.103（FAN 2026-10-18）：成功登入後記住主管（唔存明文密碼；只存裝置綁定 token）；重開／重整 App 唔使再入；「登出主管」先清。主頁冇格、冇 badge。 */
+   主管頁：☰ → ⚙️ 設定 →「管理：批准手機」（#/accmgr，要 MANAGER_PIN；PIN 只喺記憶體，離開頁就清）。主頁冇格、冇 badge。 */
 const ACC_LS = 'fsapp20259005.acc.v1';
-const ACC_MGR_LS = 'fsapp20259005.mgr.v1'; /* v0.6.103 主管記住登入（token，唔係明文 PIN） */
 const ACC = { busy: false, msg: '', mgr: null, showRm: false, mgrPin: '', mgrOk: false, mgrBusy: false, mgrErr: '', pendN: null, back: '', chk: 'pending', chkAt: 0, rename: false };
 function accGet() { try { return JSON.parse(localStorage.getItem(ACC_LS) || '{}') || {}; } catch (e) { return {}; } }
 function accPut(o) { try { localStorage.setItem(ACC_LS, JSON.stringify(o)); } catch (e) {} }
-function mgrTokEnc(pin) { /* 裝置綁定 XOR＋base64：唔明文；DevTools 仍可還原（同「記住我」一樣） */
-  const k = ((typeof ckDev === 'function' ? ckDev() : '') || 'd') + '|mgr|' + (typeof SCHEMA !== 'undefined' ? SCHEMA : 'fs');
-  let out = ''; for (let i = 0; i < pin.length; i++) out += String.fromCharCode(pin.charCodeAt(i) ^ k.charCodeAt(i % k.length));
-  try { return btoa(unescape(encodeURIComponent(out))); } catch (e) { return ''; }
-}
-function mgrTokDec(tok) {
-  try {
-    const k = ((typeof ckDev === 'function' ? ckDev() : '') || 'd') + '|mgr|' + (typeof SCHEMA !== 'undefined' ? SCHEMA : 'fs');
-    const raw = decodeURIComponent(escape(atob(tok))); let out = '';
-    for (let i = 0; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ k.charCodeAt(i % k.length));
-    return out;
-  } catch (e) { return ''; }
-}
-function mgrRememberSave(pin) {
-  pin = String(pin || '').trim(); if (!pin) return;
-  try { localStorage.setItem(ACC_MGR_LS, JSON.stringify({ tok: mgrTokEnc(pin), at: new Date().toISOString() })); } catch (e) {}
-  ACC.mgrPin = pin; ACC.mgrOk = true;
-  if (typeof CKS !== 'undefined') CKS.pin = pin;
-}
-function mgrRememberLoad() {
-  try {
-    const c = JSON.parse(localStorage.getItem(ACC_MGR_LS) || 'null'); if (!c || !c.tok) return '';
-    const p = mgrTokDec(c.tok); if (!p) return '';
-    ACC.mgrPin = p; ACC.mgrOk = true; if (typeof CKS !== 'undefined') CKS.pin = p; return p;
-  } catch (e) { return ''; }
-}
-function mgrRememberClear() {
-  try { localStorage.removeItem(ACC_MGR_LS); } catch (e) {}
-  ACC.mgrPin = ''; ACC.mgrOk = false; ACC.mgr = null; ACC.mgrErr = '';
-  if (typeof CKS !== 'undefined') { CKS.pin = ''; CKS.data = null; if (typeof CKR !== 'undefined') CKR.data = null; }
-}
-function mgrRemembered() { try { return !!localStorage.getItem(ACC_MGR_LS); } catch (e) { return false; } }
-(function () { try { mgrRememberLoad(); } catch (e) {} })(); /* 開 App 還原主管登入 */
 /* v0.6.14.3 開 App 閘（FAN 2026-10-04 19:38）：未批准（或者未登記）嘅手機只見到鎖住頁（viewLock），主頁／選單／資料頁一律唔顯示，打 #/xxx 都冇用。
    a.ok = {at, src:'srv'}：伺服器確認過批准 → 之後冇網都用得（每次開 App／返回 App 再問一次 access_status，取消咗即刻鎖）。
    a.ok.src='legacy'：未有閘之前已經用過（打過卡／上傳過）嘅舊機 → 開 App 等伺服器答先（檢查緊顯示鎖住頁），連唔到先放行，唔會鎖死已批准嘅 4 部。 */
@@ -5616,7 +5596,7 @@ function accMiniMenu() { /* 鎖住時嘅 ☰：淨係 ⚙️ 設定（PIN／打�
     <div class="mut" style="margin:6px 0">${accLocked() ? '其他功能要主管批准呢部手機先用得。' : '其他功能要載入公司資料之後先用得。'}</div><div class="acts"><button class="btn" data-m="0">關閉</button></div></div>`;
   m.classList.add('show'); m.onclick = e => { if (e.target === m || e.target.closest('[data-m]')) { m.classList.remove('show'); m.onclick = null; } };
 }
-const ACC_LOCK_ACTS = new Set(['appdretry', 'settings', 'accrecheck', 'accreg', 'accrereg', 'accrename', 'accmopen', 'accmreload', 'accset', 'accrm', 'accrestore', 'accshowrm', 'accmgrback', 'acclogout']);
+const ACC_LOCK_ACTS = new Set(['appdretry', 'settings', 'accrecheck', 'accreg', 'accrereg', 'accrename', 'accmopen', 'accmreload', 'accset', 'accrm', 'accrestore', 'accshowrm', 'accmgrback']);
 document.addEventListener('click', e => { /* 鎖住時：除咗登記／設定／主管頁，其他掣一律唔郁（capture，行喺 app_4actions 之前） */
   const LK = Store.prefs && accLocked(); if (!Store.prefs || !(LK || (typeof APPD !== 'undefined' && !APPD.ready))) return; /* v0.6.15 未有公司資料都一樣 */
   const sv = e.target.closest('[data-s]');
@@ -5636,17 +5616,9 @@ const ACC_ERR = { bad_manager_pin: '主管密碼唔啱', manager_locked: '主管
 function viewAccMgr() {
   const top = `<div class="top"><div class="bar"><button data-act="accmgrback" aria-label="返回">‹ 返回</button><div class="ttl">🔐 管理：批准手機<small>主管用 · 要 MANAGER_PIN · 經公司 Apps Script</small></div></div></div>`;
   const c = upCfg(); if (!c.url || !c.pin) return top + `<main><div class="warnbox">未設定上傳網址／PIN。請喺 ☰ →「⚙️ 上傳設定」填好先。</div></main>`;
-  if (!ACC.mgr) {
-    if (ACC.mgrPin) { /* v0.6.103 已記住 → 自動開／可重試，唔再入密碼 */
-      if (!ACC.mgrBusy && !ACC.mgrErr) setTimeout(() => { if (cur.view === 'accmgr' && !ACC.mgr && ACC.mgrPin && !ACC.mgrBusy) accMgrCall({ action: 'acc_list' }); }, 0);
-      return top + `<main>${ACC.mgrErr ? `<div class="errbox" id="accmerr">${esc(ACC.mgrErr)}</div>` : ''}<div class="card mut">${ACC.mgrBusy ? '用記住嘅主管登入開緊…' : (ACC.mgrErr ? '記住咗嘅登入開唔到（可能冇網）。' : '用記住嘅主管登入開緊…')}</div>
-        <button class="btn pri" style="width:100%;margin-top:10px" data-act="accmreload" ${ACC.mgrBusy ? 'disabled' : ''}>${ACC.mgrBusy ? '讀緊…' : '🔄 再試'}</button>
-        <button class="btn" style="width:100%;margin-top:8px" data-act="acclogout">🚪 登出主管</button></main>`;
-    }
-    return top + `<main><div class="card"><h3>輸入主管密碼（MANAGER_PIN）</h3><input id="accmpin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼" style="width:100%;font-size:18px">
+  if (!ACC.mgr) return top + `<main><div class="card"><h3>輸入主管密碼（MANAGER_PIN）</h3><input id="accmpin" type="password" inputmode="numeric" autocomplete="off" placeholder="主管密碼" style="width:100%;font-size:18px">
     <button class="btn pri" style="width:100%;margin-top:10px;min-height:54px" data-act="accmopen" ${ACC.mgrBusy ? 'disabled' : ''}>${ACC.mgrBusy ? '讀緊…' : '開啟'}</button>
-    ${ACC.mgrErr ? `<div class="errbox" id="accmerr" style="margin-top:8px">${esc(ACC.mgrErr)}</div>` : ''}<div class="mut" style="margin-top:6px">登入成功之後會記住（呢部手機）；重開 App 唔使再入。要解除就撳「登出主管」。</div></div></main>`;
-  }
+    ${ACC.mgrErr ? `<div class="errbox" id="accmerr" style="margin-top:8px">${esc(ACC.mgrErr)}</div>` : ''}<div class="mut" style="margin-top:6px">密碼只用嚟開呢頁，唔會儲存喺手機。</div></div></main>`;
   const m = ACC.mgr, row = (x, pend) => { const rs = x.rows || [x], n = rs.length, ids = rs.map(y => y.row).join(','), first = n > 1 ? rs.map(y => y.first || '').filter(Boolean).sort()[0] : x.first;
     return `<div class="card accrow${n > 1 ? ' accdup' : ''}" data-row="${x.row}" data-rows="${ids}"><div class="t"><b>${esc(x.name || '（冇名）')}</b>${pend ? '<span class="badge pend">等批准</span>' : '<span class="badge done">已批准</span>'}${n > 1 ? `<span class="badge accdupn">登記咗 ${n} 次</span>` : ''}</div>
     <div class="mut">${esc(x.label && x.label !== '?' ? x.label : '（舊機，型號未知）')} · …${esc(x.dev_tail || '')}</div><div class="mut">第一次登記 ${esc(first || '—')} · 最後使用 ${esc(x.last_use || '—')}</div>${x.note ? `<div class="mut">${esc(x.note)}</div>` : ''}
@@ -5663,23 +5635,20 @@ function viewAccMgr() {
   return top + `<main>${ACC.mgrErr ? `<div class="errbox" id="accmerr">${esc(ACC.mgrErr)}</div>` : ''}
     <h2 class="bdh">等批准（${pendG.length}）</h2>${pendG.length ? pendG.map(x => row(x, true)).join('') : '<div class="card mut" id="accnone">冇手機等緊批准。</div>'}
     <h2 class="bdh">已批准（${m.approved.length}）</h2>${m.approved.map(x => row(x, false)).join('')}${rmSec}
-    <button class="btn" style="width:100%;margin:10px 0" data-act="accmreload" ${ACC.mgrBusy ? 'disabled' : ''}>🔄 重新載入</button>
-    <button class="btn" style="width:100%;margin:0 0 10px" data-act="acclogout">🚪 登出主管</button>
-    <div class="mut">讀取：${esc(m.now_hkt || '')} HKT · 都可以直接喺「師傅名單」剔「批准」（最多 1 分鐘生效）。已記住主管登入（呢部手機）。</div></main>`;
+    <button class="btn" style="width:100%;margin:10px 0" data-act="accmreload" ${ACC.mgrBusy ? 'disabled' : ''}>🔄 重新載入</button><div class="mut">讀取：${esc(m.now_hkt || '')} HKT · 都可以直接喺「師傅名單」剔「批准」（最多 1 分鐘生效）。</div></main>`;
 }
 async function accMgrCall(body) {
   if (ACC.mgrBusy) return; ACC.mgrBusy = true; ACC.mgrErr = ''; render();
   const list = Array.isArray(body) ? body : [body]; body = list[0]; /* v0.6.21：合併咗嘅卡 → 一行一行送（有錯即停） */
   try { let o; for (const b of list) { o = await gasCall(Object.assign({ manager_pin: ACC.mgrPin }, b), 30000); if (!o || !o.ok) break; }
-    if (o && o.ok) { ACC.mgrOk = true; ACC.mgr = { pending: o.pending || [], approved: o.approved || [], removed: Array.isArray(o.removed) ? o.removed : [], canRm: o.can_remove === true, now_hkt: o.now_hkt || '' }; ACC.pendN = new Set(ACC.mgr.pending.map(x => (x.device_id || x.row) + '|' + (x.name || ''))).size; mgrRememberSave(ACC.mgrPin); } /* v0.6.16：can_remove 只喺 v1.16；v0.6.103 記住登入 */
+    if (o && o.ok) { ACC.mgrOk = true; ACC.mgr = { pending: o.pending || [], approved: o.approved || [], removed: Array.isArray(o.removed) ? o.removed : [], canRm: o.can_remove === true, now_hkt: o.now_hkt || '' }; ACC.pendN = new Set(ACC.mgr.pending.map(x => (x.device_id || x.row) + '|' + (x.name || ''))).size; } /* v0.6.16：can_remove 只喺 v1.16 */
     else if (o && (o.error === 'bad_op' || o.error === 'bad_action') && body.op) { if (ACC.mgr) ACC.mgr.canRm = false; ACC.mgrErr = ACC_ERR.bad_op; }
-    else { ACC.mgrErr = (ACC_ERR[o && o.error] || upErrText(o && o.error)) + (o && o.remaining != null ? `（仲有 ${o.remaining} 次機會）` : ''); if (o && ['bad_manager_pin', 'manager_locked'].includes(o.error)) { ACC.mgr = null; mgrRememberClear(); } }
+    else { ACC.mgrErr = (ACC_ERR[o && o.error] || upErrText(o && o.error)) + (o && o.remaining != null ? `（仲有 ${o.remaining} 次機會）` : ''); if (o && ['bad_manager_pin', 'manager_locked'].includes(o.error)) { ACC.mgr = null; ACC.mgrPin = ''; } }
   } catch (e) { ACC.mgrErr = e.message; }
   ACC.mgrBusy = false; if (cur.view === 'accmgr') render();
 }
 const accRowsOf = el => { const v = String(el.dataset.rows || el.dataset.row || '').split(',').map(Number).filter(n => n > 0); return v.length ? v : [Number(el.dataset.row)]; };
-function accMgrReset() { ACC.mgr = null; ACC.showRm = false; ACC.mgrErr = ''; ACC.mgrBusy = false; /* v0.6.103：記住登入 → 唔清 PIN；冇記住先清 */
-  if (mgrRemembered()) { if (!ACC.mgrPin) mgrRememberLoad(); } else ACC.mgrPin = ''; }
+function accMgrReset() { ACC.mgr = null; ACC.showRm = false; ACC.mgrPin = ''; ACC.mgrErr = ''; ACC.mgrBusy = false; } /* mgrOk 留喺記憶體：呢個分頁入面開過管理先算管理員。PIN 離開頁就清，唔寫入手機。 */
 window.addEventListener('hashchange', () => { if (cur.view !== 'accmgr') accMgrReset(); if (cur.view !== 'wait') ACC.msg = ''; });
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act;
@@ -5696,7 +5665,6 @@ document.addEventListener('click', async e => {
   if (a === 'accrestore') return accMgrCall({ action: 'acc_set', row: Number(el.dataset.row), device_id_set: el.dataset.dev, op: 'restore', approve: false });
   if (a === 'accmgrback') { const lk = accLocked(); go('#/'); if (lk) setTimeout(() => accCheck(), 50); return; }
   if (a === 'accrename') { ACC.rename = true; ACC.msg = ''; ACC.nameDraft = null; return render(); }
-  if (a === 'acclogout') { mgrRememberClear(); toast('已登出主管'); if (cur.view === 'accmgr') render(); return; }
   if (a === 'accmopen') { const i = $('#accmpin'), p = i ? i.value.trim() : ''; if (!p) return toast('請輸入主管密碼'); ACC.mgrPin = p; return accMgrCall({ action: 'acc_list' }); }
   if (a === 'accmreload') return accMgrCall({ action: 'acc_list' });
   if (a === 'accset') { const yes = el.dataset.v === '1';
@@ -6486,7 +6454,7 @@ SWR_HOOK.kv_doc = (b, o) => { if (typeof FL !== 'undefined' && o.ok && b.doc ===
 SWR_HOOK.acc_pending_count = () => { try { accBadge(); } catch (e) { } };
 /* ----- 清走 ----- */
 const appDataWipeRaw_swr = appDataWipe;
-appDataWipe = function () { appDataWipeRaw_swr(); swrWipe(); try { localStorage.removeItem(PS_PLACES_LS); PS.places = null; PS.placesAt = 0; } catch (e) { } try { if (typeof mgrRememberClear === 'function') mgrRememberClear(); } catch (e) { } }; /* 未批准／被移除 → 手機緩存全部清走（含主管記住） */
+appDataWipe = function () { appDataWipeRaw_swr(); swrWipe(); try { localStorage.removeItem(PS_PLACES_LS); PS.places = null; PS.placesAt = 0; } catch (e) { } }; /* 未批准／被移除 → 手機緩存全部清走 */
 (function () { try { const s = document.createElement('style'); s.textContent =
   '#swrhint{position:fixed;left:50%;bottom:calc(10px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:rgba(17,24,39,.88);color:#fff;font-size:13px;padding:5px 12px;border-radius:14px;z-index:70;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:92vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
   '#swrhint.show{opacity:1;transform:translate(-50%,0)}#swrhint.off{background:rgba(146,64,14,.92)}';
@@ -8151,8 +8119,8 @@ async function pecUploadOld(btn) {
   btn.disabled = true; btn.textContent = '上傳緊…';
   try {
     const o = await gasCall({ action: 'pe_prev', manager_pin: pin, period: PEC.old.period, sheets: E.s && E.s.length ? E.s : [E.n], building: svpBName(bi), date: PEC.date, who: who, rows: rows }, 90000);
-    if (o && o.ok) { if (typeof mgrRememberSave === 'function') mgrRememberSave(pin); toast('已寫入 ' + PEC.old.period + '（已填 ' + filled.length + ' 支；未剔唔寫）。冇改其他期數。'); }
-    else if (o && (o.error === 'bad_manager_pin' || o.error === 'manager_locked' || o.error === 'not_manager')) { if (typeof mgrRememberClear === 'function') mgrRememberClear(); else if (typeof ACC !== 'undefined') ACC.mgrPin = ''; toast(o.error === 'manager_locked' ? '主管密碼錯太多次，鎖咗 15 分鐘' : '主管密碼唔啱'); }
+    if (o && o.ok) toast('已寫入 ' + PEC.old.period + '（已填 ' + filled.length + ' 支；未剔唔寫）。冇改其他期數。');
+    else if (o && (o.error === 'bad_manager_pin' || o.error === 'manager_locked' || o.error === 'not_manager')) { if (typeof ACC !== 'undefined') ACC.mgrPin = ''; toast(o.error === 'manager_locked' ? '主管密碼錯太多次，鎖咗 15 分鐘' : '主管密碼唔啱'); }
     else if (o && o.error === 'bad_action') toast('公司伺服器未到 v1.29（未部署），舊期未寫。', 4000);
     else if (o && o.error === 'not_old_period') toast('呢期唔係舊期，冇寫。');
     else toast('舊期未寫到。');
@@ -8322,31 +8290,7 @@ if (/^#\/pecheck\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '#pdfv[data-pe="1"] #pvpages{max-width:none;width:max-content;margin:0;padding:8px 8px 28px}#pdfv[data-pe="1"] #pvpages .pvpg{width:1400px;max-width:none;height:auto}';
   document.head.appendChild(s); } catch (e) {} })();
 
-/* 0.6.127：立即分析／自動 AI 完唔再開下拉；失敗留畫圈可再試；認齊先自動加入。
-   0.6.126：圈完必須自動 AI；畫圈模式短按圈唔再開下拉選項。
-   0.6.125：完成加入後留喺相繼續圈（清圈重置）；撳關閉先返度數。
-   0.6.124：人手揀 item 唔自動完成加入／唔跳返度數；淨 AI 齊先自動入。
-   0.6.123：圈選暫存（相＋圈＋答案）——關閉可「繼續」；完成加入先清。
-   0.6.122：AI（或全部已有內容）完自動完成加入，唔停確認畫面；頂／底欄掣再加強對比。
-   0.6.121：圈選底欄「細／大／關閉」暗底白掣加字色，唔再似空白格。
-   0.6.120：AI 建議被人手改＝錯例，送 dosu_pipe_ai_learn 畀伺服器學習。
-   0.6.119：手動揀後該圈唔再俾 AI 覆寫；新圈／下一個空圈跟住上一個手動內容。
-   0.6.118：圈「係咩」改用度數同類下拉＋價目清單（唔再用七粒 label 掣）。
-   0.6.117：自動 AI 改鬆手後先排程；撳住／拖移／搬圈時取消。
-   0.6.116：加圈後自動 AI（debounce），唔使撳下一步。
-   0.6.115：空白長按加圈改 0.5 秒。
-   0.6.114：空白長按加圈改 1 秒（原 1.5）。
-   0.6.113：單指拖＝移相；空白處長按先加圈（唔再短撳／拖畫圈）。
-   0.6.112：長按圈邊拖移＝放大縮細；長按圈心＝拖位。
-   0.6.111：AI 後圈旁顯示配件名／code；返回上一步可返改圈。
-   0.6.110：圈預設細啲；底欄細／大調最後一圈。
-   0.6.109：撳圈揀配件；圈完下一步自動 AI 分析（dosu_pipe_ai）。
-   0.6.108：圈配件左上「返回上一步」；下一步淨底欄右。
-   0.6.107：影相圈配件雙指放大縮細＋長按拖移圈。
-   0.6.106：影相圈配件加上下步（圈錯可返；標註可返改圈）。
-   0.6.105：影相圈配件可相機或相簿揀相。
-   0.6.104：度數「影相圈配件」——影相→圈→揀七 label（map 0.2）→確認加入行；缺徑 soft-flag。
-   0.6.102：度數項目卡唔再顯示「參考：…價」（FAN）。
+/* 0.6.102：度數項目卡唔再顯示「參考：…價」（FAN）。
  ---------- v0.6.101 📏 度數（下拉分類＋數量多格合計 → 交 Dimbook）----------
    FAN（2026-10-18 App 群）：Module／裝拆揀頂層即直出安裝／拆除兩項（唔使二層下拉）；同 code FE-MOD-XX-0000，lines 帶 bill:'fix'|'takedown'。
    FAN（2026-10-18 App 群）：Module／裝拆拆成「安裝 Module」（淨 Fix）／「拆除 Module」（淨 Takedown）；同 code FE-MOD-XX-0000，lines 帶 bill:'fix'|'takedown'。
@@ -9309,7 +9253,6 @@ function dsCatSelHtml() {
 function dsBody() {
   return dsDraftsHtml()
     + dsFormHtml()
-    + dsPaEntryHtml()
     + dsLinesHtml()
     + dsCatSelHtml()
     + dsHitsHtml()
@@ -9406,9 +9349,6 @@ document.addEventListener('click', e => {
   if (a === 'opendraft') return dsOpenDraft(b.dataset.rid);
   if (a === 'deldraft') return dsDeleteDraft(b.dataset.rid);
   if (a === 'submit') return dsSubmit();
-  if (a === 'paopen') return dsPaOpen(b.dataset.src || 'cam');
-  if (a === 'paresume') return dsPaResume();
-  if (a === 'padiscard') return dsPaDiscardSaved();
 });
 async function dsSubmit() {
   const base = dsPayload();
@@ -9471,1255 +9411,6 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   } catch (e) {}
 })();
 
-
-/* ---------- v0.6.104 📷 影相圈配件（map 0.2 · FAN via Check List）----------
-   流程：影相 → 喺相上面圈 → 每個圈揀 label（七個）＋可選 Ømm → 跟 map 出 code → 加入已揀行。
-   缺徑／細過80／裸「三叉」→ soft-flag（唔自動估 code）。AI 自動認形下一版。 */
-const DS_PA_LABELS = ['90度曲', '令叉', '上牙', '刁曲', '喉碼', '花灑頭', '警鐘'];
-const DS_PA_SIZES = [25, 32, 40, 50, 65, 80, 100, 150, 200, 250, 300];
-const DS_PA = {
-  open: false, photoId: null, dataUrl: '', w: 0, h: 0,
-  circles: [], /* {cx,cy,r} 0–1 相對相 */
-  drawing: null, /* {cx,cy,r} while drag */
-  softFlags: [],
-  step: 'draw', /* draw | label */
-  labelIdx: 0,
-  answers: [], /* {label, size} parallel to circles */
-  /* 畫面：雙指 pinch／平移；圈座標仍係 0–1 相對原相 */
-  view: { scale: 1, tx: 0, ty: 0 },
-  moveIdx: -1, /* 長按拖緊邊個圈 */
-  resizeIdx: -1, /* 長按圈邊調大細 */
-  aiTimer: null, /* 鬆手後自動 AI debounce */
-  aiBusy: false,
-  pendingAutoAi: false,
-  cropCache: {},
-  learns: []
-};
-const DS_PA_LS = 'fsapp20259005.dosu.pa.v1';
-function dsPaSessionSnap() {
-  return {
-    draftId: DS.draftId || '',
-    photoId: DS_PA.photoId || '',
-    circles: (DS_PA.circles || []).map(c => ({ cx: +c.cx, cy: +c.cy, r: +c.r })),
-    answers: (DS_PA.answers || []).map(a => ({
-      label: a.label || '', size: a.size || '', code: a.code || '', search: a.search || '',
-      soft: !!a.soft, ai: !!a.ai, manual: !!a.manual,
-      bill: (a.bill === 'fix' || a.bill === 'takedown') ? a.bill : '',
-      desc: a.desc || '', aiLabel: a.aiLabel || '', aiSize: a.aiSize || '', note: String(a.note || '').slice(0, 80)
-    })),
-    step: DS_PA.step === 'label' ? 'label' : 'draw',
-    labelIdx: DS_PA.labelIdx || 0,
-    view: DS_PA.view ? { scale: DS_PA.view.scale || 1, tx: DS_PA.view.tx || 0, ty: DS_PA.view.ty || 0 } : { scale: 1, tx: 0, ty: 0 },
-    updated: Date.now()
-  };
-}
-function dsPaLoadSaved() {
-  try { return JSON.parse(localStorage.getItem(DS_PA_LS) || 'null'); } catch (e) { return null; }
-}
-function dsPaClearSaved() {
-  try { localStorage.removeItem(DS_PA_LS); } catch (e) {}
-}
-function dsPaPersist(silent) {
-  if (!DS_PA.photoId) return false;
-  try {
-    localStorage.setItem(DS_PA_LS, JSON.stringify(dsPaSessionSnap()));
-    if (!silent) toast('已暫存圈選（關閉都留低）', 1800);
-    return true;
-  } catch (e) {
-    if (!silent) toast('暫存失敗（手機空間？）', 2500);
-    return false;
-  }
-}
-async function dsPaResume() {
-  const s = dsPaLoadSaved();
-  if (!s || !s.photoId) return toast('冇暫存圈選');
-  try {
-    const ph = await PhotoDB.get(s.photoId);
-    if (!ph || !ph.dataUrl) {
-      dsPaClearSaved();
-      return toast('暫存相搵唔到——請重新影');
-    }
-    thumbs.set(s.photoId, ph.dataUrl);
-    DS_PA.photoId = s.photoId;
-    DS_PA.dataUrl = ph.dataUrl;
-    DS_PA.w = ph.w || 0; DS_PA.h = ph.h || 0;
-    DS_PA.circles = Array.isArray(s.circles) ? s.circles.map(c => ({ cx: +c.cx, cy: +c.cy, r: +c.r || 0.022 })) : [];
-    DS_PA.answers = Array.isArray(s.answers) ? s.answers.map(a => Object.assign({}, a)) : [];
-    while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
-    if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-    DS_PA.step = s.step === 'label' ? 'label' : 'draw';
-    DS_PA.labelIdx = Math.max(0, Math.min(s.labelIdx || 0, Math.max(0, DS_PA.circles.length - 1)));
-    DS_PA.view = s.view || { scale: 1, tx: 0, ty: 0 };
-    DS_PA.drawing = null;
-    DS_PA.softFlags = [];
-    DS_PA.moveIdx = -1;
-    DS_PA.resizeIdx = -1;
-    DS_PA.aiBusy = false;
-    DS_PA.pendingAutoAi = false;
-    DS_PA.cropCache = {};
-    DS_PA.learns = [];
-    if (!DS.items && typeof dsLoadItems === 'function') { try { dsLoadItems(); } catch (e) {} }
-    dsPaMount();
-    toast('已恢復暫存（' + DS_PA.circles.length + ' 個圈）', 2000);
-  } catch (e) {
-    toast('恢復失敗：' + (e && e.message || e), 3500);
-  }
-}
-function dsPaDiscardSaved() {
-  const s = dsPaLoadSaved();
-  if (!s || !s.photoId) return toast('冇暫存');
-  if (!confirm('丟低暫存圈選？')) return;
-  dsPaClearSaved();
-  dsPaint();
-  toast('已丟暫存', 1500);
-}
-function dsPaEntryHtml() {
-  const sav = dsPaLoadSaved();
-  const has = !!(sav && sav.photoId);
-  const n = has ? ((sav.circles && sav.circles.length) || 0) : 0;
-  let whenTxt = '';
-  try {
-    if (has && sav.updated) whenTxt = new Date(sav.updated).toLocaleString('zh-HK', { hour12: false });
-  } catch (e) {}
-  return `<div class="card"><h3>📷 影相圈配件</h3>
-    <div class="mut" style="margin-bottom:8px">長按加圈 → 鬆手自動 AI → 入單後可再圈；關閉返度數。</div>
-    ${has ? `<div class="okbox" style="margin-bottom:10px;font-size:14px">有暫存：${n} 個圈${whenTxt ? ' · ' + esc(whenTxt) : ''}
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button type="button" class="btn pri" style="flex:1" data-ds="paresume">▶ 繼續圈選</button>
-        <button type="button" class="btn" style="flex:1" data-ds="padiscard">丟低暫存</button>
-      </div>
-    </div>` : ''}
-    <div style="display:flex;gap:8px">
-      <button type="button" class="btn pri" style="flex:1" data-ds="paopen" data-src="cam">📷 相機</button>
-      <button type="button" class="btn" style="flex:1" data-ds="paopen" data-src="album">🖼 相簿</button>
-    </div>
-  </div>`;
-}
-function dsPaPad4(n) {
-  n = Math.round(Number(n) || 0);
-  const s = String(Math.max(0, n));
-  return s.length >= 4 ? s.slice(-4) : ('0000' + s).slice(-4);
-}
-function dsPaResolve(label, sizeMm) {
-  const soft = [];
-  let code = '', search = label || '', needs = true;
-  const sz = sizeMm === '' || sizeMm == null ? null : Number(sizeMm);
-  if (label === '三叉') {
-    soft.push('裸「三叉」——請改揀令叉或上牙');
-    return { code: '', search: '三叉（未分）', soft, ok: false };
-  }
-  if (label === '花灑頭') {
-    return { code: 'FM-SPRI-XX-0000', search: '花灑頭', soft, ok: true };
-  }
-  if (label === '警鐘') {
-    return { code: 'FE-ALAM-EL-0000', search: '警鐘 EL', soft, ok: true };
-  }
-  if (sz == null || !isFinite(sz) || sz <= 0) {
-    soft.push(label + '：未填 Ømm（soft-flag）');
-    return { code: '', search: label + '（缺徑）', soft, ok: false };
-  }
-  if (label === '90度曲') {
-    if (sz < 80) soft.push('90度曲 Ø' + sz + '＜80：soft-flag，唔自動估');
-    else if (sz === 80 || sz === 100 || sz === 150) {
-      code = 'FM-MCF-EB-' + dsPaPad4(sz);
-      search = '90度曲／令曲 Ø' + sz;
-    } else soft.push('90度曲 Ø' + sz + ' 無對應 FM 碼');
-  } else if (label === '令叉') {
-    if (sz < 80) soft.push('令叉 Ø' + sz + '＜80：soft-flag');
-    else if (sz === 80 || sz === 100 || sz === 150) {
-      code = 'FM-MCF-TE-' + dsPaPad4(sz);
-      search = '令叉 TE Ø' + sz;
-    } else soft.push('令叉 Ø' + sz + ' 無對應碼');
-  } else if (label === '上牙') {
-    if (sz < 80) soft.push('上牙 Ø' + sz + '＜80：soft-flag');
-    else if (sz === 80 || sz === 100 || sz === 150) {
-      code = 'FM-MCF-MT-' + dsPaPad4(sz);
-      search = '上牙 MT Ø' + sz;
-    } else soft.push('上牙 Ø' + sz + ' 無對應碼');
-  } else if (label === '刁曲') {
-    const use = sz < 25 ? 24 : sz;
-    code = 'PI-SCEW-GI-' + dsPaPad4(use);
-    search = '刁曲 Ø' + sz;
-  } else if (label === '喉碼') {
-    const use = sz < 50 ? 49 : sz;
-    code = 'PI-BRAK-SS-' + dsPaPad4(use);
-    search = '喉碼 SS Ø' + sz;
-  } else {
-    soft.push('未識 label：' + label);
-  }
-  return { code: code, search: search, soft: soft, ok: !!code };
-}
-function dsPaOpen(src) {
-  /* src: cam＝相機；album＝相簿（唔加 capture，系統相簿） */
-  const inp = document.createElement('input');
-  inp.type = 'file';
-  inp.accept = 'image/*';
-  if (src !== 'album') inp.setAttribute('capture', 'environment');
-  inp.style.display = 'none';
-  document.body.appendChild(inp);
-  inp.onchange = async () => {
-    const f = inp.files && inp.files[0];
-    try { document.body.removeChild(inp); } catch (e) {}
-    if (!f) return;
-    try {
-      toast('處理緊相片…', 1200);
-      const c = await compress(f);
-      const id = newId('dspa');
-      await PhotoDB.put({ id: id, rec: 'dosu-pa:' + (DS.draftId || 'cur'), dataUrl: c.dataUrl, w: c.w, h: c.h });
-      thumbs.set(id, c.dataUrl);
-      DS_PA.photoId = id;
-      DS_PA.dataUrl = c.dataUrl;
-      DS_PA.w = c.w; DS_PA.h = c.h;
-      DS_PA.circles = [];
-      DS_PA.drawing = null;
-      DS_PA.softFlags = [];
-      DS_PA.step = 'draw';
-      DS_PA.labelIdx = 0;
-      DS_PA.answers = [];
-      DS_PA.view = { scale: 1, tx: 0, ty: 0 };
-      DS_PA.moveIdx = -1;
-      DS_PA.resizeIdx = -1;
-      DS_PA.aiTimer = null;
-      DS_PA.aiBusy = false;
-      DS_PA.pendingAutoAi = false;
-      DS_PA.cropCache = {};
-      DS_PA.learns = [];
-      DS_PA.open = true;
-      if (!DS.items && typeof dsLoadItems === 'function') { try { dsLoadItems(); } catch (e) {} }
-      dsPaMount();
-    } catch (e) { toast('相片失敗：' + (e && e.message || e), 4000); }
-  };
-  inp.oncancel = () => { try { document.body.removeChild(inp); } catch (e) {} };
-  inp.click();
-}
-function dsPaUnmount() {
-  dsPaCancelAutoAi();
-  const el = document.getElementById('dspa_ov');
-  if (el) el.remove();
-  const p = document.getElementById('dspa_labpanel');
-  if (p) p.remove();
-  DS_PA.open = false;
-  DS_PA.step = 'draw';
-  DS_PA.aiBusy = false;
-}
-
-function dsPaCancelAutoAi() {
-  if (DS_PA.aiTimer) { clearTimeout(DS_PA.aiTimer); DS_PA.aiTimer = null; }
-}
-function dsPaNeedsAi() {
-  while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
-  if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-  return DS_PA.circles.some((_, i) => {
-    const a = DS_PA.answers[i];
-    return !(a && (a.manual || a.code || a.label));
-  });
-}
-function dsPaScheduleAutoAi() {
-  /* 加圈後稍等，方便連加幾個先一次 AI；唔使撳下一步 */
-  if (DS_PA.step !== 'draw' || DS_PA.aiBusy) return;
-  if (!DS_PA.circles.length) return;
-  dsPaCancelAutoAi();
-  DS_PA.aiTimer = setTimeout(() => {
-    DS_PA.aiTimer = null;
-    if (DS_PA.step !== 'draw' || DS_PA.aiBusy || !DS_PA.circles.length) return;
-    while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
-    if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-    /* 有圈就跑 AI（手動揀過嘅圈 AI 唔會覆寫） */
-    dsPaRunAiThenReview();
-  }, 700);
-}
-
-function dsPaMount() {
-  dsPaUnmount();
-  DS_PA.open = true;
-  const ov = document.createElement('div');
-  ov.id = 'dspa_ov';
-  ov.innerHTML = `
-    <div class="dspa-bar">
-      <button type="button" class="btn" id="dspa_prev">‹ 返回上一步</button>
-      <div class="dspa-ttl" id="dspa_ttl">① 圈配件</div>
-      <button type="button" class="btn" id="dspa_undo">撤銷一圈</button>
-    </div>
-    <div class="dspa-stage">
-      <canvas id="dspa_cv"></canvas>
-    </div>
-    <div class="dspa-foot">
-      <div class="mut" id="dspa_n" style="flex:1;font-size:12px">已圈 0 個</div>
-      <button type="button" class="btn" id="dspa_sm" title="最後一圈細啲">圈細</button>
-      <button type="button" class="btn" id="dspa_lg" title="最後一圈大啲">圈大</button>
-      <button type="button" class="btn" id="dspa_close" style="margin-right:4px">關閉</button>
-      <button type="button" class="btn" id="dspa_manual" style="margin-right:4px;display:none">人手揀</button>
-      <button type="button" class="btn pri" id="dspa_next">下一步 ›</button>
-    </div>`;
-  document.body.appendChild(ov);
-  const style = document.getElementById('dspa_css') || document.createElement('style');
-  style.id = 'dspa_css';
-  style.textContent =
-    '#dspa_ov{position:fixed;inset:0;z-index:9999;background:#0f172a;display:flex;flex-direction:column;color:#fff}' +
-    '.dspa-bar{display:flex;gap:8px;align-items:center;padding:8px;background:#1e293b;position:relative;z-index:10001}' +
-    '.dspa-ttl{flex:1;font-size:14px;text-align:center}' +
-    '.dspa-stage{flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000}' +
-    '#dspa_cv{max-width:100%;max-height:100%;touch-action:none}' +
-    '.dspa-foot{display:flex;gap:6px;align-items:center;padding:10px;background:#1e293b;position:relative;z-index:10001;flex-wrap:wrap}' +
-    '#dspa_ov .dspa-foot .btn,#dspa_ov .dspa-bar .btn{background:#334155!important;color:#f8fafc!important;border:1px solid #94a3b8!important;font-weight:700;min-width:44px;box-shadow:none}' +
-    '#dspa_ov .dspa-foot .btn.pri{background:#2563eb!important;border-color:#1d4ed8!important;color:#fff!important}' +
-    '#dspa_ov .dspa-bar .btn:disabled,#dspa_ov .dspa-foot .btn:disabled{opacity:.45}' +
-    '.dspa-pick{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.92);display:flex;align-items:flex-end;justify-content:center}' +
-    '.dspa-pick .card{width:100%;max-width:480px;margin:0;border-radius:16px 16px 0 0;padding:16px;background:#fff;color:#111;max-height:85vh;overflow:auto}' +
-    '.dspa-labs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}' +
-    '.dspa-labs button{flex:1 1 40%;min-height:44px}' +
-    '.dspa-hi{stroke:#fbbf24!important}';
-  if (!style.parentNode) document.head.appendChild(style);
-
-  const cv = document.getElementById('dspa_cv');
-  const stage = cv.parentElement;
-  const img = new Image();
-  img.onload = () => {
-    const maxW = Math.min(window.innerWidth, 1280);
-    const maxH = Math.max(200, window.innerHeight - 120);
-    const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
-    cv.width = Math.round(img.naturalWidth * s);
-    cv.height = Math.round(img.naturalHeight * s);
-    DS_PA._img = img;
-    DS_PA._baseScale = s; /* canvas 相對原相 */
-    DS_PA.view = { scale: 1, tx: 0, ty: 0 };
-    dsPaRedraw();
-  };
-  img.src = DS_PA.dataUrl;
-
-  const ptrs = new Map(); /* pointerId -> {x,y} client relative stage */
-  let mode = null; /* pan | pinch | move | resize | pending */
-  let longT = null;
-  let pinch0 = null; /* {dist, scale, tx, ty, mx, my} */
-  let pan0 = null;
-  let pending = null; /* {x,y,n,hi,onRim,t} */
-  const ADD_HOLD_MS = 500; /* 空白長按先加圈 */
-  const CIRCLE_HOLD_MS = 420; /* 圈上長按：搬／調大細 */
-
-  const stageXY = (e) => {
-    const r = stage.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top, cx: e.clientX, cy: e.clientY };
-  };
-  /* 螢幕座標 → 相 0–1（計埋 view 平移／放大） */
-  const toNorm = (clientX, clientY) => {
-    const r = cv.getBoundingClientRect();
-    /* CSS 顯示尺寸可能同 canvas.width 唔同 */
-    const lx = (clientX - r.left) * (cv.width / Math.max(1, r.width));
-    const ly = (clientY - r.top) * (cv.height / Math.max(1, r.height));
-    const v = DS_PA.view || { scale: 1, tx: 0, ty: 0 };
-    const invS = 1 / (v.scale || 1);
-    const x = (lx - v.tx) * invS / cv.width;
-    const y = (ly - v.ty) * invS / cv.height;
-    return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
-  };
-  const hitCircleInfo = (nx, ny) => {
-    let best = -1, bestD = 1e9, bestOnRim = false;
-    DS_PA.circles.forEach((c, i) => {
-      const dx = nx - c.cx, dy = ny - c.cy;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      const hitR = Math.max(c.r * 1.7, 0.030);
-      if (d <= hitR && d < bestD) {
-        best = i; bestD = d;
-        /* 近圓周＝邊（外半＋外緣）；中心＝搬位 */
-        bestOnRim = d >= Math.max(c.r * 0.5, 0.010);
-      }
-    });
-    return { i: best, onRim: bestOnRim, d: bestD };
-  };
-  const hitCircle = (nx, ny) => hitCircleInfo(nx, ny).i;
-  const clearLong = () => { if (longT) { clearTimeout(longT); longT = null; } };
-
-  const onDown = (e) => {
-    if (DS_PA.step === 'label') {
-      e.preventDefault();
-      const n = toNorm(e.clientX, e.clientY);
-      const hi = hitCircle(n.x, n.y);
-      if (hi >= 0) dsPaEditLabel(hi);
-      return;
-    }
-    if (DS_PA.step !== 'draw') return;
-    e.preventDefault();
-    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-    const p = stageXY(e);
-    ptrs.set(e.pointerId, p);
-    clearLong();
-    dsPaCancelAutoAi();
-
-    if (ptrs.size === 2) {
-      /* pinch start */
-      mode = 'pinch';
-      DS_PA.drawing = null;
-      DS_PA.moveIdx = -1;
-      DS_PA.resizeIdx = -1;
-      const arr = [...ptrs.values()];
-      const dx = arr[0].cx - arr[1].cx, dy = arr[0].cy - arr[1].cy;
-      const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-      const mx = (arr[0].x + arr[1].x) / 2, my = (arr[0].y + arr[1].y) / 2;
-      pinch0 = { dist: dist, scale: DS_PA.view.scale, tx: DS_PA.view.tx, ty: DS_PA.view.ty, mx: mx, my: my };
-      return;
-    }
-    if (ptrs.size === 1) {
-      const n = toNorm(e.clientX, e.clientY);
-      const hiInfo = hitCircleInfo(n.x, n.y);
-      const hi = hiInfo.i;
-      pending = { x: e.clientX, y: e.clientY, n: n, hi: hi, onRim: !!hiInfo.onRim, t: Date.now() };
-      mode = 'pending';
-      const holdMs = hi >= 0 ? CIRCLE_HOLD_MS : ADD_HOLD_MS;
-      longT = setTimeout(() => {
-        if (mode !== 'pending' || !pending) return;
-        if (pending.hi >= 0) {
-          DS_PA.drawing = null;
-          dsPaCancelAutoAi();
-          if (pending.onRim) {
-            mode = 'resize';
-            DS_PA.resizeIdx = pending.hi;
-            DS_PA.moveIdx = -1;
-            toast('拖圈邊放大縮細', 1000);
-          } else {
-            mode = 'move';
-            DS_PA.moveIdx = pending.hi;
-            DS_PA.resizeIdx = -1;
-            toast('拖移呢個圈', 1000);
-          }
-          dsPaRedraw();
-        } else {
-          /* 空白長按 → 加細圈 */
-          const n2 = pending.n;
-          DS_PA.circles.push({ cx: n2.x, cy: n2.y, r: 0.022 });
-          const prevA = DS_PA.answers.length ? DS_PA.answers[DS_PA.answers.length - 1] : null;
-          if (prevA && prevA.manual && (prevA.code || prevA.label)) {
-            DS_PA.answers.push(dsPaCopyAnswer(prevA));
-            toast('已加圈——跟住上一個（鬆手後自動處理）', 1400);
-            DS_PA.pendingAutoAi = true; /* 有未 AI 嘅圈會分析；全人手則直接加入 */
-            dsPaPersist(true);
-          } else {
-            DS_PA.answers.push({ label: '', size: '' });
-            toast('已加圈——鬆手後會自動 AI', 1400);
-            DS_PA.pendingAutoAi = true;
-            dsPaPersist(true);
-          }
-          mode = null;
-          pending = null;
-          DS_PA.drawing = null;
-          DS_PA.moveIdx = -1;
-          DS_PA.resizeIdx = -1;
-          dsPaRedraw();
-          dsPaUpdateChrome();
-        }
-      }, holdMs);
-    }
-  };
-  const onMove = (e) => {
-    if (DS_PA.step !== 'draw') return;
-    if (!ptrs.has(e.pointerId)) return;
-    e.preventDefault();
-    ptrs.set(e.pointerId, stageXY(e));
-
-    if (mode === 'pinch' && ptrs.size >= 2 && pinch0) {
-      const arr = [...ptrs.values()];
-      const dx = arr[0].cx - arr[1].cx, dy = arr[0].cy - arr[1].cy;
-      const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-      let sc = pinch0.scale * (dist / pinch0.dist);
-      sc = Math.max(1, Math.min(5, sc));
-      const mx = (arr[0].x + arr[1].x) / 2, my = (arr[0].y + arr[1].y) / 2;
-      /* 以 pinch 中心為錨 */
-      DS_PA.view.tx = mx - (pinch0.mx - pinch0.tx) * (sc / pinch0.scale);
-      DS_PA.view.ty = my - (pinch0.my - pinch0.ty) * (sc / pinch0.scale);
-      DS_PA.view.scale = sc;
-      dsPaClampView();
-      dsPaRedraw();
-      return;
-    }
-    if (mode === 'pending' && pending) {
-      const dx = e.clientX - pending.x, dy = e.clientY - pending.y;
-      if (Math.sqrt(dx * dx + dy * dy) > 10) {
-        clearLong();
-        if (pending.hi >= 0) {
-          /* 喺圈上拖：取消長按；短按鬆手仍可揀配件唔會到呢度 */
-          mode = null;
-          pending = null;
-          return;
-        }
-        /* 單指拖空白＝移相 */
-        dsPaCancelAutoAi();
-        mode = 'pan';
-        pan0 = { x: pending.x, y: pending.y, tx: DS_PA.view.tx, ty: DS_PA.view.ty };
-        pending = null;
-      }
-    }
-    if (mode === 'move' && DS_PA.moveIdx >= 0) {
-      const n = toNorm(e.clientX, e.clientY);
-      const c = DS_PA.circles[DS_PA.moveIdx];
-      if (c) { c.cx = n.x; c.cy = n.y; dsPaRedraw(); }
-      return;
-    }
-    if (mode === 'resize' && DS_PA.resizeIdx >= 0) {
-      const n = toNorm(e.clientX, e.clientY);
-      const c = DS_PA.circles[DS_PA.resizeIdx];
-      if (c) {
-        const dx = n.x - c.cx, dy = n.y - c.cy;
-        c.r = Math.max(0.008, Math.min(0.25, Math.sqrt(dx * dx + dy * dy)));
-        dsPaRedraw();
-      }
-      return;
-    }
-    if (mode === 'pan' && pan0) {
-      DS_PA.view.tx = pan0.tx + (e.clientX - pan0.x);
-      DS_PA.view.ty = pan0.ty + (e.clientY - pan0.y);
-      dsPaClampView();
-      dsPaRedraw();
-      return;
-    }
-  };
-  const onUp = (e) => {
-    if (!ptrs.has(e.pointerId)) return;
-    ptrs.delete(e.pointerId);
-    clearLong();
-    if (ptrs.size >= 2) return;
-    if (ptrs.size === 1 && mode === 'pinch') {
-      /* 剩一指：結束 pinch */
-      mode = null; pinch0 = null;
-      return;
-    }
-    if (mode === 'pending' && pending) {
-      if (pending.hi >= 0) {
-        /* 畫圈模式短按圈：唔開選項（要等 AI；改配件喺 AI 後／確認步） */
-        DS_PA.drawing = null;
-        DS_PA.moveIdx = -1;
-        DS_PA.resizeIdx = -1;
-        mode = null; pending = null; pinch0 = null; pan0 = null;
-        dsPaRedraw();
-        dsPaUpdateChrome();
-        toast('鬆手後會自動 AI；要改請等分析完再撳圈', 2200);
-        return;
-      }
-      /* 短按空白：唔再加圈（要長按 0.5 秒） */
-    }
-    DS_PA.drawing = null;
-    DS_PA.moveIdx = -1;
-    DS_PA.resizeIdx = -1;
-    mode = null; pending = null; pinch0 = null; pan0 = null;
-    dsPaRedraw();
-    dsPaUpdateChrome();
-    if (!ptrs.size && DS_PA.pendingAutoAi && DS_PA.step === 'draw' && DS_PA.circles.length && !DS_PA.aiBusy) {
-      DS_PA.pendingAutoAi = false;
-      dsPaScheduleAutoAi();
-    }
-  };
-  cv.addEventListener('pointerdown', onDown);
-  cv.addEventListener('pointermove', onMove);
-  cv.addEventListener('pointerup', onUp);
-  cv.addEventListener('pointercancel', onUp);
-  /* 雙指唔好觸發瀏覽器手勢 */
-  stage.addEventListener('touchstart', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
-  stage.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
-
-  document.getElementById('dspa_close').onclick = () => {
-    const n = DS_PA.circles.length;
-    dsPaPersist(true);
-    dsPaUnmount();
-    dsPaint();
-    toast(n ? ('已暫存 ' + n + ' 個圈——可撳「繼續圈選」') : '已暫存相片——可撳「繼續圈選」', 2200);
-  };
-  document.getElementById('dspa_undo').onclick = () => {
-    if (DS_PA.step !== 'draw') return;
-    dsPaCancelAutoAi();
-    DS_PA.circles.pop();
-    DS_PA.answers.pop();
-    DS_PA.pendingAutoAi = !!DS_PA.circles.length;
-    dsPaRedraw();
-    dsPaUpdateChrome();
-    if (DS_PA.circles.length) dsPaScheduleAutoAi();
-  };
-  document.getElementById('dspa_prev').onclick = () => dsPaPrev();
-  document.getElementById('dspa_next').onclick = () => dsPaNext();
-  const manBtn0 = document.getElementById('dspa_manual');
-  if (manBtn0) manBtn0.onclick = () => {
-    if (!DS_PA.circles.length) { toast('未圈任何配件'); return; }
-    dsPaCancelAutoAi();
-    DS_PA.step = 'label';
-    while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
-    if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-    const miss = DS_PA.answers.findIndex(a => !(a && (a.label || a.code)));
-    DS_PA.labelIdx = miss >= 0 ? miss : 0;
-    dsPaUpdateChrome();
-    dsPaRedraw();
-    dsPaShowLabelPanel();
-  };
-  const sm = document.getElementById('dspa_sm');
-  const lg = document.getElementById('dspa_lg');
-  if (sm) sm.onclick = () => dsPaResizeLast(0.82);
-  if (lg) lg.onclick = () => dsPaResizeLast(1.22);
-  dsPaUpdateChrome();
-}
-function dsPaResizeLast(factor) {
-  if (DS_PA.step !== 'draw' || !DS_PA.circles.length) return;
-  const i = DS_PA.resizeIdx >= 0 ? DS_PA.resizeIdx : (DS_PA.moveIdx >= 0 ? DS_PA.moveIdx : DS_PA.circles.length - 1);
-  const c = DS_PA.circles[i];
-  if (!c) return;
-  c.r = Math.max(0.008, Math.min(0.25, c.r * factor));
-  dsPaRedraw();
-  toast('圈 ' + (i + 1) + ' 大細調咗', 800);
-}
-function dsPaUpdateChrome() {
-  const n = document.getElementById('dspa_n');
-  const ttl = document.getElementById('dspa_ttl');
-  const undo = document.getElementById('dspa_undo');
-  const prev = document.getElementById('dspa_prev');
-  const next = document.getElementById('dspa_next');
-  const sm = document.getElementById('dspa_sm');
-  const lg = document.getElementById('dspa_lg');
-  if (!n) return;
-  if (DS_PA.step === 'draw') {
-    if (ttl) ttl.textContent = '① 長按加圈 · 鬆手後自動 AI';
-    if (undo) undo.style.visibility = 'visible';
-    if (sm) sm.style.display = '';
-    if (lg) lg.style.display = '';
-    n.textContent = '已圈 ' + DS_PA.circles.length + ' 個';
-    if (prev) prev.disabled = false;
-    if (next) {
-      /* 自動 AI：下一步改做「立即分析」（可選）；無圈就 disable */
-      next.disabled = !DS_PA.circles.length || !!DS_PA.aiBusy;
-      next.textContent = '立即分析';
-    }
-    const man = document.getElementById('dspa_manual');
-    if (man) {
-      man.style.display = DS_PA.circles.length ? '' : 'none';
-      man.disabled = !!DS_PA.aiBusy;
-    }
-  } else {
-    if (ttl) ttl.textContent = '② AI／確認 · 撳圈用下拉改';
-    if (undo) undo.style.visibility = 'hidden';
-    if (sm) sm.style.display = 'none';
-    if (lg) lg.style.display = 'none';
-    n.textContent = DS_PA.circles.map((_,i)=>(DS_PA.answers[i]&&DS_PA.answers[i].label)||('?'+(i+1))).join(' · ');
-    if (prev) prev.disabled = false;
-    if (next) { next.textContent = '完成加入 ›'; next.disabled = false; }
-    const man2 = document.getElementById('dspa_manual');
-    if (man2) man2.style.display = 'none';
-  }
-}
-function dsPaPrev() {
-  /* 標註／AI 確認 → 一律返相改圈（唔再逐個 label 倒退） */
-  if (DS_PA.step === 'label') {
-    try { dsPaSaveCurrentLabel(false); } catch (e) {}
-    dsPaHideLabelPanel();
-    DS_PA.step = 'draw';
-    DS_PA.labelIdx = 0;
-    DS_PA.moveIdx = -1;
-    DS_PA.resizeIdx = -1;
-    DS_PA.drawing = null;
-    dsPaUpdateChrome();
-    dsPaRedraw();
-    toast('已返相——可再加圈（鬆手後會自動 AI）', 2000);
-    return;
-  }
-  /* draw：上一步＝換相 */
-  if (!confirm('返回重新揀相？（而家嘅圈會清）')) return;
-  dsPaCancelAutoAi();
-  dsPaUnmount();
-  toast('請再揀相機或相簿', 2000);
-}
-function dsPaNext() {
-  if (DS_PA.step === 'draw') {
-    if (!DS_PA.circles.length) { toast('未圈任何配件'); return; }
-    while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
-    if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-    dsPaRunAiThenReview();
-    return;
-  }
-  /* label step */
-  if (!dsPaSaveCurrentLabel(true)) return;
-  if (DS_PA.labelIdx < DS_PA.circles.length - 1) {
-    DS_PA.labelIdx++;
-    dsPaShowLabelPanel();
-    dsPaUpdateChrome();
-    dsPaRedraw();
-    return;
-  }
-  dsPaFinish();
-}
-function dsPaWithPick(fn) {
-  const bak = { cat: DS.cat, sub: DS.sub, sub2: DS.sub2, sub3: DS.sub3, q: DS.q };
-  const pk = DS_PA.pick || (DS_PA.pick = { cat: '', sub: '', sub2: '', sub3: '', q: '' });
-  DS.cat = pk.cat || ''; DS.sub = pk.sub || ''; DS.sub2 = pk.sub2 || ''; DS.sub3 = pk.sub3 || ''; DS.q = pk.q || '';
-  try { return fn(); } finally {
-    DS.cat = bak.cat; DS.sub = bak.sub; DS.sub2 = bak.sub2; DS.sub3 = bak.sub3; DS.q = bak.q;
-  }
-}
-function dsPaPickSelHtml() {
-  const pk = DS_PA.pick || (DS_PA.pick = { cat: '', sub: '', sub2: '', sub3: '', q: '' });
-  return dsPaWithPick(() => {
-    const opts = ['<option value="">— 揀要度數嘅種類 —</option>']
-      .concat(DS_CATS.map(c => `<option value="${esc(c.id)}" ${pk.cat === c.id ? 'selected' : ''}>${esc(c.id)}</option>`));
-    const def = dsCatDef(pk.cat);
-    const pipeSizeFirst = !!(def && def.sizeFirst);
-    let needSub = false, subOpts = [], subLbl = '細分類', subAria = '細分類';
-    let needSub2 = false, sub2Opts = [], sub2Lbl = '', sub2Aria = '';
-    if (pipeSizeFirst) {
-      const sizes = dsPipeSizesAvailable();
-      needSub = true;
-      subLbl = '尺寸（Ømm）';
-      subAria = '水喉尺寸';
-      const subPh = sizes.length ? ('— 揀 ' + sizes.map(dsPipeSizeLabel).join('／') + ' —') : '— 載入尺寸中 —';
-      subOpts = ['<option value="">' + esc(subPh) + '</option>'].concat(sizes.map(s =>
-        `<option value="${esc(s)}" ${pk.sub === s ? 'selected' : ''}>${esc(dsPipeSizeLabel(s))}</option>`));
-      if (pk.sub) {
-        const types = dsPipeTypesAvailable(pk.sub);
-        needSub2 = true;
-        sub2Lbl = 'GI／DI';
-        sub2Aria = '水喉 GI 或 DI';
-        const tPh = '— 揀 ' + (types.length ? types.map(t => t.id).join('／') : 'GI／DI') + ' —';
-        sub2Opts = ['<option value="">' + esc(tPh) + '</option>'].concat(types.map(t =>
-          `<option value="${esc(t.id)}" ${pk.sub2 === t.id ? 'selected' : ''}>${esc(t.label || t.id)}</option>`));
-      }
-    } else {
-      needSub = !!(def && def.subs && def.subs.length);
-      subLbl = (pk.cat === '電線／針躉' || pk.cat === '燈喉／過路箱／電配件' || pk.cat === '閘掣' || pk.cat === 'Relay／索制') ? '再分類' : '細分類';
-      const subPh = needSub ? ('— 揀 ' + def.subs.map(s => s.id).join('／') + ' —') : '';
-      subOpts = needSub
-        ? ['<option value="">' + esc(subPh) + '</option>'].concat(def.subs.map(s =>
-          `<option value="${esc(s.id)}" ${pk.sub === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`))
-        : [];
-      if (needSub && pk.sub && def && def.subs) {
-        const subDef = def.subs.find(s => s.id === pk.sub);
-        if (subDef && subDef.subs && subDef.subs.length) {
-          needSub2 = true;
-          sub2Lbl = '再分類';
-          sub2Aria = pk.cat + ' · ' + pk.sub;
-          const s2Ph = '— 揀 ' + subDef.subs.map(s => s.id).join('／') + ' —';
-          sub2Opts = ['<option value="">' + esc(s2Ph) + '</option>'].concat(subDef.subs.map(s =>
-            `<option value="${esc(s.id)}" ${pk.sub2 === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`));
-        }
-      }
-    }
-    const ready = pk.cat && (!needSub || pk.sub) && (!needSub2 || pk.sub2);
-    let hitsHtml = '';
-    if (!DS.items) {
-      hitsHtml = '<div class="mut">價目載入中…</div>';
-    } else if (!ready) {
-      hitsHtml = '<div class="mut">請用上面下拉揀到齊分類。</div>';
-    } else {
-      const hits = dsSearchHits(pk.q || '');
-      if (!hits.length) hitsHtml = '<div class="mut">呢分類暫時冇項目。試改分類／搜尋。</div>';
-      else {
-        hitsHtml = hits.map(it => {
-          const billAttr = (it._bill === 'fix' || it._bill === 'takedown') ? ` data-bill="${esc(it._bill)}"` : '';
-          return `<button type="button" class="btn" style="width:100%;text-align:left;margin:0 0 6px;font-weight:700" data-pa-code="${esc(it.code)}"${billAttr}>
-            <div>${esc(it.search || it.code)}</div>
-            <div class="mut" style="font-weight:600;font-size:12px">${esc(it.code)}${it.desc ? ' · ' + esc(it.desc) : ''}</div>
-          </button>`;
-        }).join('');
-      }
-    }
-    return `<label class="dslbl">種類
-      <select class="inp" id="dspa_cat">${opts.join('')}</select>
-    </label>
-    ${needSub ? `<label class="dslbl">${esc(subLbl)}
-      <select class="inp" id="dspa_sub" aria-label="${esc(subAria)}">${subOpts.join('')}</select>
-    </label>` : ''}
-    ${needSub2 ? `<label class="dslbl">${esc(sub2Lbl)}
-      <select class="inp" id="dspa_sub2" aria-label="${esc(sub2Aria)}">${sub2Opts.join('')}</select>
-    </label>` : ''}
-    ${ready ? `<label class="dslbl">再搜（可留空）
-      <input class="inp" id="dspa_q" value="${esc(pk.q || '')}" placeholder="例：法蘭、力古、90度" autocomplete="off">
-    </label>` : ''}
-    <div id="dspa_hits" style="margin-top:8px;max-height:42vh;overflow:auto">${hitsHtml}</div>`;
-  });
-}
-function dsPaCopyAnswer(from) {
-  if (!from || !(from.code || from.label)) return { label: '', size: '' };
-  return {
-    label: from.label || '',
-    size: from.size || '',
-    code: from.code || '',
-    search: from.search || from.label || '',
-    soft: false,
-    ai: false,
-    manual: true,
-    bill: from.bill || '',
-    desc: from.desc || '',
-    note: from.note || ''
-  };
-}
-function dsPaLearnLabelOf(a) {
-  const s = String((a && (a.search || a.label)) || '');
-  for (let k = 0; k < DS_PA_LABELS.length; k++) {
-    if (s.indexOf(DS_PA_LABELS[k]) >= 0) return DS_PA_LABELS[k];
-  }
-  return s.slice(0, 40);
-}
-function dsPaQueueLearn(i, prev, nextA) {
-  if (!prev || !prev.ai) return;
-  const aiLab = prev.aiLabel || prev.label || '';
-  const aiCode = prev.code || '';
-  const userLab = dsPaLearnLabelOf(nextA);
-  const userCode = nextA.code || '';
-  if (!aiLab && !aiCode) return;
-  if (userCode && aiCode && userCode === aiCode) return;
-  if (!userCode && userLab && aiLab && userLab === aiLab) return;
-  if (!DS_PA.learns) DS_PA.learns = [];
-  const crop = (DS_PA.cropCache && DS_PA.cropCache[i]) || null;
-  DS_PA.learns.push({
-    i: i,
-    ai_label: aiLab,
-    ai_size: prev.aiSize || prev.size || '',
-    ai_code: aiCode,
-    user_label: userLab,
-    user_size: nextA.size || '',
-    user_code: userCode,
-    user_search: nextA.search || nextA.label || '',
-    note: prev.note || '',
-    base64: crop ? crop.base64 : '',
-    mime: crop ? (crop.mime || 'image/jpeg') : 'image/jpeg'
-  });
-}
-async function dsPaFlushLearns() {
-  const list = (DS_PA.learns || []).slice();
-  if (!list.length || typeof gasCall !== 'function') return;
-  DS_PA.learns = [];
-  try {
-    const slim = list.map(x => ({
-      i: x.i,
-      ai_label: x.ai_label,
-      ai_size: x.ai_size,
-      ai_code: x.ai_code,
-      user_label: x.user_label,
-      user_size: x.user_size,
-      user_code: x.user_code,
-      user_search: x.user_search,
-      note: x.note,
-      base64: x.base64 || '',
-      mime: x.mime || 'image/jpeg'
-    }));
-    const o = await gasCall({ action: 'dosu_pipe_ai_learn', corrections: slim, app_version: APP_VERSION }, 90000);
-    if (o && o.ok) toast('已記 ' + (o.saved != null ? o.saved : slim.length) + ' 個 AI 錯例學習', 2000);
-  } catch (e) { /* 學習失敗唔擋出單 */ }
-}
-function dsPaApplyItem(it) {
-  if (!it || !it.code) return;
-  const i = DS_PA.labelIdx;
-  while (DS_PA.answers.length <= i) DS_PA.answers.push({ label: '', size: '' });
-  const prev = Object.assign({}, DS_PA.answers[i] || {});
-  const lab = String(it.search || it.code);
-  const nextA = {
-    label: lab,
-    size: dsPipeSizeOf(it) || '',
-    code: it.code,
-    search: it.search || it.code,
-    soft: false,
-    ai: false,
-    manual: true,
-    bill: (it._bill === 'fix' || it._bill === 'takedown') ? it._bill : '',
-    desc: it.desc || '',
-    aiLabel: prev.aiLabel || '',
-    aiSize: prev.aiSize || ''
-  };
-  dsPaQueueLearn(i, prev, nextA);
-  DS_PA.answers[i] = nextA;
-  const next = i + 1;
-  if (next < DS_PA.circles.length) {
-    while (DS_PA.answers.length <= next) DS_PA.answers.push({ label: '', size: '' });
-    const n = DS_PA.answers[next] || {};
-    if (!(n.code || n.label) || n.ai) {
-      DS_PA.answers[next] = dsPaCopyAnswer(DS_PA.answers[i]);
-    }
-  }
-  dsPaCancelAutoAi();
-  DS_PA.pendingAutoAi = false;
-  dsPaHideLabelPanel();
-  dsPaUpdateChrome();
-  dsPaRedraw();
-  toast('已揀：' + lab + (next < DS_PA.circles.length ? '（下個圈跟住）' : ''), 1400);
-  dsPaPersist(true);
-  if (DS_PA.learns && DS_PA.learns.length) dsPaFlushLearns();
-  /* 人手揀完留喺圈選畫面，唔跳返度數；要入單撳「完成加入」或等 AI 自動 */
-}
-
-function dsPaSaveCurrentLabel(requireLabel) {
-  /* 0.6.118：改用價目下拉直接揀 code；呢度淨係有 panel 時檢查已有 code／label */
-  const a = DS_PA.answers[DS_PA.labelIdx] || {};
-  if (requireLabel && !(a.code || a.label)) {
-    toast('請用下拉揀呢個圈係咩項目');
-    return false;
-  }
-  return true;
-}
-function dsPaHideLabelPanel() {
-  const p = document.getElementById('dspa_labpanel');
-  if (p) p.remove();
-}
-function dsPaBindPickPanel(wrap) {
-  const pk = DS_PA.pick || (DS_PA.pick = { cat: '', sub: '', sub2: '', sub3: '', q: '' });
-  const cat = wrap.querySelector('#dspa_cat');
-  const sub = wrap.querySelector('#dspa_sub');
-  const sub2 = wrap.querySelector('#dspa_sub2');
-  const q = wrap.querySelector('#dspa_q');
-  const refresh = () => {
-    const card = wrap.querySelector('.card');
-    if (!card) return;
-    const head = card.querySelector('h3');
-    const mut0 = card.querySelector('.dspa-pickmut');
-    const body = dsPaPickSelHtml();
-    /* 保留標題＋提示，重砌下拉區 */
-    const keepH = head ? head.outerHTML : '';
-    const keepM = mut0 ? mut0.outerHTML : '';
-    const cur = DS_PA.answers[DS_PA.labelIdx] || {};
-    const curHtml = (cur.code || cur.label)
-      ? `<div class="okbox" style="margin:8px 0;font-size:14px">而家：${esc(cur.search || cur.label || cur.code)}</div>`
-      : '';
-    card.innerHTML = keepH + keepM + curHtml + body +
-      `<button type="button" class="btn" style="width:100%;margin-top:10px" id="dspa_pick_close">關閉</button>`;
-    dsPaBindPickPanel(wrap);
-  };
-  if (cat) cat.onchange = () => {
-    pk.cat = cat.value || ''; pk.sub = ''; pk.sub2 = ''; pk.sub3 = ''; pk.q = '';
-    refresh();
-  };
-  if (sub) sub.onchange = () => {
-    pk.sub = sub.value || ''; pk.sub2 = ''; pk.sub3 = '';
-    refresh();
-  };
-  if (sub2) sub2.onchange = () => {
-    pk.sub2 = sub2.value || ''; pk.sub3 = '';
-    refresh();
-  };
-  if (q) {
-    let tmr = null;
-    q.oninput = () => {
-      pk.q = q.value || '';
-      clearTimeout(tmr);
-      tmr = setTimeout(refresh, 180);
-    };
-  }
-  const hits = wrap.querySelector('#dspa_hits');
-  if (hits) hits.onclick = (e) => {
-    const b = e.target.closest('[data-pa-code]');
-    if (!b) return;
-    const code = b.getAttribute('data-pa-code');
-    const bill = b.getAttribute('data-bill') || '';
-    let it = null;
-    dsPaWithPick(() => {
-      const list = dsSearchHits(pk.q || '');
-      it = list.find(x => x.code === code && (!bill || x._bill === bill))
-        || list.find(x => x.code === code)
-        || ((DS.items && DS.items.items) || []).find(x => x.code === code);
-      if (it && bill) it = Object.assign({}, it, { _bill: bill });
-    });
-    if (!it) {
-      it = { code: code, search: code, _bill: bill || undefined };
-    }
-    dsPaApplyItem(it);
-  };
-  const close = wrap.querySelector('#dspa_pick_close');
-  if (close) close.onclick = () => {
-    dsPaHideLabelPanel();
-    dsPaUpdateChrome();
-    dsPaRedraw();
-  };
-}
-function dsPaShowLabelPanel() {
-  dsPaHideLabelPanel();
-  if (!DS.items && typeof dsLoadItems === 'function') {
-    try { dsLoadItems(); } catch (e) {}
-  }
-  const i = DS_PA.labelIdx;
-  while (DS_PA.answers.length <= i) DS_PA.answers.push({ label: '', size: '' });
-  if (!DS_PA.pick) DS_PA.pick = { cat: '', sub: '', sub2: '', sub3: '', q: '' };
-  const ans = DS_PA.answers[i] || {};
-  const wrap = document.createElement('div');
-  wrap.id = 'dspa_labpanel';
-  wrap.className = 'dspa-pick';
-  const curHtml = (ans.code || ans.label)
-    ? `<div class="okbox" style="margin:8px 0;font-size:14px">而家：${esc(ans.search || ans.label || ans.code)}</div>`
-    : '';
-  wrap.innerHTML = `<div class="card">
-      <h3>第 ${i + 1}／${DS_PA.circles.length} 個圈係咩？</h3>
-      <div class="mut dspa-pickmut">用度數同樣下拉揀價目（跟 ss）。AI 建議可改。</div>
-      ${curHtml}
-      ${dsPaPickSelHtml()}
-      <button type="button" class="btn" style="width:100%;margin-top:10px" id="dspa_pick_close">關閉</button>
-    </div>`;
-  document.body.appendChild(wrap);
-  wrap.style.alignItems = 'center';
-  wrap.style.paddingBottom = '70px';
-  dsPaBindPickPanel(wrap);
-}
-function dsPaEditLabel(i) {
-  if (!(i >= 0) || i >= DS_PA.circles.length) return;
-  DS_PA.labelIdx = i;
-  while (DS_PA.answers.length <= i) DS_PA.answers.push({ label: '', size: '' });
-  dsPaShowLabelPanel();
-}
-
-function dsPaCropCircles() {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const W = img.naturalWidth, H = img.naturalHeight;
-      const out = [];
-      DS_PA.circles.forEach((c, i) => {
-        const rad = c.r * Math.min(W, H);
-        const pad = rad * 1.35;
-        const cx = c.cx * W, cy = c.cy * H;
-        let x0 = Math.max(0, Math.floor(cx - pad));
-        let y0 = Math.max(0, Math.floor(cy - pad));
-        let x1 = Math.min(W, Math.ceil(cx + pad));
-        let y1 = Math.min(H, Math.ceil(cy + pad));
-        const cw = Math.max(8, x1 - x0), ch = Math.max(8, y1 - y0);
-        const cnv = document.createElement('canvas');
-        cnv.width = cw; cnv.height = ch;
-        const g = cnv.getContext('2d');
-        g.drawImage(img, x0, y0, cw, ch, 0, 0, cw, ch);
-        /* 畫個圈提示 AI 焦點 */
-        g.strokeStyle = '#22c55e';
-        g.lineWidth = 3;
-        g.beginPath();
-        g.arc(cx - x0, cy - y0, rad, 0, Math.PI * 2);
-        g.stroke();
-        const dataUrl = cnv.toDataURL('image/jpeg', 0.82);
-        const b64 = (dataUrl.split(',')[1] || '');
-        out.push({ i: i, base64: b64, mime: 'image/jpeg' });
-      });
-      resolve(out);
-    };
-    img.onerror = () => reject(new Error('讀相失敗'));
-    img.src = DS_PA.dataUrl;
-  });
-}
-function dsPaAllLabeled() {
-  while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
-  return DS_PA.circles.length > 0 && DS_PA.circles.every((_, i) => {
-    const a = DS_PA.answers[i];
-    return !!(a && (a.label || a.code));
-  });
-}
-async function dsPaAutoFinishIfReady(why) {
-  if (!dsPaAllLabeled()) return false;
-  toast((why || '已齊') + '——自動加入度數', 1600);
-  try { await dsPaFinish(); } catch (e) { toast('自動加入失敗：' + (e && e.message || e), 3000); }
-  return true;
-}
-async function dsPaRunAiThenReview() {
-  if (DS_PA.aiBusy) return;
-  dsPaCancelAutoAi();
-  while (DS_PA.answers.length < DS_PA.circles.length) DS_PA.answers.push({ label: '', size: '' });
-  if (DS_PA.answers.length > DS_PA.circles.length) DS_PA.answers.length = DS_PA.circles.length;
-  /* 全部已係人手／已有內容 → 唔打 AI，直接跟內容自動加入 */
-  if (!dsPaNeedsAi()) {
-    dsPaHideLabelPanel();
-    if (await dsPaAutoFinishIfReady('已齊')) return;
-    DS_PA.step = 'draw';
-    dsPaUpdateChrome();
-    dsPaRedraw();
-    toast('內容未齊——可再撳立即分析或人手揀', 2500);
-    return;
-  }
-  DS_PA.aiBusy = true;
-  toast('AI 分析緊…', 2000);
-  const nextBtn = document.getElementById('dspa_next');
-  const prevBtn = document.getElementById('dspa_prev');
-  if (nextBtn) nextBtn.disabled = true;
-  /* 分析期間都可返回改圈 */
-  if (prevBtn) prevBtn.disabled = false;
-  let aiOk = false;
-  try {
-    const crops = await dsPaCropCircles();
-    DS_PA.cropCache = {};
-    (crops || []).forEach(c => { if (c && c.i != null) DS_PA.cropCache[c.i] = { base64: c.base64, mime: c.mime || 'image/jpeg' }; });
-    if (typeof gasCall === 'function') {
-      const o = await gasCall({ action: 'dosu_pipe_ai', crops: crops, app_version: APP_VERSION }, 120000);
-      if (o && o.ok && Array.isArray(o.items)) {
-        let applied = 0;
-        o.items.forEach(it => {
-          const i = Number(it.i);
-          if (!(i >= 0) || i >= DS_PA.circles.length) return;
-          const cur = DS_PA.answers[i];
-          if (cur && cur.manual) return; /* 手動揀過唔覆寫 */
-          let lab = String(it.label || '').trim();
-          if (lab === '三叉') lab = '令叉';
-          if (lab.indexOf('喉碼') === 0) lab = '喉碼';
-          if (DS_PA_LABELS.indexOf(lab) < 0) return;
-          const sz = it.size_mm == null ? '' : String(Math.round(Number(it.size_mm)));
-          const resolved = dsPaResolve(lab, sz);
-          DS_PA.answers[i] = {
-            label: lab, size: sz, ai: true, manual: false, note: it.note || '',
-            aiLabel: lab, aiSize: sz,
-            code: resolved.code || '', search: resolved.search || lab, soft: !!(resolved.soft && resolved.soft.length)
-          };
-          applied++;
-        });
-        aiOk = applied > 0;
-        dsPaPersist(true);
-        if (aiOk) toast('AI 認到 ' + applied + ' 個', 1600);
-        else toast('AI 有回但認唔到配件——可再試或人手揀', 3500);
-      } else {
-        const err = (o && o.error) || 'ai_fail';
-        const msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.71+）——撳「人手揀」'
-          : err === 'ai_no_key' ? '未設 AI key——撳「人手揀」'
-          : 'AI 暫時唔得（' + err + '）——可再試或撳「人手揀」';
-        toast(msg, 4500);
-      }
-    } else {
-      toast('未接伺服器——撳「人手揀」', 3000);
-    }
-  } catch (e) {
-    toast('AI 失敗：' + (e && e.message || e) + '——可再試或撳「人手揀」', 4000);
-  }
-  DS_PA.aiBusy = false;
-  DS_PA.aiTried = true;
-  dsPaHideLabelPanel();
-  if (nextBtn) nextBtn.disabled = false;
-  /* 認齊 → 直接加入，唔出選項 */
-  if (aiOk && await dsPaAutoFinishIfReady('AI 完成')) return;
-  /* 失敗／唔齊：留喺畫圈，唔彈下拉（避免「撳分析就畀選項」） */
-  DS_PA.step = 'draw';
-  DS_PA.labelIdx = 0;
-  dsPaUpdateChrome();
-  dsPaRedraw();
-  if (!aiOk) {
-    toast('AI 未得——可再撳「立即分析」；要人手就撳「人手揀」', 4000);
-    return;
-  }
-  const miss = [];
-  DS_PA.answers.forEach((a, i) => { if (!(a && (a.label || a.code))) miss.push(i + 1); });
-  if (miss.length) {
-    toast('第 ' + miss.join('、') + ' 個未認到——可再分析，或撳「人手揀」補', 4000);
-  }
-}
-
-async function dsPaFinish() {
-  dsPaHideLabelPanel();
-  try { await dsPaFlushLearns(); } catch (e) {}
-  const results = [];
-  for (let i = 0; i < DS_PA.circles.length; i++) {
-    const a = DS_PA.answers[i] || {};
-    if (!a.label) { toast('第 ' + (i + 1) + ' 個未揀種類'); DS_PA.labelIdx = i; dsPaShowLabelPanel(); dsPaUpdateChrome(); return; }
-    results.push(Object.assign({ circle: DS_PA.circles[i] }, a));
-  }
-  let added = 0, flags = [];
-  for (const r of results) {
-    let code = r.code || '';
-    let search = r.search || r.label || '';
-    let bill = r.bill || '';
-    if (!code) {
-      const resolved = dsPaResolve(r.label, r.size);
-      flags = flags.concat(resolved.soft || []);
-      if (resolved.ok && resolved.code) {
-        code = resolved.code;
-        search = resolved.search || search;
-      }
-    }
-    if (code) {
-      const it = { code: code, search: search, desc: r.desc || '影相圈選' };
-      if (bill === 'fix' || bill === 'takedown') it.bill = bill;
-      dsAddLine(it);
-      const line = DS.lines.find(l => l.code === code && (!bill || l.bill === bill)) || DS.lines[DS.lines.length - 1];
-      if (line && DS_PA.photoId) {
-        dsEnsureQtyPhotos(line);
-        if (!line.qtyPhotos[0]) line.qtyPhotos[0] = DS_PA.photoId;
-      }
-      added++;
-    } else if (r.label) {
-      flags.push((r.label || '') + '：未對到價目 code');
-    }
-  }
-  const skipped = results.length - added;
-  let msg = '';
-  if (flags.length) {
-    const note = flags.join('；');
-    DS.work_desc = (DS.work_desc ? DS.work_desc + '\n' : '') + '[圈選 soft-flag] ' + note;
-    msg = '已加 ' + added + ' 項' + (skipped ? '（' + skipped + ' 項缺碼未入）' : '') + '；soft-flag 已記';
-  } else if (skipped) {
-    msg = '已加 ' + added + ' 項；另有 ' + skipped + ' 項未入單';
-  } else {
-    msg = '已加 ' + added + ' 項入度數';
-  }
-  dsSaveDraft(true);
-  /* 留喺相繼續圈——唔 unmount／唔跳返度數；關閉先返 */
-  DS_PA.circles = [];
-  DS_PA.answers = [];
-  DS_PA.step = 'draw';
-  DS_PA.labelIdx = 0;
-  DS_PA.drawing = null;
-  DS_PA.moveIdx = -1;
-  DS_PA.resizeIdx = -1;
-  DS_PA.pendingAutoAi = false;
-  DS_PA.cropCache = {};
-  DS_PA.learns = [];
-  DS_PA.softFlags = [];
-  dsPaCancelAutoAi();
-  dsPaHideLabelPanel();
-  dsPaPersist(true);
-  if (document.getElementById('dspa_ov')) {
-    dsPaUpdateChrome();
-    dsPaRedraw();
-    toast(msg + '——可繼續圈，關閉先返度數', 3500);
-  } else {
-    dsPaClearSaved();
-    dsPaUnmount();
-    dsPaint();
-    toast(msg, 2500);
-  }
-}
-
-function dsPaClampView() {
-  const cv = document.getElementById('dspa_cv');
-  if (!cv) return;
-  const v = DS_PA.view;
-  const sc = v.scale || 1;
-  /* 唔好移到完全睇唔到相 */
-  const maxX = cv.width * sc * 0.85;
-  const maxY = cv.height * sc * 0.85;
-  v.tx = Math.max(-maxX, Math.min(maxX, v.tx));
-  v.ty = Math.max(-maxY, Math.min(maxY, v.ty));
-  if (sc <= 1.02) { v.scale = 1; v.tx = 0; v.ty = 0; }
-}
-function dsPaRedraw() {
-  const cv = document.getElementById('dspa_cv');
-  if (!cv || !DS_PA._img) return;
-  const g = cv.getContext('2d');
-  const v = DS_PA.view || { scale: 1, tx: 0, ty: 0 };
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  g.clearRect(0, 0, cv.width, cv.height);
-  g.setTransform(v.scale, 0, 0, v.scale, v.tx, v.ty);
-  g.drawImage(DS_PA._img, 0, 0, cv.width, cv.height);
-  const drawC = (c, col, fill, lw) => {
-    g.beginPath();
-    g.arc(c.cx * cv.width, c.cy * cv.height, c.r * Math.min(cv.width, cv.height), 0, Math.PI * 2);
-    g.strokeStyle = col;
-    g.lineWidth = (lw || 3) / (v.scale || 1);
-    g.stroke();
-    if (fill) { g.fillStyle = fill; g.fill(); }
-  };
-  DS_PA.circles.forEach((c, i) => {
-    const hi = (DS_PA.step === 'label' && i === DS_PA.labelIdx) || DS_PA.moveIdx === i || DS_PA.resizeIdx === i;
-    drawC(c, hi ? '#fbbf24' : '#22c55e', hi ? 'rgba(251,191,36,.25)' : 'rgba(34,197,94,.15)');
-    g.fillStyle = hi ? '#fbbf24' : '#22c55e';
-    g.font = 'bold ' + (16 / (v.scale || 1)) + 'px sans-serif';
-    const ans = DS_PA.answers[i] || {};
-    const lab = ans.label || '';
-    const code = ans.code || '';
-    const tag = lab ? (lab + (code ? ' · ' + code : '') + (ans.size ? ' Ø' + ans.size : '')) : '';
-    const tx = c.cx * cv.width + c.r * Math.min(cv.width, cv.height) + 6;
-    const ty = c.cy * cv.height;
-    g.font = 'bold ' + (13 / (v.scale || 1)) + 'px sans-serif';
-    g.fillText(String(i + 1), c.cx * cv.width + 4, c.cy * cv.height - 4);
-    if (tag) {
-      const fs = 12 / (v.scale || 1);
-      g.font = 'bold ' + fs + 'px sans-serif';
-      const tw = g.measureText(tag).width;
-      const pad = 4 / (v.scale || 1);
-      const bh = fs + pad * 2;
-      g.fillStyle = 'rgba(15,23,42,.78)';
-      g.fillRect(tx - pad, ty - bh / 2, tw + pad * 2, bh);
-      g.fillStyle = ans.soft ? '#fbbf24' : '#a7f3d0';
-      g.fillText(tag, tx, ty + fs * 0.35);
-    }
-  });
-  if (DS_PA.drawing) drawC(DS_PA.drawing, '#38bdf8', 'rgba(56,189,248,.12)');
-  g.setTransform(1, 0, 0, 1, 0, 0);
-}
 /* ---------- v0.6.100 單據報銷（FAN 2026-10-17：開頁出編號；影相→AI加總；Sheet＋Drive；撞單） ----------
    FAN（2026-10-18）：影相上限 20；手機暫存（跟度數：localStorage＋PhotoDB；autosave；送出成功先清；可繼續）。
    FAN 0.6.100：reload／AI 撈緊保相——影相即存 draft；pagehide／visibilitychange flush；AI 前後存；還原時剔冇 blob 嘅 id。
