@@ -373,6 +373,37 @@ a.jump{color:var(--pri);font-weight:700}
 .fseg button{font-size:16px;min-height:46px}
 .frow{border-top:1px dashed #e2e8f0;padding-top:6px;margin-top:6px}
 /* v0.6.198：電腦／闊螢幕大版面（≥900px；手機保持原 720 窄欄） */
+
+/* v0.6.232：問卷頂 CL-A 摘要 + 最底房署實時 PDF */
+.clapanel .clah{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:4px}
+.clapanel .clah b{font-size:16px}
+.clamut{font-size:12px;color:var(--mut);margin-bottom:8px;line-height:1.35}
+.clalist{display:flex;flex-direction:column;gap:2px;max-height:280px;overflow:auto;-webkit-overflow-scrolling:touch}
+.clar{display:grid;grid-template-columns:22px 36px 1fr auto;gap:4px 6px;align-items:center;padding:4px 2px;border-radius:8px;font-size:13px;line-height:1.25}
+.clar.on{background:#f0fdf4}
+.clar.off{opacity:.55}
+.clar.dash{opacity:.45}
+.clar.pend{opacity:.7}
+.clam{font-weight:800;text-align:center;color:#94a3b8}
+.clar.on .clam{color:var(--ok)}
+.clar.dash .clam{color:#64748b}
+.clai{font-weight:800;color:#475569;font-size:12px}
+.claz{font-weight:600;color:#0f172a}
+.clac{font-size:11px;color:var(--mut);font-weight:400}
+.halive{margin:18px 0 40px;padding-top:12px;border-top:2px solid #cbd5e1}
+.halive-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin:0 0 10px}
+.halive-h b{font-size:18px}
+.halive-msg{font-size:14px;color:var(--mut);padding:8px 2px;line-height:1.4}
+.halive-st{font-size:13px;color:#64748b;padding:6px 2px}
+.halive-blk{margin:0 0 16px}
+.halive-t{font-weight:800;font-size:15px;margin:0 0 8px;padding:6px 10px;background:#e2e8f0;border-radius:10px}
+.halive-pg{display:block;width:100%;max-width:720px;margin:0 auto 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.08)}
+.halive-pg.land{max-width:100%}
+@media (min-width:900px){
+  .clalist{max-height:360px}
+  .halive-pg{max-width:900px}
+}
+
 @media (min-width:900px){
   main{max-width:1120px;padding:14px 28px 120px}
   .foot .in{max-width:1120px;padding-left:16px;padding-right:16px}
@@ -417,10 +448,11 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.231';
+const APP_VERSION = '0.6.232';
 /* v0.6.227：AA11／AA12「直砸」→「冇泵」；互斥提示 la 直砸→冇泵 */
 /* v0.6.229：表二 tank／main 壓力1／2←AA11／AA12；流量1／2←AA8 */
 /* v0.6.230：FAN 流量表（LH 225／— … OH4 1800／2100）；1泵／2泵同冇泵接表二；取代工作表3 查表 */
+/* v0.6.232：問卷頂 CL-A 摘要 + 最底全部房署 checklist 實時 PDF */
 /* v0.6.231：消防處 checklist PDF：是／否／不適用 [ ] 框保留；手剔入框（跟 make.py） */
 /* v0.6.228：提交→查看PDF 消防處 checklist 模擬手寫（sim/hwx：辰宇落雁＋ReenieBeanie＋手剔） */
 /* v0.6.226：SPR_TANK有＋M6有 → 花灑 §1.c 剔適用（T） */
@@ -1330,7 +1362,7 @@ function render(toTop) {
   recScrollAt = recScrollKey();
   if (LK || LD) return;
   hydrateThumbs();
-  if (cur.view === 'rec') { markMiss(Store.get(cur.id)); paintOpt(Store.get(cur.id)); }
+  if (cur.view === 'rec') { markMiss(Store.get(cur.id)); paintOpt(Store.get(cur.id)); if (cur.step === 'q' && typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id)); }
   const c = $('.chip.cur'), nav = $('.steps');
   if (c && nav) nav.scrollLeft = c.offsetLeft - nav.clientWidth / 2 + c.clientWidth / 2;
 }
@@ -1456,6 +1488,29 @@ function stepBasic(r) {
   <div class="card"><button class="btn danger" style="width:100%" data-act="delrec">🗑 刪除呢個紀錄</button></div>`;
 }
 /* ----- step: questionnaire ----- */
+/* v0.6.232：問卷頂 CL-A 摘要 + 最底全部房署 checklist 實時 PDF（跟問卷更新） */
+const CLA_HALF_DASH = new Set(['c', 'f', 'h', 'k', 'n', 'o', 'B.a', 'B.b', 'B.c']); /* Appendix C：半年檢呢啲行係「-」 */
+function claMark(r, it) {
+  if (isHalf(r) && CLA_HALF_DASH.has(it.id)) return { mark: '—', cls: 'dash', why: '半年檢唔適用' };
+  if (!it.show_if) return { mark: '✓', cls: 'on', why: '總表' };
+  const a = r.q[it.show_if];
+  if (a === '有') return { mark: '✓', cls: 'on', why: (QBY[it.show_if] || {}).label || it.show_if };
+  if (a === '冇') return { mark: '', cls: 'off', why: ((QBY[it.show_if] || {}).label || it.show_if) + '＝冇' };
+  return { mark: '·', cls: 'pend', why: '問卷未答' };
+}
+function claPanel(r) {
+  const f = FORMS['CL-A']; if (!f || !f.items || !f.items.length) return '';
+  const half = isHalf(r);
+  const rows = f.items.map(it => {
+    const m = claMark(r, it);
+    const cell = it.show_if ? `<span class="clac">${esc(it.show_if)}</span>` : '';
+    return `<div class="clar ${m.cls}" title="${esc(m.why)}"><span class="clam">${esc(m.mark)}</span><span class="clai">${esc(it.id)}</span><span class="claz">${esc(it.zh)}</span>${cell}</div>`;
+  }).join('');
+  const nOn = f.items.filter(it => claMark(r, it).cls === 'on').length;
+  return `<div class="card clapanel" id="cla-panel" aria-label="房署 Check A"><div class="clah"><b>房署 Check A</b><span class="mut">CL-A 總表 · ${nOn}/${f.items.length} ✓${half ? ' · 半年檢' : ''} · 完整版喺下面實時 PDF</span></div>
+    <div class="clamut">跟問卷自動剔（有＝✓）；唔使師傅填。答問卷即時更新；最底有全部房署 checklist 實時 PDF。</div>
+    <div class="clalist">${rows}</div></div>`;
+}
 function qInput(r, it) {
   const v = r.q[it.cell], b = 'q.' + it.cell;
   /* v0.6.137：還原有／冇（是／否／OH）掣；撤銷 0.6.136／137 打剔 UI */
@@ -1471,7 +1526,7 @@ function qInput(r, it) {
   return `<input class="inp ${has(v) ? 'filled' : ''}" data-bind="${b}" value="${esc(v || '')}" placeholder="例：G/F、5/F、R/F">`;
 }
 function stepQ(r) {
-  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。</div>` + QS.map(s => {
+  const qBody = `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。頂部 Check A 摘要同最底房署實時 PDF 跟住更新。</div>` + QS.map(s => {
     const items = s.items.filter(it => qVisible(r, it, s)), OM = optMap(r);
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
@@ -1479,6 +1534,8 @@ function stepQ(r) {
       ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
+  /* v0.6.232：問卷最底＝全部適用房署 checklist 實時 PDF（haLiveRefresh）；CL-A 摘要卡放問卷頂 */
+  return `${claPanel(r)}${qBody}<section class="halive" id="haLive" aria-label="房署 checklist 實時 PDF"><div class="halive-msg">準備實時 PDF…</div></section>`;
 }
 /* ----- fields ----- */
 function irField(bind, v, label) { // v0.4.3：絕緣電阻，可輸入數字或 >100 之類
@@ -2720,7 +2777,8 @@ function lkDetail(d) {
    3) 細公式引擎（IF／IFERROR／VLOOKUP、比較、&、加減乘除）計範本公式
    4) canvas 逐頁畫（A4，150 dpi），自己砌 PDF（每頁一張 JPEG）→ 唔使外部程式庫，離線都用得；中文用手機系統字型畫，一定顯示到
    只係預覽：正式版以 Excel（公司電腦 import_submission.py 出）為準。
-   v0.6.228／0.6.231：消防處年檢核對表模擬手寫；0.6.231 是／否／不適用 [ ] 框保留、剔入框內（跟 make.py）。 */
+   v0.6.228／0.6.231：消防處年檢核對表模擬手寫；0.6.231 是／否／不適用 [ ] 框保留、剔入框內（跟 make.py）。
+   v0.6.232：問卷最底房署 checklist 實時 PDF（haLiveRefresh）。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -3090,7 +3148,7 @@ function xBorder(ctx, b, x1, y1, x2, y2) {
 async function xImg(src) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
 const XIMG = {};
 async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
-  const G = xGeom(S), ranges = xPages(S, G), K = PDF_K, sc = G.sc, ps = S.ps;
+  extra = extra || {}; const G = xGeom(S), ranges = xPages(S, G), K = extra.K || PDF_K, sc = G.sc, ps = S.ps;
   const merged = {}, inMerge = {}, mOf = {}; (S.mg || []).forEach(m => { const [a, b, c, d] = m; merged[a + ',' + b] = m; for (let r = a; r <= c; r++) for (let cc = b; cc <= d; cc++) { mOf[r + ',' + cc] = m; if (r !== a || cc !== b) inMerge[r + ',' + cc] = 1; } });
   const sty = i => XLS.styles[i] || {};
   /* 格：值＋樣式 */
@@ -3211,6 +3269,59 @@ function xPlan(o) {
       if (!on) { na.push([n, why]); return; } }
     inc.push(n); });
   return { inc, na, half };
+}
+
+/* ----- v0.6.232 問卷最底：房署 checklist 實時 PDF（跟問卷／草稿即時重畫；唔包消防處 FSD） ----- */
+let haLiveTok = 0, haLiveT = null, haLiveUrls = [];
+function haLiveRevoke() { haLiveUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); haLiveUrls = []; }
+function haLiveSchedule(r) {
+  if (!r || cur.view !== 'rec' || cur.step !== 'q') return;
+  clearTimeout(haLiveT);
+  haLiveT = setTimeout(() => { haLiveRefresh(r); }, 450);
+}
+async function haLiveRefresh(r) {
+  const box = $('#haLive'); if (!box) return;
+  if (!XLS || !XLS.sheets || !XLS.sheets.length) { box.innerHTML = '<div class="halive-msg">未載入範本版面，實時 PDF 暫時唔得。</div>'; return; }
+  const tok = ++haLiveTok;
+  box.innerHTML = '<div class="halive-msg">畫緊房署 checklist 實時 PDF…</div>';
+  try {
+    const o = await buildExport(Object.assign({}, r, { photos: [] }), new Date());
+    if (tok !== haLiveTok || !$('#haLive')) return;
+    o.photos = [];
+    const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov }, plan = xPlan(o);
+    const sheets = plan.inc.filter(n => !X_FSD.has(n));
+    if (!sheets.length) { haLiveRevoke(); box.innerHTML = '<div class="halive-msg">而家冇適用嘅房署 checklist（睇下檢查類別／問卷）。</div>'; return; }
+    haLiveRevoke();
+    const head = document.createElement('div'); head.className = 'halive-h';
+    head.innerHTML = `<b>房署 checklist 實時 PDF</b><span class="mut">${sheets.length} 份 · 跟問卷即時更新 · 正式版以 Excel 為準</span>`;
+    box.innerHTML = ''; box.appendChild(head);
+    const liveK = Math.max(1, PDF_K * 0.55); /* 預覽略細，手機輕啲 */
+    for (let i = 0; i < sheets.length; i++) {
+      if (tok !== haLiveTok || !$('#haLive')) return;
+      const n = sheets[i]; const S = XL_BY[n]; if (!S) continue;
+      const st = document.createElement('div'); st.className = 'halive-st'; st.textContent = `畫緊 ${n}（${i + 1}/${sheets.length}）…`; box.appendChild(st);
+      await new Promise(res => setTimeout(res, 0));
+      const pages = await xSheetPages(S, B, { dateText: o.inspection_date || '', K: liveK });
+      if (tok !== haLiveTok || !$('#haLive')) { pages.forEach(p => { if (p.cv) { p.cv.width = 1; p.cv.height = 1; } }); return; }
+      st.remove();
+      const blk = document.createElement('div'); blk.className = 'halive-blk';
+      blk.innerHTML = `<div class="halive-t">${esc(n)}${pages.length > 1 ? ` <span class="mut">· ${pages.length} 頁</span>` : ''}</div>`;
+      pages.forEach((p, pi) => {
+        const u = p.cv.toDataURL('image/jpeg', 0.72); p.cv.width = 1; p.cv.height = 1; p.cv = null;
+        const im = document.createElement('img'); im.className = 'halive-pg' + (p.land ? ' land' : ''); im.alt = `${n} 第 ${pi + 1} 頁`; im.src = u;
+        blk.appendChild(im);
+      });
+      box.appendChild(blk);
+    }
+    if (tok === haLiveTok) {
+      const foot = document.createElement('div'); foot.className = 'halive-msg';
+      foot.textContent = `已畫 ${sheets.length} 份：` + sheets.join('、');
+      box.appendChild(foot);
+    }
+  } catch (e) {
+    if (tok !== haLiveTok) return;
+    box.innerHTML = `<div class="halive-msg" style="color:#b91c1c">實時 PDF 出錯：${esc(e.message || e)}</div>`;
+  }
 }
 
 /* ----- 6. 自己嘅頁（封面、消防處核對表 App 記錄、相片附錄） ----- */
@@ -11058,7 +11169,7 @@ function help() {
   <li>主頁撳「＋ 新增一座」，揀屋邨、樓名（可以喺清單揀，或者直接打字）、日期。</li>
   <li>做完一座，下一座可以撳「📋 選擇樓宇」，喺「📱 呢部機」或者「☁️ 上傳紀錄」（公司 Drive，要網址＋PIN）揀返做過嘅一座 →「📋 複製樓宇」（問卷答案會照抄，記得逐條核對）或者「📄 查看 PDF」（睇返成套 check list）。</li>
   <li>「問卷」照公司 Excel 工作表2 答有／冇；答「冇」嘅系統會自動略過。</li>
-  <li>每份表逐項撳 ✓／X／NA。揀 X 一定要寫原因／建議，可以影相。CL-A 總表唔使填（由問卷自動）。</li>
+  <li>每份表逐項撳 ✓／X／NA。揀 X 一定要寫原因／建議，可以影相。「問卷」頂有房署 Check A 摘要；最底有全部適用房署 checklist 實時 PDF（跟問卷更新）。CL-A 唔使師傅填。</li>
   <li>TR-C2、TR-H2 嘅讀數要自己輸入（一個小數位），App 唔會自動填。</li>
   <li>所有嘢自動儲存喺手機，冇網都用得。</li>
   <li>問卷答「有」嘅系統會多出「消防處·…」頁：消防處年檢核對表（照官方通函），逐項揀 是／否／不適用；「否」要寫備註（位置）。</li>
