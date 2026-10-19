@@ -387,7 +387,45 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.154';
+const APP_VERSION = '0.6.192';
+/* v0.6.192：AA40＝泵 → AXV.j／k／l 不適用；上線 */
+/* v0.6.191：AA38＝冇 → A14.9 q_skip */
+/* v0.6.190：A14.8 聯動控制 def_skip */
+/* v0.6.189：A14.6.b def_v NA */
+/* v0.6.188：A14.4 花灑控制板 def_skip */
+/* v0.6.187：A14.1.f／h／i／j def_v NA */
+/* v0.6.186：SPR_WATER_CURTAIN＝冇 → AXIV q_skip */
+/* v0.6.185：AA38＝冇 → A13.6 q_skip（兼 A13.5） */
+/* v0.6.184：AA38＝冇 → A13.5 q_skip */
+/* v0.6.183：AA30＜1 → A13.4.a 不適用 */
+/* v0.6.182：F21＝冇 → A13.3 q_skip（視像警報） */
+/* v0.6.181：F23＝冇 → A13.1.i 不適用 */
+/* v0.6.180：AA30＜1 → AXIII q_skip（流水掣） */
+/* v0.6.179：SPR_UNIT_HEADS＝冇 → AXII q_skip */
+/* v0.6.178：AXI MJC def_skip */
+/* v0.6.177：AX 水柱分隔 def_skip */
+/* v0.6.176：SPR_WATER_CURTAIN＝冇 → AIX q_skip */
+/* v0.6.175：AVIII def_skip（AIII–AVII 已有） */
+/* v0.6.174：AVII def_skip（AIII–AVI 已有） */
+/* v0.6.173：AIII＋AIV＋AV＋AVI def_skip */
+/* v0.6.172：附錄 III（AIII）def_skip */
+/* v0.6.171：A2.9.e／f／i／j def_v NA */
+/* v0.6.170：A2.8.d def_v NA */
+/* v0.6.169：SPR_PUMP_ROOF＝是 → A2.8.c 不適用 */
+/* v0.6.168：AA20＝冇 → A2.8 q_skip（穩壓泵運作） */
+/* v0.6.167：A2.6.k～u def_v NA */
+/* v0.6.166：AA34＝冇 → A2.6.g 不適用（電壓錶） */
+/* v0.6.165：A2.4.i def_v NA */
+/* v0.6.164：AA19＝冇 → A2.4.g 不適用（換迫件） */
+/* v0.6.163：A2.4.d／A2.4.e def_v NA */
+/* v0.6.162：AA29＝冇 → A2.3.b 不適用（彈弓／避震） */
+/* v0.6.161：AA32＝冇 → A2.3.a 不適用（蠟青／泵座） */
+/* v0.6.160：A2.1.c def_v NA；A2.2 整段 def_skip */
+/* v0.6.159：AA20＝冇 → §2／附錄 II（AII）整部不適用 */
+/* v0.6.158：AA25＝冇 → 附錄 I‧A1.g＋A1.h 不適用 */
+/* v0.6.157：AA25＝冇 → 附錄 I‧A1.g 不適用 */
+/* v0.6.156：有花灑泵＋重力供水 → 附錄 I（AI）自動不適用 */
+/* v0.6.155：消防檢日曆查詢預設「全部」顯示（SC.typ=''） */
 /* v0.6.154：AA36 天台缸移近 SPR_TANK；是＋街喉否 → 表二剔 tank 重力供水 */
 /* v0.6.153：問卷「是否由街喉直接供水」（SPR_STREET_MAIN 是／否）→ 表二剔 main */
 /* v0.6.152：AA20＝有 → 表二剔穩壓泵＋花灑泵1／2（編號 1、2） */
@@ -1244,7 +1282,7 @@ const TILES = [
   { act: 'fire', icon: '🧯', name: '消防檢查核對表', sub: '年檢／半年檢、PDF、上傳',
     note: () => { const n = Store.recs.filter(r => status(r) !== 'done').length; return n ? `${n} 份未完成／未上傳` : ''; } },
   { act: 'clock', icon: '⏱️', name: '打卡', sub: '上班／落班' },
-  { act: 'sched', icon: '📅', name: '消防檢日曆查詢', sub: 'Link／季檢／半年／年檢 · 唔顯示過期' },
+  { act: 'sched', icon: '📅', name: '消防檢日曆查詢', sub: '預設全部 · Link／季檢／半年／年檢 · 唔顯示過期' },
   { act: 'wo', icon: '📑', name: 'Work Order 查詢', sub: '搵 WO、帳單狀態' },
   { act: 'pend', icon: '🛠️', name: '待處理工作', sub: 'Defect list、按屋邨睇',
     note: () => { const n = pwCount(pwCache()); return n ? `${n} 項未處理／跟進中` : ''; } },
@@ -1366,6 +1404,8 @@ function qInput(r, it) {
   const segBtn = (val, cls) => `<button class="v-${cls} ${v === val ? 'on' : ''}" data-act="ans" data-bind="${b}" data-v="${esc(val)}">${esc(val)}</button>`;
   if (it.type === 'yn') return `<div class="seg">${segBtn('有', 'yes')}${segBtn('冇', 'no')}</div>`;
   if (it.type === 'sf') return `<div class="seg">${segBtn('是', 'yes')}${segBtn('否', 'no')}</div>`;
+  /* v0.6.192：it.opts 自訂 .seg（例 AA40 水／電／泵） */
+  if (it.type === 'opt' && Array.isArray(it.opts)) return `<div class="seg">${it.opts.map(x => segBtn(x, 'opt')).join('')}</div>`;
   if (it.type === 'hazard') return `<div class="seg">${['LH', 'OH1', 'OH2', 'OH3', 'OH4'].map(x => segBtn(x, 'opt')).join('')}</div>`;
   if (it.type === 'count') return `<div class="stepper"><button data-act="inc" data-bind="${b}" data-d="-1" aria-label="減">−</button><input class="inp ${has(v) ? 'filled' : ''}" inputmode="numeric" data-bind="${b}" data-kind="int" value="${has(v) ? esc(v) : ''}" placeholder="數量"><button data-act="inc" data-bind="${b}" data-d="1" aria-label="加">＋</button></div>`;
   if (it.type === 'bar') return numField(b, v, 'bar', '', true);
@@ -1556,8 +1596,13 @@ function qFsdMapBuild() {
     const walk = s => {
       if (s.q_skip && s.q_skip[0]) {
         const qs = s.q_skip;
-        const ans = qs.length >= 3 && qs[1] === 'lt' ? ('<' + qs[2]) : (qs[1] != null && qs[1] !== '' ? qs[1] : '冇');
-        ens(qs[0]).skips.push({ sh, id: s.id, ans });
+        if (qs[0] === 'and' && Array.isArray(qs[1])) {
+          const ans = qs.slice(1).map(p => (p[0] || '') + '＝' + (p[1] != null ? p[1] : '')).join('＋');
+          qs.slice(1).forEach(p => { if (p && p[0]) ens(p[0]).skips.push({ sh, id: s.id, ans }); });
+        } else {
+          const ans = qs.length >= 3 && qs[1] === 'lt' ? ('<' + qs[2]) : (qs[1] != null && qs[1] !== '' ? qs[1] : '冇');
+          ens(qs[0]).skips.push({ sh, id: s.id, ans });
+        }
       }
       (s.items || []).forEach(it => {
         if (it.q_def && it.q_def[0]) {
@@ -1593,10 +1638,15 @@ function qFsdHintHtml(cell) {
   return `<div class="qfsd">${esc(parts.join(' · '))}</div>`;
 }
 const FSD_V = { Y: '是', N: '否', NA: '不適用', T: '✓' };
-/* v0.6.143：q_skip 支援 [cell, ans] 全等，或 [cell, 'lt', n]（已答且 Number(答) < n → 整部不適用；未答唔觸發） */
+/* v0.6.143：q_skip 支援 [cell, ans] 全等，或 [cell, 'lt', n]（已答且 Number(答) < n → 整部不適用；未答唔觸發）
+   v0.6.156：['and', [cell, ans], …] → 全部條件齊先整部不適用（例：AA20有＋天台缸＋街喉否 → 附錄 I） */
 const qSkipMatch = (s, r) => {
   if (!s.q_skip || !r) return false;
-  const qs = s.q_skip, qv = r.q[qs[0]];
+  const qs = s.q_skip;
+  if (qs[0] === 'and' && Array.isArray(qs[1])) {
+    return qs.slice(1).every(p => p && r.q[p[0]] === p[1]);
+  }
+  const qv = r.q[qs[0]];
   if (qs.length >= 3 && qs[1] === 'lt') {
     if (!has(qv)) return false;
     const n = Number(qv);
@@ -1607,6 +1657,7 @@ const qSkipMatch = (s, r) => {
 const qSkipLabel = s => {
   if (!s.q_skip) return '';
   const qs = s.q_skip;
+  if (qs[0] === 'and' && Array.isArray(qs[1])) return qs.slice(1).map(p => `${p[0]}＝${p[1]}`).join('＋');
   if (qs.length >= 3 && qs[1] === 'lt') return `${qs[0]}＜${qs[2]}`;
   return `${qs[0]}＝${qs[1]}`;
 };
@@ -3877,11 +3928,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target &&
 window.addEventListener('hashchange', () => { if (cur.view !== 'clock') { cksReset(); if (CK.step === 'stat') CK.step = 'home'; } });
 (function () { try { const st = document.createElement('style'); st.textContent = '.cksbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.cksbar input[type=date]{font-size:17px;padding:6px;border:1px solid var(--line);border-radius:8px}.cksbar #cksreload{margin-left:auto}.ckscnt{margin:6px 0 10px;font-size:15px}.cksc-none{color:#6b7280}.cksc-open{color:#b45309}.cksc-done{color:#15803d}.cksrow .t{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}.cksl{margin:2px 0}.cksl .ckin,.cksl .ckout{display:inline-block;min-width:38px;font-weight:700}.cksb-none{background:#f3f4f6;color:#374151}.cksb-open{background:#fef3c7;color:#92400e}.cksb-done{background:#dcfce7;color:#166534}.cksrow.cks-open{border:2px solid #f59e0b;background:#fffbeb}.cksmiss{color:#b91c1c;font-weight:700}.cksdet{margin-top:4px;font-size:14px}'; document.head.appendChild(st); } catch (e) {} })();
 
-/* ---------- v0.6.87 📅 消防檢日曆查詢（只讀）----------
+/* ---------- v0.6.87／0.6.155 📅 消防檢日曆查詢（只讀）----------
    資料：RM Schedule Link (FS) + Kit Fax → fs_schedule.json（TNS）；Apps Script data/fs_schedule。
    v0.6.87：日曆各類檢（Link／季檢／半年檢／年檢）預設顯示樓名＋直線號碼。 */
 const LS_SC = 'fsapp20259005.sched.v1', SC_MAX = 60;
-let SC = { loading: false, err: '', errCode: '', live: false, m: '', q: '', g: '', est: '', loc: '', typ: 'link' }; /* typ: ''全部 | link | quarter | half | annual */
+let SC = { loading: false, err: '', errCode: '', live: false, m: '', q: '', g: '', est: '', loc: '', typ: '' }; /* v0.6.155：預設全部；typ: ''全部 | link | quarter | half | annual */
 const SC_MSG = {
   bad_action: '公司伺服器（Apps Script）仲係舊版，未有「消防檢日曆查詢」功能。要更新到 v1.5（重新部署）先用得；更新之後唔使改任何設定。',
   not_found: '公司 Drive 未有消防檢日曆（fs_schedule.json 未上載）。',
@@ -3915,11 +3966,11 @@ function scNorm(data) { /* 接受 {records:[…]} 或 array；只讀需要嘅欄
   }));
 }
 const SC_TYPS = [
+  { v: '', t: '全部', c: '#64748b' },
   { v: 'link', t: 'Link test', c: '#2563eb' },
   { v: 'quarter', t: '季檢', c: '#7c3aed' },
   { v: 'half', t: '半年檢', c: '#ea580c' },
-  { v: 'annual', t: '年檢', c: '#16a34a' },
-  { v: '', t: '全部', c: '#64748b' }
+  { v: 'annual', t: '年檢', c: '#16a34a' }
 ];
 const SC_COL = { link: '#2563eb', quarter: '#7c3aed', half: '#ea580c', annual: '#16a34a' };
 function scCol(tp) { return SC_COL[tp] || '#64748b'; }
