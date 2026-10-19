@@ -387,8 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.148';
-/* v0.6.148：取消 F31；F30↔水簾；表二 floors／高度米／供水來源✓ 置頂可見 */
+const APP_VERSION = '0.6.149';
+/* v0.6.149：表二每 systems[i] 必出高度／floors／供水來源✓（sprT2OneHtml） */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1906,6 +1906,48 @@ function fsdItemHtml(r, c, s, it) {
       : `<button class="lnk" data-act="fsdnote" data-c="${c.key}" data-k="${esc(it.k)}">＋ 備註</button>`}</div>`;
 }
 const fNum = (bind, v, unit, label) => numField(bind, v, unit, label, false);
+
+/* v0.6.149：每份表二獨立組 HTML（避免 nested template 漏欄）；floors／高度（米）／供水來源✓ 必出 */
+function sprT2OneHtml(r, c, b, z, i, N) {
+  const zb = b + '.sitems.' + i, src = (z && z.src) || {};
+  const head = N > 1
+    ? ('表二　供水流量和壓力測試記錄（系統 ' + (i + 1) + '／' + N + '）')
+    : '表二　供水流量和壓力測試記錄';
+  const tip = (N > 1 ? ('共 ' + N + ' 個花灑系統；') : '')
+    + '「所覆蓋的樓層」跟表一／問卷「控制閥所覆蓋的樓層／位置／區域」（兩邊改一邊另一方跟）。';
+  let srcHtml = '';
+  sprSrc(r).forEach(([k, l, n, numbered]) => {
+    const v = src[k] || {}, sb = zb + '.src.' + k;
+    let body = '';
+    if (v.on) {
+      if (n) body += '<div class="opth" data-optfor="' + sb + '.f1"></div>';
+      if (numbered) body += txtField(sb + '.no', v.no, String(l).replace('：', ''), '例：1');
+      if (!n) {
+        body += '<div class="g2"><div class="fld"><label>流量（升／分鐘）</label><div class="inp" style="color:#64748b">不適用</div></div>'
+          + fNum(sb + '.p1', v.p1, '', '壓力（巴）') + '</div>';
+      } else {
+        for (let j = 1; j <= n; j++) {
+          body += '<div class="g2">'
+            + fNum(sb + '.f' + j, v['f' + j], '', '流量 ' + j + '（升／分鐘）')
+            + fNum(sb + '.p' + j, v['p' + j], '', '壓力 ' + j + '（巴）')
+            + '</div>';
+        }
+      }
+    }
+    srcHtml += '<div class="fsrc ' + (v.on ? 'on' : '') + '">'
+      + '<button type="button" class="fchk ' + (v.on ? 'on' : '') + '" data-act="ans" data-bind="' + sb + '.on" data-v="1">'
+      + (v.on ? '☑' : '☐') + ' ' + esc(l) + (numbered && has(v.no) ? (' ' + esc(v.no)) : '') + '</button>'
+      + body + '</div>';
+  });
+  return '<div class="sub" id="ft-' + c.key + '-s' + i + '"><h4>' + esc(head) + '</h4>'
+    + '<div class="mut" style="margin-bottom:6px">' + tip + '</div>'
+    + txtField(zb + '.floors', z && z.floors, '所覆蓋的樓層', '例：G/F–3/F')
+    + fNum(zb + '.height', z && z.height, '米', '花灑控制閥與所屬最高的花灑的高度（米）')
+    + '<div class="mut" style="margin:10px 0 4px;font-weight:700">供水來源（在適用的供水來源種類內加上「✓」）</div>'
+    + (noSprTank(r) ? '<div class="notank">冇花灑水缸 → 花灑泵 1／2、花灑中途泵 1／2 已隱藏（提交記 NA）</div>' : '')
+    + srcHtml + '</div>';
+}
+
 function fsdTableHtml(r, c, s) {
   const d = fsdGet(r, c.key), t = d.t || {}, b = `fsd.${c.key}.t`;
   const seg = (bind, val, opts, id) => `<div class="seg fseg" ${id ? `id="${id}"` : ''}>${opts.map(([x, l, cl]) => `<button class="v-${cl || 'opt'} ${val === x ? 'on' : ''}" data-act="ans" data-bind="${bind}" data-v="${esc(x)}">${esc(l || x)}</button>`).join('')}</div>`;
@@ -1956,24 +1998,17 @@ function fsdTableHtml(r, c, s) {
     }).join('')}${N > 1 ? `<div class="mut" style="margin-top:6px">要加／減系統份數：改問卷花灑系統數量（而家 ${N}）。減數量會刪走後面系統已填資料。</div>` : ''}</div>`;
   }
   if (s.table === 'spr_t2') {
-    /* v0.6.148：每份表二必顯示：所覆蓋的樓層（↔cover）、高度（米）、供水來源 ✓；欄位全寬置頂 */
-    const its = sprT2Sync(r), N = its.length;
-    return `<div id="ft-${c.key}-t2">${its.map((z, i) => { const zb = `${b}.sitems.${i}`, src = z.src || {};
-      const head = N > 1 ? `表二　供水流量和壓力測試記錄（系統 ${i + 1}／${N}）` : '表二　供水流量和壓力測試記錄';
-      return `<div class="sub" id="ft-${c.key}-s${i}"><h4>${esc(head)}</h4>
-        <div class="mut" style="margin-bottom:6px">${N > 1 ? `共 ${N} 個花灑系統；` : ''}「所覆蓋的樓層」跟表一／問卷「控制閥所覆蓋的樓層／位置／區域」（兩邊改一邊另一方跟）。</div>
-        ${txtField(zb + '.floors', z.floors, '所覆蓋的樓層', '例：G/F–3/F')}
-        ${fNum(zb + '.height', z.height, '米', '花灑控制閥與所屬最高的花灑的高度')}
-        <div class="mut" style="margin:10px 0 4px;font-weight:700">供水來源（在適用的供水來源種類內加上「✓」）</div>
-        ${noSprTank(r) ? `<div class="notank">冇花灑水缸 → 花灑泵 1／2、花灑中途泵 1／2 已隱藏（提交記 NA）</div>` : ''}
-        ${sprSrc(r).map(([k, l, n, numbered]) => { const v = src[k] || {}, sb = `${zb}.src.${k}`;
-          return `<div class="fsrc ${v.on ? 'on' : ''}"><button type="button" class="fchk ${v.on ? 'on' : ''}" data-act="ans" data-bind="${sb}.on" data-v="1">${v.on ? '☑' : '☐'} ${esc(l)}${numbered && has(v.no) ? ' ' + esc(v.no) : ''}</button>
-          ${v.on ? `${n ? `<div class="opth" data-optfor="${sb}.f1"></div>` : ''}${numbered ? txtField(sb + '.no', v.no, l.replace('：', ''), '例：1') : ''}
-            ${!n ? `<div class="g2"><div class="fld"><label>流量（升／分鐘）</label><div class="inp" style="color:#64748b">不適用</div></div>${fNum(sb + '.p1', v.p1, '', '壓力（巴）')}</div>`
-              : Array.from({ length: n }, (_, j) => `<div class="g2">${fNum(`${sb}.f${j + 1}`, v['f' + (j + 1)], '', `流量 ${j + 1}（升／分鐘）`)}${fNum(`${sb}.p${j + 1}`, v['p' + (j + 1)], '', `壓力 ${j + 1}（巴）`)}</div>`).join('')}` : ''}</div>`; }).join('')}</div>`; }).join('')}
-      ${N > 1 ? `<div class="mut" style="margin-top:6px">要加／減系統份數：改問卷花灑系統數量（而家 ${N}）。減數量會刪走後面系統已填資料。</div>` : ''}
-      <div class="mut" style="margin-top:6px">讀數由師傅實測輸入（一個小數位）。水泵／中途泵有 3 組空格（照表），最少填第 1、2 組（註 2：兩項額定流量特點）；App 唔會自動填任何數值。</div></div>`;
+    /* v0.6.149：每份 systems[i] 用 sprT2OneHtml（floors／高度／供水來源✓） */
+    const its = sprT2Sync(r), N = Math.max(1, its.length);
+    let parts = '';
+    for (let i = 0; i < N; i++) parts += sprT2OneHtml(r, c, b, its[i] || {}, i, N);
+    const foot = (N > 1
+      ? ('<div class="mut" style="margin-top:6px">要加／減系統份數：改問卷花灑系統數量（而家 ' + N + '）。減數量會刪走後面系統已填資料。</div>')
+      : '')
+      + '<div class="mut" style="margin-top:6px">讀數由師傅實測輸入（一個小數位）。水泵／中途泵有 3 組空格（照表），最少填第 1、2 組（註 2：兩項額定流量特點）；App 唔會自動填任何數值。</div>';
+    return '<div id="ft-' + c.key + '-t2">' + parts + foot + '</div>';
   }
+
   if (s.table === 'fds_t1') {
     const f = t.fds || {};
     return `<div id="ft-${c.key}">${FDS_T1.map(([g, l, n, main]) => `<div class="sub"><h4>${g}. ${esc(l)}</h4>${Array.from({ length: n }, (_, j) => { const id = g + '.' + 'abcde'[j], x = f[id] || {}, rb = `${b}.fds.${id.replace('.', '~')}`;
