@@ -387,8 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.144';
-/* v0.6.143：spr AA25→6.1.h+6.2.d+9.f+9.g；AA38→8.f+9.h；AA20「有冇花灑泵」→11.c/d/e/f；11.g／11.h def_v NA；取消 AA27；AA28 dep AA31>0→9.c；AA31＜1→§9；6.3／6.4／6.5／§7／§10.2 def_skip；水簾→6.6；放水掣→8.c；10.1.c／10.1.d／10.3.b def_v NA；保留 6.2.c／6.1.f／§5／Inlet／multi／4.i／j／k／m */
+const APP_VERSION = '0.6.145';
+/* v0.6.145：花灑 表一　設備明細表跟 SPR_MULTI_SYS 開 N 份（systems[]）；疊喺 0.6.144 shellBump 上 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -798,7 +798,7 @@ function normFloor(s) { // 有其他字（例如 天台、Roof、Pump Room、G/F
 // 邊啲欄位係樓層：pure＝淨係樓層（預設數字鍵盤＋ABC 切換）；mix＝樓層／位置（文字鍵盤，淨係樓層先會補 /F，其他字唔郁）
 const FLOOR_PURE = [/^h2\.zones\.\d+\.(from|to)$/, /^h2\.zones\.\d+\.(top|low)\.floor$/, /^h2\.parity\.\d+\.floor$/,
   /^fsd\.\w+\.t\.zones\.\d+\.(from|to|floor)$/, /^fsd\.\w+\.t\.sitems\.\d+\.floors$/];
-const FLOOR_MIX = [/^fsd\.\w+\.t\.rows\.\d+\.(pfloor|tfloor|loc)$/, /^fsd\.\w+\.t\.valves\.\d+\.(floor|cover)$/, /^fsd\.\w+\.t\.fds\.[^.]+\.loc$/, /^c2\..*\.loc$/];
+const FLOOR_MIX = [/^fsd\.\w+\.t\.rows\.\d+\.(pfloor|tfloor|loc)$/, /^fsd\.\w+\.t\.valves\.\d+\.(floor|cover)$/, /^fsd\.\w+\.t\.systems\.\d+\.valves\.\d+\.(floor|cover)$/, /^fsd\.\w+\.t\.fds\.[^.]+\.loc$/, /^c2\..*\.loc$/];
 let FLOOR_Q = null; // 問卷 type=floor（M13/M14/AA17/AA18）
 function floorKind(bind) {
   if (!bind) return null;
@@ -1367,7 +1367,7 @@ function stepQ(r) {
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
     return `<div class="card" id="sec-${s.key}"><h3>${esc(s.title)} <span class="mut">${p}/${need}</span></h3>
-      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
+      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
 }
@@ -1681,11 +1681,81 @@ const fsdCode = (s, it) => it.id ? `${s.id} ${it.id}` : s.id;
 const FH_SRC = [['jockey', '穩壓泵'], ['fix1', '1號固定消防泵'], ['fix2', '2號固定消防泵'], ['bst1', '1號中途泵'], ['bst2', '2號中途泵'], ['tank', '消防水缸重力供水']];
 const SPR_VT = [['W', 'W 濕式'], ['D', 'D 乾式'], ['NI', 'NI 非聯鎖預作用式'], ['SI', 'SI 單聯鎖預作用式'], ['DI', 'DI 雙聯鎖預作用式'], ['R', 'R 循環式'], ['Del', 'Del 雨淋式']];
 const SPR_TOT = [['wcpd', '水柱分隔裝置', '7'], ['flow', '流水掣', '8'], ['zone', '分區／層開關閥', '9']];
+/* v0.6.145：表一 設備明細表跟 SPR_MULTI_SYS 開 N 份（N=max(1,count)；未答／0→1；上限 20） */
+const SPR_T1_MAX = 20;
+function sprT1N(r) {
+  if (!r || r.q.AA6 !== '有') return 1;
+  const raw = r.q.SPR_MULTI_SYS;
+  if (!has(raw)) return 1;
+  const n = Number(raw);
+  if (Number.isNaN(n) || n < 1) return 1;
+  return Math.min(SPR_T1_MAX, Math.floor(n));
+}
+function sprT1NoLabel(si) { return '花灑 ' + (si + 1); } /* 第 i 份表一 →「花灑 i+1」 */
+function sprT1ValveDef(x, si) {
+  /* v0.6.145：種類預設 W 濕式；第一行編號預設「花灑 N」（師傅改過保留） */
+  const o = x && typeof x === 'object' ? Object.assign({}, x) : {};
+  if (!has(o.type)) o.type = 'W';
+  return o;
+}
+function sprT1SysDef(si, s) {
+  const valves = (Array.isArray((s || {}).valves) ? s.valves : []).map(x => sprT1ValveDef(x, si));
+  if (!valves.length) valves.push({ type: 'W', no: sprT1NoLabel(si) });
+  else if (!has(valves[0].no)) valves[0].no = sprT1NoLabel(si);
+  return { valves, totals: ((s || {}).totals && typeof s.totals === 'object') ? s.totals : {} };
+}
+function sprT1Migrate(t) {
+  if (Array.isArray(t.systems) && t.systems.length) return t.systems.map((s, si) => sprT1SysDef(si, s));
+  return [sprT1SysDef(0, { valves: t.valves, totals: t.totals })];
+}
+function sprT1Sync(r) {
+  /* 同步 systems 長度＝N；加則補空表（預設第一行編號「花灑 N」＋種類 W）；減則只留前 N
+     只喺 AA6＝有 先改長度（唔會因為閘關咗而刪走已填系統） */
+  if (!r) return [];
+  const d = fsdRec(r, 'spr'), t = d.t;
+  let sys = sprT1Migrate(t);
+  if (r.q.AA6 === '有') {
+    const N = sprT1N(r);
+    while (sys.length < N) sys.push(sprT1SysDef(sys.length, { valves: [], totals: {} }));
+    if (sys.length > N) sys = sys.slice(0, N);
+    /* 縮完再確保每份第一行編號（空先填；已填唔改） */
+    sys = sys.map((s, si) => sprT1SysDef(si, s));
+  }
+  if (!sys.length) sys = [sprT1SysDef(0, { valves: [], totals: {} })];
+  t.systems = sys;
+  t.valves = sys[0].valves;
+  t.totals = sys[0].totals;
+  return t.systems;
+}
+function sprSysFloorHtml(r) {
+  /* v0.6.145：問卷 SPR_MULTI_SYS 下每系統：位置／覆蓋／設備總數量；直綁 systems[i] valves[0]＋totals（同表一兩向） */
+  if (!r || r.q.AA6 !== '有') return '';
+  const systems = sprT1Sync(r);
+  return `<div class="sub" style="margin-top:8px"><div class="mut" style="margin-bottom:4px">每系統控制閥位置／覆蓋／設備總數量（對應表一每份）</div>${systems.map((sys, si) => {
+    const v0 = (sys.valves || [])[0] || {}, tot = sys.totals || {};
+    const bf = `fsd.spr.t.systems.${si}.valves.0.floor`, bc = `fsd.spr.t.systems.${si}.valves.0.cover`;
+    const tb = `fsd.spr.t.systems.${si}.totals`;
+    return `<div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0"><div class="mut" style="font-weight:600;margin-bottom:4px">${esc(sprT1NoLabel(si))}</div>
+      ${txtField(bf, v0.floor, '控制閥所處樓層／位置', '例：G/F 泵房')}
+      ${txtField(bc, v0.cover, '控制閥所覆蓋的樓層／位置／區域', '例：G/F–3/F 商場')}
+      <div class="mut" style="margin:8px 0 4px">說明 · 設備總數量</div>
+      <div class="g3">${SPR_TOT.map(([f, l]) => `<div class="fld"><label>${esc(l)}</label><input class="inp ${has(tot[f]) ? 'filled' : ''}" inputmode="numeric" data-bind="${tb}.${f}" data-kind="int" value="${has(tot[f]) ? esc(tot[f]) : ''}" placeholder="0"></div>`).join('')}</div></div>`;
+  }).join('')}</div>`;
+}
 const SPR_SRC = [['jockey', '穩壓泵', 0], ['pump1', '花灑泵編號：', 3, 1], ['pump2', '花灑泵編號：', 3, 1], ['bst1', '花灑中途泵編號：', 3, 1], ['bst2', '花灑中途泵編號：', 3, 1], ['tank', '花灑水缸重力供水', 2], ['main', '由街喉直接供水', 2]];
 const sprSrc = r => noSprTank(r) ? SPR_SRC.filter(([k]) => !NOTANK_SRC.includes(k)) : SPR_SRC; // 冇花灑水缸 → 表二唔顯示花灑泵／中途泵
 function fsdTablesOut(r, c, d) { // 提交用：隱藏咗嘅來源記 NA（App 入面舊數保留，改返「有」會見返）
   const t = JSON.parse(JSON.stringify(d.t || {}));
-  if (c.key === 'spr' && noSprTank(r)) (t.sitems || []).forEach(z => { if (!z) return; z.src = z.src || {}; NOTANK_SRC.forEach(k => { z.src[k] = { na: true, why: '冇花灑水缸（已隱藏）' }; }); });
+  if (c.key === 'spr') {
+    /* v0.6.145：表一多系統 → tables.systems[]；同時鏡射 systems[0]→valves/totals 畀舊 importer */
+    if (Array.isArray(t.systems) && t.systems.length) {
+      t.valves = (t.systems[0] && t.systems[0].valves) || [];
+      t.totals = (t.systems[0] && t.systems[0].totals) || {};
+    } else if (t.valves || t.totals) {
+      t.systems = [{ valves: t.valves || [], totals: t.totals || {} }];
+    }
+    if (noSprTank(r)) (t.sitems || []).forEach(z => { if (!z) return; z.src = z.src || {}; NOTANK_SRC.forEach(k => { z.src[k] = { na: true, why: '冇花灑水缸（已隱藏）' }; }); });
+  }
   return t;
 }
 const FDS_T1 = [['1', '消防控制和指示板', 5, true], ['2', '覆示裝置控制板', 2], ['3', '模擬面板', 1], ['4', '外置充電器及電池', 5]];
@@ -1710,11 +1780,16 @@ function fsdTableMissing(r, c, s) {
     const need = s.table === 'tank_t1' ? [['loc', '水缸位置'], ['qty', '數量'], ['cap', '存水量'], ['use', '用途'], ['kind', '種類']] : [['no', '水泵編號'], ['pfloor', '上水泵位置'], ['tank', '注水水缸'], ['bar', '出水壓力']];
     rows.forEach((x, i) => need.forEach(([f, l]) => { if (!has(x[f])) out.push({ code: `表一 第${i + 1}行 ${l}`, sel: (f === 'use' || f === 'kind') ? `#ft-${c.key}-r${i}-${f}` : `[data-bind="${b}.rows.${i}.${f}"]` }); }));
   } else if (s.table === 'spr_t1') {
-    const rows = (t.valves || []).map(x => x || {});
-    if (!rows.length) out.push({ code: '表一 未加花灑控制閥', sel: '#ft-' + c.key + '-t1' });
-    rows.forEach((x, i) => [['no', '花灑控制閥編號'], ['type', '種類'], ['floor', '控制閥所處樓層／位置']].forEach(([f, l]) => { if (!has(x[f])) out.push({ code: `表一 第${i + 1}行 ${l}`, sel: f === 'type' ? `#ft-${c.key}-v${i}-type` : `[data-bind="${b}.valves.${i}.${f}"]` }); }));
+    const systems = sprT1Sync(r), N = systems.length;
     const sk = {}; fsdWalk(c, d, (x, dep, skp) => { sk[x.id] = skp; }, fsdIsOff(r, c), fsdHide(r, c), r);
-    SPR_TOT.forEach(([f, l, sid]) => { if (!sk[sid] && !has((t.totals || {})[f])) out.push({ code: `表一 ${l} 設備總數量`, sel: `[data-bind="${b}.totals.${f}"]` }); });
+    systems.forEach((sys, si) => {
+      const pref = N > 1 ? `表一 系統${si + 1} ` : '表一 ';
+      const sb = `${b}.systems.${si}`;
+      const rows = (sys.valves || []).map(x => x || {});
+      if (!rows.length) out.push({ code: pref + '未加花灑控制閥', sel: `#ft-${c.key}-t1-s${si}` });
+      rows.forEach((x, i) => [['no', '花灑控制閥編號'], ['type', '種類'], ['floor', '控制閥所處樓層／位置']].forEach(([f, l]) => { if (!has(x[f])) out.push({ code: `${pref}第${i + 1}行 ${l}`, sel: f === 'type' ? `#ft-${c.key}-s${si}-v${i}-type` : `[data-bind="${sb}.valves.${i}.${f}"]` }); }));
+      SPR_TOT.forEach(([f, l, sid]) => { if (!sk[sid] && !has((sys.totals || {})[f])) out.push({ code: `${pref}${l} 設備總數量`, sel: `[data-bind="${sb}.totals.${f}"]` }); });
+    });
   } else if (s.table === 'spr_t2') {
     const its = (t.sitems || []).map(x => x || {});
     if (!its.length) out.push({ code: '表二 未加項目', sel: '#ft-' + c.key + '-t2' });
@@ -1744,7 +1819,7 @@ function fsdMissing(r, key) {
     if (!a.v && fsdItemOpt(M, c, s)) return;
     if (!a.v) out.push({ code: fsdCode(s, it), sel: '#' + fsdDom(key, it.k) });
     else if (a.v === 'N' && !has((a.note || '').trim())) out.push({ code: fsdCode(s, it) + '（否 未寫備註）', sel: '#' + fsdDom(key, it.k) }); });
-  if (!fsdIsOff(r, c)) fsdTables(c).forEach(s => out.push(...fsdTableMissing(r, c, s)));
+  if (!fsdIsOff(r, c)) { if (key === 'spr') sprT1Sync(r); fsdTables(c).forEach(s => out.push(...fsdTableMissing(r, c, s))); }
   return out;
 }
 function fsdProg(r, key) {
@@ -1803,14 +1878,21 @@ function fsdTableHtml(r, c, s) {
       ${!tk ? '<div class="mut" style="margin-top:6px">「抄問卷」只係抄你自己喺問卷輸入嘅讀數／樓層，只填空格。</div>' : ''}</div>`;
   }
   if (s.table === 'spr_t1') {
-    const rows = (t.valves || []).map(x => x || {}), tot = t.totals || {};
-    return `<div id="ft-${c.key}-t1">${rows.map((x, i) => { const rb = `${b}.valves.${i}`;
-      return `<div class="sub"><h4>第 ${i + 1} 行</h4><div class="g2">${txtField(rb + '.no', x.no, '花灑控制閥編號', '例：1')}${txtField(rb + '.floor', x.floor, '控制閥所處樓層／位置', '例：G/F 泵房')}</div>
-        <div class="fld"><label>種類</label>${seg(rb + '.type', x.type, SPR_VT.map(([v, l]) => [v, l]), `ft-${c.key}-v${i}-type`)}</div>
-        ${txtField(rb + '.cover', x.cover, '控制閥所覆蓋的樓層／位置／區域', '例：G/F–3/F 商場')}</div>`; }).join('')}
-      <div class="row"><button class="btn sm" data-act="fsdrow" data-c="${c.key}" data-t="valves" data-d="1">＋ 加花灑控制閥</button>${rows.length ? `<button class="btn sm danger" data-act="fsdrow" data-c="${c.key}" data-t="valves" data-d="-1">− 刪最後一行</button>` : ''}</div>
-      <div class="sub"><h4>說明 · 設備總數量</h4><div class="g3">${SPR_TOT.map(([f, l]) => `<div class="fld"><label>${esc(l)}</label><input class="inp ${has(tot[f]) ? 'filled' : ''}" inputmode="numeric" data-bind="${b}.totals.${f}" data-kind="int" value="${has(tot[f]) ? esc(tot[f]) : ''}" placeholder="0"></div>`).join('')}</div>
-      <div class="mut">相關部分（7、8、9）揀咗「不適用」就唔使填。</div></div></div>`;
+    /* v0.6.145：跟 SPR_MULTI_SYS 開 N 份表一；標「表一　設備明細表（系統 i／N）」 */
+    const systems = sprT1Sync(r), N = systems.length;
+    return `<div id="ft-${c.key}-t1">${systems.map((sys, si) => {
+      const rows = (sys.valves || []).map(x => x || {}), tot = sys.totals || {}, sb = `${b}.systems.${si}`;
+      const head = N > 1 ? `表一　設備明細表（系統 ${si + 1}／${N}）` : '花灑控制閥';
+      return `<div class="sub" id="ft-${c.key}-t1-s${si}"><h4>${esc(head)}</h4>
+        ${N > 1 ? `<div class="mut" style="margin-bottom:6px">共 ${N} 個花灑系統；每系統各自填控制閥同設備總數量。</div>` : ''}
+        ${rows.map((x, i) => { const rb = `${sb}.valves.${i}`;
+          return `<div class="sub"><h4>第 ${i + 1} 行</h4><div class="g2">${txtField(rb + '.no', x.no, '花灑控制閥編號', '例：1')}${txtField(rb + '.floor', x.floor, '控制閥所處樓層／位置', '例：G/F 泵房')}</div>
+            <div class="fld"><label>種類</label>${seg(rb + '.type', x.type, SPR_VT.map(([v, l]) => [v, l]), `ft-${c.key}-s${si}-v${i}-type`)}</div>
+            ${txtField(rb + '.cover', x.cover, '控制閥所覆蓋的樓層／位置／區域', '例：G/F–3/F 商場')}</div>`; }).join('')}
+        <div class="row"><button class="btn sm" data-act="fsdrow" data-c="${c.key}" data-t="valves" data-sys="${si}" data-d="1">＋ 加花灑控制閥</button>${rows.length ? `<button class="btn sm danger" data-act="fsdrow" data-c="${c.key}" data-t="valves" data-sys="${si}" data-d="-1">− 刪最後一行</button>` : ''}</div>
+        <div class="sub"><h4>說明 · 設備總數量</h4><div class="g3">${SPR_TOT.map(([f, l]) => `<div class="fld"><label>${esc(l)}</label><input class="inp ${has(tot[f]) ? 'filled' : ''}" inputmode="numeric" data-bind="${sb}.totals.${f}" data-kind="int" value="${has(tot[f]) ? esc(tot[f]) : ''}" placeholder="0"></div>`).join('')}</div>
+        <div class="mut">相關部分（7、8、9）揀咗「不適用」就唔使填。</div></div></div>`;
+    }).join('')}${N > 1 ? `<div class="mut" style="margin-top:6px">要加／減系統份數：改問卷花灑系統數量（而家 ${N}）。減數量會刪走後面系統已填資料。</div>` : ''}</div>`;
   }
   if (s.table === 'spr_t2') {
     const its = (t.sitems || []).map(x => x || {});
@@ -1835,7 +1917,7 @@ function fsdTableHtml(r, c, s) {
   return '';
 }
 function stepFsd(r, key) {
-  const c = FSD_BY[key]; fsdMigrateStale(r, c); const d = fsdGet(r, key);
+  const c = FSD_BY[key]; fsdMigrateStale(r, c); if (key === 'spr') sprT1Sync(r); const d = fsdGet(r, key);
   const act = fsdActive(r, c), M0 = optMap(r), un = act.filter(([s, it]) => !fsdEff(r, c, s, it, M0).v).length;
   const off = fsdIsOff(r, c);
   let body = '';
@@ -1888,8 +1970,26 @@ async function fsdAct(act, el, r) {
     const list = fsdActive(r, c).filter(([s, it]) => !fsdEff(r, c, s, it, M0).v);
     if (!(await ask('全部揀「是」？', `將「${esc(c.title)}」未揀嘅 <b>${list.length}</b> 項全部設為「是」（符合）。<br>已有預設（例如不適用）嘅唔會改。<br>只係喺你<b>真係逐項檢查過</b>先好用；唔適用嘅部分請先揀「不適用」。`, `確定，揀 ${list.length} 項`, '取消'))) return;
     list.forEach(([s, it]) => { d.a[it.k] = Object.assign(d.a[it.k] || {}, { v: 'Y', by: 'bulk' }); }); Store.touch(r); return render(); }
-  if (act === 'fsdrow') { const d = fsdRec(r, key), t = el.dataset.t, L = d.t[t] || (d.t[t] = []);
-    if (Number(el.dataset.d) > 0) { if (L.length >= 30) return toast('最多 30 個'); L.push({}); }
+  if (act === 'fsdrow') {
+    const d = fsdRec(r, key), t = el.dataset.t;
+    let L;
+    if (el.dataset.sys != null && el.dataset.sys !== '') {
+      /* v0.6.145：表一某系統內加／刪控制閥行 */
+      const systems = sprT1Sync(r), si = Number(el.dataset.sys);
+      const sys = systems[si] || (systems[si] = { valves: [], totals: {} });
+      L = sys[t] || (sys[t] = []);
+      if (Number(el.dataset.d) > 0) {
+        if (L.length >= 30) return toast('最多 30 個');
+        /* 該系統第一行 →「花灑 N」；其餘行只預設種類 W */
+        L.push(t === 'valves' ? (L.length ? { type: 'W' } : { type: 'W', no: sprT1NoLabel(si) }) : {});
+      } else {
+        const last = L[L.length - 1] || {}; if (Object.keys(last).length && !(await ask('刪最後一個？', '入面已填嘅資料會刪走。', '刪除', '取消'))) return; L.pop();
+      }
+      Store.touch(r); return render();
+    } else {
+      L = d.t[t] || (d.t[t] = []);
+    }
+    if (Number(el.dataset.d) > 0) { if (L.length >= 30) return toast('最多 30 個'); L.push(t === 'valves' ? { type: 'W' } : {}); }
     else { const last = L[L.length - 1] || {}; if (Object.keys(last).length && !(await ask('刪最後一個？', '入面已填嘅資料會刪走。', '刪除', '取消'))) return; L.pop(); }
     Store.touch(r); return render(); }
   if (act === 'fsdfill') { const d = fsdRec(r, key), L = d.t.rows || (d.t.rows = []), q = r.q;
@@ -1904,6 +2004,7 @@ function fsdExport(r) {
   FSD.forEach(c => {
     const meta = { title: c.title, circular: c.circular, version: c.version, revision: c.revision, issued: c.issued, effective: c.effective, source: c.source, gate: { cell: c.gate, answer: r.q[c.gate] || '' } };
     if (!fsdVisible(r, c)) { out[c.key] = Object.assign(meta, { applicable: false }); return; }
+    if (c.key === 'spr') sprT1Sync(r);
     const d = fsdGet(r, c.key), off = fsdIsOff(r, c), items = {}, skipped = [];
     fsdWalk(c, d, (s, dep, sk, why) => { if (why === 'own') skipped.push(s.id);
       s.items.forEach(it => { const a = d.a[it.k] || {};
@@ -1922,7 +2023,15 @@ function fsdImport(r, o) {
   Object.keys(o).forEach(key => { const x = o[key]; if (!x || !x.applicable || !FSD_BY[key]) return; const d = fsdRec(r, key);
     if (x.whole_na) d.off = true; (x.skipped_sections || []).forEach(s => { d.skip[s] = true; });
     Object.keys(x.items || {}).forEach(k => { const it = x.items[k]; if (it.auto) return; const a = {}; if (it.result && back[it.result] && it.set_by !== 'default') { a.v = back[it.result]; a.by = it.set_by === 'bulk' ? 'bulk' : 'technician'; } /* v0.4.8 預設「是」唔當師傅揀；v0.6.135 保留 by */ if (it.remark) a.note = it.remark; if (a.v || a.note) d.a[k] = a; });
-    d.t = x.tables || {}; (d.t.sitems || []).forEach(z => { if (z && z.src) Object.keys(z.src).forEach(k => { if (z.src[k] && z.src[k].na) delete z.src[k]; }); }); d.h = { ref: (x.header || {}).contractor_ref || '' }; });
+    d.t = x.tables || {}; (d.t.sitems || []).forEach(z => { if (z && z.src) Object.keys(z.src).forEach(k => { if (z.src[k] && z.src[k].na) delete z.src[k]; }); });
+      /* v0.6.145：表一 systems[]；舊 JSON 只有 valves/totals → 包做 systems[0] */
+      if (key === 'spr') {
+        if (!Array.isArray(d.t.systems) || !d.t.systems.length)
+          d.t.systems = [{ valves: d.t.valves || [], totals: d.t.totals || {} }];
+        d.t.valves = d.t.systems[0].valves || [];
+        d.t.totals = d.t.systems[0].totals || {};
+      }
+      d.h = { ref: (x.header || {}).contractor_ref || '' }; });
 }
 
 /* ---------- 直接上傳（v0.4.0）：提交 = POST 去公司 Google Drive 收件箱（用戶自己部署嘅 Apps Script）----------
@@ -10323,7 +10432,7 @@ document.addEventListener('click', async e => {
       const ed = estateDef(r), b = ed && ed.blocks.find(x => x.code === el.dataset.code); if (!b) return;
       r.block = Object.assign({ preset: true }, b); cb = { open: null, all: false }; Store.touch(r); return render(); }
     case 'ans': { const was = getP(r, el.dataset.bind); setP(r, el.dataset.bind, was === el.dataset.v ? '' : el.dataset.v); Store.touch(r); return render(); }
-    case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); setP(r, el.dataset.bind, was == null ? Math.max(0, d) : Math.max(0, Number(was) + d)); Store.touch(r); return render(); }
+    case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); setP(r, el.dataset.bind, was == null ? Math.max(0, d) : Math.max(0, Number(was) + d)); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') sprT1Sync(r); Store.touch(r); return render(); }
     case 'tick': { const k = el.dataset.key, a = r.items[k] || {}; if (a.v === el.dataset.v) delete r.items[k]; else { a.v = el.dataset.v; r.items[k] = a; } Store.touch(r); render();
       if (el.dataset.v === 'X' && r.items[k]) setTimeout(() => { const t = $(`#it-${k.replace(/\./g, '-')} textarea`); if (t) t.focus(); }, 50); return; }
     case 'allok': { const k = el.dataset.form; const n = FORMS[k].items.filter(it => itemMode(r, it) === 'ask' && !itemVal(r, k, it).v).length;
@@ -10471,7 +10580,7 @@ document.addEventListener('input', e => {
   if (kind === 'ir') { const v = parseIR(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); el.classList.toggle('gt', isGT(v)); } }
   else if (kind === 'num1') { const v = parse1(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); }
     if (el.dataset.kpa) { const s = el.parentElement.querySelector('.kpa'); if (s) s.textContent = (v != null && !Number.isNaN(v)) ? '= ' + Math.round(v * 100) + ' kPa' : ''; } }
-  else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) setP(r, el.dataset.bind, v); }
+  else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') sprT1Sync(r); } }
   else { setP(r, el.dataset.bind, el.value); if (el.tagName === 'TEXTAREA' && el.closest('.why')) el.classList.toggle('need', !el.value.trim()); if (el.tagName === 'INPUT') el.classList.toggle('filled', !!el.value); }
   if (el.dataset.floor) floorHint(el);
   if (document.querySelector('.opth')) { paintOpt(r); if (missFlag[r.id + '|' + cur.step]) markMiss(r); } // 互斥讀數：即時更新灰色提示同標紅
