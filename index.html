@@ -372,6 +372,36 @@ a.jump{color:var(--pri);font-weight:700}
 .fchk{width:100%;text-align:left;min-height:44px;border:0;background:none;font-size:17px;font-weight:700}
 .fseg button{font-size:16px;min-height:46px}
 .frow{border-top:1px dashed #e2e8f0;padding-top:6px;margin-top:6px}
+/* v0.6.198：電腦／闊螢幕大版面（≥900px；手機保持原 720 窄欄） */
+@media (min-width:900px){
+  main{max-width:1120px;padding:14px 28px 120px}
+  .foot .in{max-width:1120px;padding-left:16px;padding-right:16px}
+  .tiles{grid-template-columns:repeat(3,1fr);gap:14px}
+  .tile{min-height:120px}
+  /* 消防檢查紀錄列表兩欄 */
+  main > h2{grid-column:1/-1}
+  main:has(> .rec){display:grid;grid-template-columns:1fr 1fr;gap:0 14px;align-items:start}
+  main:has(> .rec) > h2,
+  main:has(> .rec) > .empty,
+  main:has(> .rec) > .card,
+  main:has(> .rec) > .warnbox,
+  main:has(> .rec) > .hint,
+  main:has(> .rec) > .errbox,
+  main:has(> .rec) > .okbox,
+  main:has(> .rec) > .btn{grid-column:1/-1}
+  /* 消防處核對表：檢查項兩欄 */
+  .fsec{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-items:start}
+  .fsec > h3,.fsec > h4,.fsec > .fskip,.fsec > .fsn,.fsec > .fnote,.fsec > .hint,
+  .fsec > .mut,.fsec > .sub,.fsec > .card,.fsec > .lnk,.fsec > .warnbox{grid-column:1/-1}
+  .fsec > .item,.fsec > .fitem{margin:8px 0}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  #modal .box{max-width:640px;margin:0 auto;border-radius:18px}
+}
+@media (min-width:1280px){
+  main{max-width:1280px}
+  .foot .in{max-width:1280px}
+  .tiles{grid-template-columns:repeat(4,1fr)}
+}
 </style>
 </head>
 <body>
@@ -387,7 +417,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.197';
+const APP_VERSION = '0.6.198';
+/* v0.6.198：電腦／闊螢幕大版面 */
 /* v0.6.197：fa 5.d def_v NA */
 /* v0.6.196：fa 4.f def_v NA */
 /* v0.6.195：FA_FIRE_CABLE → fa 4.d（兼 4.b） */
