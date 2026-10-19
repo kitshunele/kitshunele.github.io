@@ -417,10 +417,11 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.230';
+const APP_VERSION = '0.6.231';
 /* v0.6.227：AA11／AA12「直砸」→「冇泵」；互斥提示 la 直砸→冇泵 */
 /* v0.6.229：表二 tank／main 壓力1／2←AA11／AA12；流量1／2←AA8 */
 /* v0.6.230：FAN 流量表（LH 225／— … OH4 1800／2100）；1泵／2泵同冇泵接表二；取代工作表3 查表 */
+/* v0.6.231：消防處 checklist PDF：是／否／不適用 [ ] 框保留；手剔入框（跟 make.py） */
 /* v0.6.228：提交→查看PDF 消防處 checklist 模擬手寫（sim/hwx：辰宇落雁＋ReenieBeanie＋手剔） */
 /* v0.6.226：SPR_TANK有＋M6有 → 花灑 §1.c 剔適用（T） */
 /* v0.6.225：SPR_TANK有＋AA36否 → 花灑 §1.b 剔適用（T） */
@@ -2719,7 +2720,7 @@ function lkDetail(d) {
    3) 細公式引擎（IF／IFERROR／VLOOKUP、比較、&、加減乘除）計範本公式
    4) canvas 逐頁畫（A4，150 dpi），自己砌 PDF（每頁一張 JPEG）→ 唔使外部程式庫，離線都用得；中文用手機系統字型畫，一定顯示到
    只係預覽：正式版以 Excel（公司電腦 import_submission.py 出）為準。
-   v0.6.228：消防處年檢核對表（X_FSD 工作表剔號＋App提交紀錄結果／表值）用模擬手寫（sim/hwx 字型同手剔）。 */
+   v0.6.228／0.6.231：消防處年檢核對表模擬手寫；0.6.231 是／否／不適用 [ ] 框保留、剔入框內（跟 make.py）。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -2960,9 +2961,10 @@ const xFont = n => { n = String(n || '').toLowerCase();
   if (/symbol|wingding/.test(n)) return '"Noto Sans Symbols","Segoe UI Symbol","DejaVu Sans",' + XF_SANS;
   return 'Arial,"Liberation Sans",Arimo,"Helvetica Neue",Helvetica,' + XF_SANS; };
 
-/* ----- v0.6.228 消防處 checklist 模擬手寫（跟 /workspace/sim/sim_pdf.py + sim/hwx/make.py）-----
+/* ----- v0.6.228／0.6.231 消防處 checklist 模擬手寫（跟 /workspace/sim/sim_pdf.py + sim/hwx/make.py）-----
    字型：ChenYuluoyan-nohint（CJK）＋ ReenieBeanie（拉丁／數字）；剔號用手畫貝塞爾（唔用 √ 字型）。
-   抖動用固定種子 PRNG（build 禁 Math.ran…）；只套喺 X_FSD 工作表剔格 同 App提交紀錄 消防處結果／表值。 */
+   抖動用固定種子 PRNG（build 禁 Math.ran…）；只套喺 X_FSD 工作表剔格 同 App提交紀錄 消防處結果／表值。
+   v0.6.231：是／否／不適用 [ ] 框留返；剔畫入框內（唔再整格只畫剔）；手剔跟 make.py 比例／角度／線寬。 */
 const X_FSD = new Set(['Fire Hydrant Hose Reel Systems', 'Supply Tanks', 'Annex A', 'Annex B', 'Sprinkler checklist（修訂 01 )', 'Checklist for Water Supplies', 'Annual Inspection Checklist for', 'Sprinkler checklist（修訂 01 ) (2)']);
 const X_FSD_TICK = /^\[\s*[√✓]\s*\]$/;
 const XF_HW_CJK = 'ChenYuluoyanHW', XF_HW_LAT = 'ReenieBeanieHW';
@@ -2983,18 +2985,22 @@ async function xHwLoad() {
   return XHW_OK;
 }
 function xHwTick(ctx, R, seed) {
+  /* 跟 sim/hwx/make.py draw_tick：單位幾何 × sc(0.5–0.78) × 放入格內 ~55%；角度 −18°…14°；線寬 0.75–1.35（跟 fit） */
   const rnd = xHwRng(seed), bw = R[2] - R[0], bh = R[3] - R[1], box = Math.min(bw, bh);
-  const cx = (R[0] + R[2]) / 2 + (rnd() - 0.5) * box * 0.22, cy = (R[1] + R[3]) / 2 + (rnd() - 0.5) * box * 0.12;
-  const sc = (0.5 + rnd() * 0.28) * (box / 16), ang = (rnd() - 0.5) * 0.56;
-  const a = [-4.2 + (rnd() - 0.5) * 2, -0.6 + (rnd() - 0.5) * 2.4], v = [-1.0 + (rnd() - 0.5) * 1.4, 4.6 + (rnd() - 0.5) * 1.6], e = [6.8 + (rnd() - 0.5) * 4, -8.8 + (rnd() - 0.5) * 4];
+  const unitH = 13.4, fit = Math.max(0.35, (box * 0.55) / unitH);
+  const sc = (0.5 + rnd() * 0.28) * fit, ang = ((rnd() * 32 - 18) * Math.PI) / 180;
+  const cx = (R[0] + R[2]) / 2 + (rnd() - 0.5) * 4.4 * fit, cy = (R[1] + R[3]) / 2 + (rnd() * 1.9 - 1.0) * fit;
+  const a = [-4.2 + (rnd() - 0.5) * 2.0, -0.6 + (rnd() - 0.5) * 2.6], v = [-1.0 + (rnd() - 0.5) * 1.8, 4.6 + (rnd() - 0.5) * 2.0], e = [6.8 + (rnd() - 0.5) * 4.5, -8.8 + (rnd() - 0.5) * 5.0];
   const tr = q => { const px = q[0] * sc, py = q[1] * sc; return [cx + px * Math.cos(ang) - py * Math.sin(ang), cy + px * Math.sin(ang) + py * Math.cos(ang)]; };
   const ctrl = (p, q, bend) => { const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; return [mx - dy / L * bend, my + dx / L * bend]; };
   const A_ = tr(a), V = tr(v), E = tr(e), c1 = ctrl(A_, V, (rnd() - 0.5) * 1.4), c2 = ctrl(V, E, -1.5 + rnd() * 2.1);
-  const col = xHwInk(rnd), wd = (0.75 + rnd() * 0.6) * (box / 22);
-  ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = wd; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (rnd() < 0.25) { ctx.beginPath(); ctx.moveTo(A_[0] - (0.3 + rnd()) * sc, A_[1] - (0.5 + rnd()) * sc); ctx.lineTo(A_[0], A_[1]); ctx.stroke(); }
+  const col = xHwInk(rnd), wd = Math.max(0.6, (0.75 + rnd() * 0.6) * fit);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(R[0] + box * 0.04, R[1] + box * 0.04, bw - box * 0.08, bh - box * 0.08); ctx.clip();
+  ctx.strokeStyle = col; ctx.lineWidth = wd; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (rnd() < 0.25) { const H = [A_[0] - (0.3 + rnd() * 0.9) * sc, A_[1] - (0.5 + rnd()) * sc]; ctx.beginPath(); ctx.moveTo(H[0], H[1]); ctx.lineTo(A_[0], A_[1]); ctx.stroke(); }
   ctx.beginPath(); ctx.moveTo(A_[0], A_[1]); ctx.quadraticCurveTo(c1[0], c1[1], V[0], V[1]); ctx.quadraticCurveTo(c2[0], c2[1], E[0], E[1]); ctx.stroke();
-  if (rnd() < 0.6) { ctx.lineWidth = Math.max(0.5, wd * 0.55); ctx.beginPath(); ctx.moveTo(V[0], V[1]); ctx.quadraticCurveTo(c2[0], c2[1], E[0] + (rnd() - 0.5) * 0.8, E[1] + (rnd() - 0.5) * 0.8); ctx.stroke(); }
+  if (rnd() < 0.6) { ctx.lineWidth = Math.max(0.45, wd * 0.55); ctx.beginPath(); ctx.moveTo(V[0], V[1]); ctx.quadraticCurveTo(c2[0], c2[1], E[0] + (rnd() - 0.5) * 0.8 * fit, E[1] + (rnd() - 0.5) * 0.8 * fit); ctx.stroke(); }
   ctx.restore();
 }
 function xHwText(ctx, text, x0, y0, size, seed, maxW) {
@@ -3118,18 +3124,22 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
       const img = XIMG[im.i] || (XIMG[im.i] = await xImg(XLS.images[im.i])); if (img && w > 0 && h > 0) ctx.drawImage(img, x0, y0, w, h); }
     /* 字（富文字逐段；中文逐字、英文逐詞換行） */
     list.forEach(o => { if (!o.t || inMerge[o.r + ',' + o.c]) return; const st = sty(o.s), f0 = st.f || ['Arial', 10, 0, 0, '', 0, '000000']; const R = rectOf(o.r, o.c); if (!R) return;
-      /* v0.6.228：消防處表 → 已剔格用手畫剔（模擬手寫；跟 sim/hwx） */
-      if (XHW_OK && X_FSD.has(S.n) && X_FSD_TICK.test(String(o.t).trim())) { xHwTick(ctx, R, xHwSeed(S.n + ':' + colL(o.c) + o.r + ':' + o.t)); return; }
+      /* v0.6.231：已剔格 → 先留 [ ] 框（√→空格），正常畫框；之後手剔畫入框內（唔再整格只畫剔） */
+      let fsdTick = false, fsdTickSeed = '';
+      if (XHW_OK && X_FSD.has(S.n) && X_FSD_TICK.test(String(o.t).trim())) {
+        fsdTickSeed = S.n + ':' + colL(o.c) + o.r + ':' + o.t; fsdTick = true;
+        o.t = String(o.t).replace(/[√✓]/g, ' '); /* 框留返：[ √ ] → [   ] */
+      }
       const rawc = S.cells[colL(o.c) + o.r], ovd = B.ovs[S.n] && (colL(o.c) + o.r) in B.ovs[S.n];
-      /* 消防處表：覆寫格（填入答案）用模擬手寫字 */
-      if (XHW_OK && X_FSD.has(S.n) && ovd && o.t && !/^\[\s*\]$/.test(String(o.t).trim())) {
+      /* 消防處表：覆寫格（填入答案）用模擬手寫字；已剔框唔走呢條 */
+      if (!fsdTick && XHW_OK && X_FSD.has(S.n) && ovd && o.t && !/^\[\s*\]$/.test(String(o.t).trim())) {
         const pad = 2 * 0.75 * sc * K; const fs = (f0[1] || 10) * sc * K; const hAlign = st.h || 'left', vAlign = st.v || 'bottom';
         let x = hAlign === 'right' ? R[2] - pad : hAlign === 'center' ? (R[0] + R[2]) / 2 : R[0] + pad;
         let yy = vAlign === 'top' ? R[1] + fs : vAlign === 'center' ? (R[1] + R[3]) / 2 + fs * 0.35 : R[3] - fs * 0.25;
         if (hAlign === 'center') { ctx.save(); ctx.font = fs + 'px "' + XF_HW_CJK + '", "' + XF_HW_LAT + '"'; x -= ctx.measureText(String(o.t)).width / 2; ctx.restore(); }
         xHwText(ctx, o.t, x, yy, fs * 0.95, xHwSeed(S.n + ':' + colL(o.c) + o.r), R[2] - R[0] - pad * 2); return;
       }
-      let runs = (!ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) ? rawc[0].rt.map(x => [x[0], x[1] || f0]) : [[o.t, f0]];
+      let runs = (!fsdTick && !ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) ? rawc[0].rt.map(x => [x[0], x[1] || f0]) : [[o.t, f0]]; /* fsdTick：用已清 √ 嘅 o.t 畫 [ ] */
       runs = runs.map(([t, f]) => [/wingdings/i.test(f[0] || '') ? String(t).split('').map(ch => XWD2[ch] || ch).join('') : String(t), f]);
       const pad = 2 * 0.75 * sc * K + (st.ind ? st.ind * 9 * 0.75 * sc * K : 0); const cw = R[2] - R[0] - pad * 2;
       const isNum = typeof o.v === 'number'; let h = st.h || (isNum ? 'right' : typeof o.v === 'boolean' || isE(o.v) ? 'center' : 'left'); if (h === 'justify' || h === 'distributed' || h === 'fill') h = 'left'; if (h === 'centerContinuous') h = 'center';
@@ -3143,7 +3153,7 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
         return lines.map(l => { const last = l[l.length - 1]; if (last) { const tt = last.t.replace(/\s+$/, ''); if (tt !== last.t) { ctx.font = fnt(last.f); last.t = tt; last.w = xTW(ctx, tt, last.f, last.f[1] * sc * K * zoom); } }
           return { segs: l, w: l.reduce((a, x) => a + x.w, 0), fs: l.reduce((a, x) => Math.max(a, x.f[1]), 0) * sc * K * zoom || f0[1] * sc * K * zoom }; }); };
       if (st.rot === 90 || st.rot === 180 || st.rot === 255) { const L = layout(R[3] - R[1] - pad * 2); ctx.save(); ctx.beginPath(); ctx.rect(R[0], R[1], R[2] - R[0], R[3] - R[1]); ctx.clip(); ctx.translate((R[0] + R[2]) / 2, (R[1] + R[3]) / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle';
-        L.forEach((ln, i) => { let x = -ln.w / 2; ln.segs.forEach(sg => { ctx.font = fnt(sg.f); ctx.fillStyle = '#' + (sg.f[6] || '000000'); xFT(ctx, sg.t, x, (i - (L.length - 1) / 2) * ln.fs * 1.15, sg.w); x += sg.w; }); }); ctx.restore(); ctx.textBaseline = 'alphabetic'; return; }
+        L.forEach((ln, i) => { let x = -ln.w / 2; ln.segs.forEach(sg => { ctx.font = fnt(sg.f); ctx.fillStyle = '#' + (sg.f[6] || '000000'); xFT(ctx, sg.t, x, (i - (L.length - 1) / 2) * ln.fs * 1.15, sg.w); x += sg.w; }); }); ctx.restore(); ctx.textBaseline = 'alphabetic'; if (fsdTick) xHwTick(ctx, R, xHwSeed(fsdTickSeed)); return; }
       let L = layout(Math.max(cw, 4));
       if (st.sh && !st.w && L[0] && L[0].w > cw && L[0].w > 0) { zoom = cw / L[0].w; L = layout(Math.max(cw, 4)); }
       const th = L.reduce((a, l) => a + l.fs * 1.2, 0), fsT = L[0] ? L[0].fs : f0[1] * sc * K;
@@ -3159,7 +3169,9 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
       let yy = y0; L.forEach((ln, i) => { if (i) yy += ln.fs * 1.2; let x = h === 'right' ? R[2] - pad - ln.w : h === 'center' ? (R[0] + R[2]) / 2 - ln.w / 2 : R[0] + pad;
         ln.segs.forEach(sg => { const f = sg.f, fs = f[1] * sc * K * zoom; ctx.font = fnt(f); ctx.fillStyle = '#' + (f[6] || '000000'); xFT(ctx, sg.t, x, yy, sg.w);
           if (f[4]) ctx.fillRect(x, yy + fs * 0.12, sg.w, Math.max(1, fs * 0.06)); if (f[5]) ctx.fillRect(x, yy - fs * 0.3, sg.w, Math.max(1, fs * 0.07)); x += sg.w; }); });
-      ctx.restore(); });
+      ctx.restore();
+      if (fsdTick) xHwTick(ctx, R, xHwSeed(fsdTickSeed)); /* v0.6.231：框畫完再剔入框 */
+    });
     /* 框線 */
     list.forEach(o => { const st = sty(o.s); if (!st.b && !st.dg) return; const m = merged[o.r + ',' + o.c];
       if (!rowSet.has(o.r)) return; const x1 = X(o.c), x2 = X(o.c + 1), y1 = Y(o.r), y2 = Yb(o.r);
