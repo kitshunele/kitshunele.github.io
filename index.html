@@ -387,7 +387,10 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.151';
+const APP_VERSION = '0.6.154';
+/* v0.6.154：AA36 天台缸移近 SPR_TANK；是＋街喉否 → 表二剔 tank 重力供水 */
+/* v0.6.153：問卷「是否由街喉直接供水」（SPR_STREET_MAIN 是／否）→ 表二剔 main */
+/* v0.6.152：AA20＝有 → 表二剔穩壓泵＋花灑泵1／2（編號 1、2） */
 /* v0.6.151：表二每 systems[i] 還原高度（米）；floors＋供水來源✓ */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
@@ -1760,8 +1763,32 @@ function sprSysFloorHtml(r) {
       <div class="g2">${SPR_TOT_UI.map(([f, l]) => `<div class="fld"><label>${esc(l)}</label><input class="inp ${has(tot[f]) ? 'filled' : ''}" inputmode="numeric" data-bind="${tb}.${f}" data-kind="int" value="${has(tot[f]) ? esc(tot[f]) : ''}" placeholder="0"></div>`).join('')}</div></div>`;
   }).join('')}</div>`;
 }
+function sprT2SrcFromQ(r, z) {
+  /* v0.6.152：AA20＝有 → 剔穩壓泵＋花灑泵1／2（編號 1、2）
+     v0.6.153：SPR_STREET_MAIN＝是 → 剔「由街喉直接供水」（main）
+     v0.6.154：AA36＝是 且 SPR_STREET_MAIN＝否 → 剔「花灑水缸重力供水」（tank）；街喉＝是 唔剔重力
+     從未設過 on（undefined／null）先填；師傅剔走（on=''）唔蓋。冇花灑水缸時唔剔花灑泵（已隱藏）。 */
+  if (!r) return;
+  const src = z.src || (z.src = {});
+  const touch = (k, extras) => {
+    let o = src[k];
+    if (o == null) o = src[k] = {};
+    if (o.on === undefined || o.on === null) o.on = '1';
+    if (extras) Object.keys(extras).forEach(f => { if (!has(o[f])) o[f] = extras[f]; });
+  };
+  if (r.q.AA20 === '有') {
+    touch('jockey');
+    if (!noSprTank(r)) {
+      touch('pump1', { no: '1' });
+      touch('pump2', { no: '2' });
+    }
+  }
+  if (r.q.SPR_STREET_MAIN === '是') touch('main');
+  else if (r.q.SPR_STREET_MAIN === '否' && r.q.AA36 === '是' && r.q.SPR_TANK === '有') touch('tank');
+}
 function sprT2Sync(r) {
-  /* v0.6.147：表二 sitems 長度＝N（同表一）；floors 跟 systems[i].valves[0].cover */
+  /* v0.6.147：表二 sitems 長度＝N（同表一）；floors 跟 systems[i].valves[0].cover
+     v0.6.152–154：AA20／街喉／天台缸 → 供水來源預剔 */
   if (!r) return [];
   const d = fsdRec(r, 'spr'), t = d.t;
   const systems = sprT1Sync(r);
@@ -1775,6 +1802,7 @@ function sprT2Sync(r) {
   items.forEach((z, i) => {
     const cover = (((systems[i] || {}).valves || [])[0] || {}).cover;
     if (has(cover)) z.floors = cover;
+    sprT2SrcFromQ(r, z);
   });
   t.sitems = items;
   return t.sitems;
@@ -1907,7 +1935,7 @@ function fsdItemHtml(r, c, s, it) {
 }
 const fNum = (bind, v, unit, label) => numField(bind, v, unit, label, false);
 
-/* v0.6.151：每份表二 floors／高度（米）／供水來源✓ */
+/* v0.6.151：每份表二 floors／高度（米）／供水來源✓；v0.6.152／153：AA20／街喉→供水來源預剔 */
 function sprT2OneHtml(r, c, b, z, i, N) {
   const zb = b + '.sitems.' + i, src = (z && z.src) || {};
   const head = N > 1
@@ -1998,7 +2026,7 @@ function fsdTableHtml(r, c, s) {
     }).join('')}${N > 1 ? `<div class="mut" style="margin-top:6px">要加／減系統份數：改問卷花灑系統數量（而家 ${N}）。減數量會刪走後面系統已填資料。</div>` : ''}</div>`;
   }
   if (s.table === 'spr_t2') {
-    /* v0.6.151：每份 systems[i] 用 sprT2OneHtml（floors／高度／供水來源✓） */
+    /* v0.6.151／152：sprT2OneHtml；AA20＝有→供水來源預剔穩壓泵＋花灑泵1／2 */
     const its = sprT2Sync(r), N = Math.max(1, its.length);
     let parts = '';
     for (let i = 0; i < N; i++) parts += sprT2OneHtml(r, c, b, its[i] || {}, i, N);
