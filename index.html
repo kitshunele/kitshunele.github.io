@@ -387,8 +387,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.134';
-/* v0.6.134：供水道問卷跟答（M12／M18／M19／M9／M7／M8；M7+M8→2.8.k／l）；WS_DEF_V 2.8.q／r／3.e／3.f／4.e 預設 NA；核對表 scroll 沿用 0.6.133 */
+const APP_VERSION = '0.6.135';
+/* v0.6.135：fsdEff 優先 def_v／q_def（NA）蓋過 bulk／legacy「是」；fsdv 記 by=technician；fsdallok 記 by=bulk 且跳過已有預設 */
 const SCHEMA = 'fsapp.appendixC.20259005.v1';
 const LS_REC = 'fsapp20259005.records.v1', LS_PREF = 'fsapp20259005.prefs.v1';
 let QS = DATA.questionnaire, FORMS = DATA.forms;
@@ -1569,15 +1569,14 @@ const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：�
 /* v0.6.128：it.q_def = [問卷 cell, {答:Y/NA}] → 跟問卷預設；未答唔跌落通用「是」 */
 /* v0.6.129：it.def_v（如 'NA'）靜態預設；s.q_skip／s.def_skip 部分自動不適用 */
 /* v0.6.134：it.q_def_all = [[cell…], {答:Y/NA}] → 全部 cell 同答先預設（例如 M7+M8 同時冇→2.8.k／2.8.l NA）；優先於單格 q_def */
-const fsdEff = (r, c, s, it, M) => {
-  const a = (fsdGet(r, c.key).a || {})[it.k] || {};
-  if (a.v) return { v: a.v, by: 'technician' };
+/* v0.6.135：a.by=technician|bulk；全部揀是→bulk；舊 a.v 無 by＝legacy。bulk／legacy 同 def_v／q_def（尤其 NA）衝突時跟預設，唔再俾「是」蓋過不適用 */
+const fsdDefault = (r, c, s, it, M) => {
   if (it.q_def_all && Array.isArray(it.q_def_all[0])) {
     const cells = it.q_def_all[0], map = it.q_def_all[1] || {};
     const vals = cells.map(cell => r.q[cell]);
     if (vals.every(Boolean) && vals.every(v => v === vals[0]) && map[vals[0]])
       return { v: map[vals[0]], by: 'default' };
-    /* 未齊答／唔齊 → 唔用呢條；跌落單格 q_def／通用預設 */
+    /* 未齊答／唔齊 → 跌落單格 q_def／通用預設 */
   }
   if (it.q_def) {
     const qv = r.q[it.q_def[0]], map = it.q_def[1] || {};
@@ -1587,6 +1586,28 @@ const fsdEff = (r, c, s, it, M) => {
   if (it.def_v) return { v: it.def_v, by: 'default' };
   const dv = it.mode === 'ynn' && !fsdItemOpt(M || optMap(r), c, s) ? 'Y' : '';
   return { v: dv, by: dv ? 'default' : '' };
+};
+const fsdEff = (r, c, s, it, M) => {
+  const a = (fsdGet(r, c.key).a || {})[it.k] || {};
+  const def = fsdDefault(r, c, s, it, M);
+  if (a.v && a.by === 'technician') return { v: a.v, by: 'technician' };
+  /* bulk／legacy（無 by）若同 def_v／q_def 預設唔同 → 跟預設（例如 NA 蓋過舊「是」） */
+  if (a.v && (a.by === 'bulk' || !a.by) && def.v && def.v !== a.v) return def;
+  if (a.v) return { v: a.v, by: a.by === 'bulk' ? 'bulk' : 'technician' };
+  return def;
+};
+/* 開頁清走同預設衝突嘅 bulk／legacy a.v，令不適用真係顯示同埋存得住 */
+function fsdMigrateStale(r, c) {
+  const d = fsdRec(r, c.key); let ch = false;
+  fsdActive(r, c).forEach(([s, it]) => {
+    const a = d.a[it.k]; if (!a || !a.v || a.by === 'technician') return;
+    const def = fsdDefault(r, c, s, it);
+    if (!(def.v && def.v !== a.v)) return;
+    delete a.v; delete a.by;
+    if (!has(a.note)) delete d.a[it.k]; else d.a[it.k] = a;
+    ch = true;
+  });
+  if (ch) Store.touch(r);
 };
 const fsdGet = (r, key) => { const d = r.fsd && r.fsd[key]; return d ? (d.a && d.skip && d.t && d.h && d.force_on ? d : Object.assign({ a: {}, skip: {}, t: {}, h: {}, force_on: {} }, d)) : { a: {}, skip: {}, t: {}, h: {}, force_on: {} }; }; // 唯讀（改用 fsdRec）
 function fsdRec(r, key) { r.fsd = r.fsd || {}; const d = r.fsd[key] || (r.fsd[key] = {}); d.a = d.a || {}; d.skip = d.skip || {}; d.t = d.t || {}; d.h = d.h || {}; d.force_on = d.force_on || {}; return d; }
@@ -1768,7 +1789,7 @@ function fsdTableHtml(r, c, s) {
   return '';
 }
 function stepFsd(r, key) {
-  const c = FSD_BY[key], d = fsdGet(r, key);
+  const c = FSD_BY[key]; fsdMigrateStale(r, c); const d = fsdGet(r, key);
   const act = fsdActive(r, c), M0 = optMap(r), un = act.filter(([s, it]) => !fsdEff(r, c, s, it, M0).v).length;
   const off = fsdIsOff(r, c);
   let body = '';
@@ -1796,9 +1817,11 @@ function stepFsd(r, key) {
 /* ----- 動作 ----- */
 async function fsdAct(act, el, r) {
   const key = el.dataset.c, c = FSD_BY[key]; if (!c || !r) return;
-  if (act === 'fsdv') { const d = fsdRec(r, key), k = el.dataset.k, a = d.a[k] || {};
-    if (a.v === el.dataset.v) { delete a.v; if (!has(a.note)) delete d.a[k]; } else { a.v = el.dataset.v; d.a[k] = a; } // 撳返師傅揀過嘅 → 還原預設；撳預設嗰個 → 變「師傅確認」
-    Store.touch(r); render(); if (el.dataset.v === 'N' && (d.a[k] || {}).v === 'N') setTimeout(() => { const t = $(`#${fsdDom(key, k)} textarea`); if (t) t.focus(); }, 50); return; }
+  if (act === 'fsdv') { const d = fsdRec(r, key), k = el.dataset.k, a = d.a[k] || {}, tap = el.dataset.v;
+    /* v0.6.135：只有 by=technician 先當「撳返清除」；bulk／legacy 撳任何掣都寫成師傅揀 */
+    if (a.v === tap && a.by === 'technician') { delete a.v; delete a.by; if (!has(a.note)) delete d.a[k]; else d.a[k] = a; }
+    else { a.v = tap; a.by = 'technician'; d.a[k] = a; }
+    Store.touch(r); render(); if (tap === 'N' && (d.a[k] || {}).v === 'N') setTimeout(() => { const t = $(`#${fsdDom(key, k)} textarea`); if (t) t.focus(); }, 50); return; }
   if (act === 'fsdskip') {
     const d = fsdRec(r, key), sid = el.dataset.s;
     const find = secs => { for (const s of secs || []) { if (s.id === sid) return s; const x = find(s.subs); if (x) return x; } return null; };
@@ -1814,9 +1837,11 @@ async function fsdAct(act, el, r) {
   }
   if (act === 'fsdoff') { const d = fsdRec(r, key); d.off = !d.off; if (!d.off) delete d.off; Store.touch(r); return render(); }
   if (act === 'fsdnote') { fsdOpenNote[key + ':' + el.dataset.k] = true; render(); setTimeout(() => { const t = $(`#${fsdDom(key, el.dataset.k)} textarea`); if (t) t.focus(); }, 50); return; }
-  if (act === 'fsdallok') { const d = fsdRec(r, key), M0 = optMap(r), list = fsdActive(r, c).filter(([s, it]) => !fsdEff(r, c, s, it, M0).v);
-    if (!(await ask('全部揀「是」？', `將「${esc(c.title)}」未揀嘅 <b>${list.length}</b> 項全部設為「是」（符合）。<br>只係喺你<b>真係逐項檢查過</b>先好用；唔適用嘅部分請先揀「不適用」。`, `確定，揀 ${list.length} 項`, '取消'))) return;
-    list.forEach(([s, it]) => { d.a[it.k] = Object.assign(d.a[it.k] || {}, { v: 'Y' }); }); Store.touch(r); return render(); }
+  if (act === 'fsdallok') { const d = fsdRec(r, key), M0 = optMap(r);
+    /* v0.6.135：已有有效預設（def_v／q_def→值，例如 NA）唔蓋；寫 by=bulk 方便之後俾 NA 預設蓋過 */
+    const list = fsdActive(r, c).filter(([s, it]) => !fsdEff(r, c, s, it, M0).v);
+    if (!(await ask('全部揀「是」？', `將「${esc(c.title)}」未揀嘅 <b>${list.length}</b> 項全部設為「是」（符合）。<br>已有預設（例如不適用）嘅唔會改。<br>只係喺你<b>真係逐項檢查過</b>先好用；唔適用嘅部分請先揀「不適用」。`, `確定，揀 ${list.length} 項`, '取消'))) return;
+    list.forEach(([s, it]) => { d.a[it.k] = Object.assign(d.a[it.k] || {}, { v: 'Y', by: 'bulk' }); }); Store.touch(r); return render(); }
   if (act === 'fsdrow') { const d = fsdRec(r, key), t = el.dataset.t, L = d.t[t] || (d.t[t] = []);
     if (Number(el.dataset.d) > 0) { if (L.length >= 30) return toast('最多 30 個'); L.push({}); }
     else { const last = L[L.length - 1] || {}; if (Object.keys(last).length && !(await ask('刪最後一個？', '入面已填嘅資料會刪走。', '刪除', '取消'))) return; L.pop(); }
@@ -1850,7 +1875,7 @@ function fsdImport(r, o) {
   if (!o) return; const back = { '是': 'Y', '否': 'N', '不適用': 'NA', '✓': 'T' };
   Object.keys(o).forEach(key => { const x = o[key]; if (!x || !x.applicable || !FSD_BY[key]) return; const d = fsdRec(r, key);
     if (x.whole_na) d.off = true; (x.skipped_sections || []).forEach(s => { d.skip[s] = true; });
-    Object.keys(x.items || {}).forEach(k => { const it = x.items[k]; if (it.auto) return; const a = {}; if (it.result && back[it.result] && it.set_by !== 'default') a.v = back[it.result]; /* v0.4.8 預設「是」唔當師傅揀 */ if (it.remark) a.note = it.remark; if (a.v || a.note) d.a[k] = a; });
+    Object.keys(x.items || {}).forEach(k => { const it = x.items[k]; if (it.auto) return; const a = {}; if (it.result && back[it.result] && it.set_by !== 'default') { a.v = back[it.result]; a.by = it.set_by === 'bulk' ? 'bulk' : 'technician'; } /* v0.4.8 預設「是」唔當師傅揀；v0.6.135 保留 by */ if (it.remark) a.note = it.remark; if (a.v || a.note) d.a[k] = a; });
     d.t = x.tables || {}; (d.t.sitems || []).forEach(z => { if (z && z.src) Object.keys(z.src).forEach(k => { if (z.src[k] && z.src[k].na) delete z.src[k]; }); }); d.h = { ref: (x.header || {}).contractor_ref || '' }; });
 }
 
