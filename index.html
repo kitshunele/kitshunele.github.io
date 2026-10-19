@@ -417,7 +417,11 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.226';
+const APP_VERSION = '0.6.230';
+/* v0.6.227：AA11／AA12「直砸」→「冇泵」；互斥提示 la 直砸→冇泵 */
+/* v0.6.229：表二 tank／main 壓力1／2←AA11／AA12；流量1／2←AA8 */
+/* v0.6.230：FAN 流量表（LH 225／— … OH4 1800／2100）；1泵／2泵同冇泵接表二；取代工作表3 查表 */
+/* v0.6.228：提交→查看PDF 消防處 checklist 模擬手寫（sim/hwx：辰宇落雁＋ReenieBeanie＋手剔） */
 /* v0.6.226：SPR_TANK有＋M6有 → 花灑 §1.c 剔適用（T） */
 /* v0.6.225：SPR_TANK有＋AA36否 → 花灑 §1.b 剔適用（T） */
 /* v0.6.224：AA36「花灑缸是否在天台」重用，放 SPR_TANK 正下方 */
@@ -779,21 +783,21 @@ function c2RowDone(r, row) {
   return has(d.type) && (isB0(row.key) ? IR_B.every(k => has(d[k])) : has(d.LE)) && (dc || has(d.ohm)) && has(d.res) && (!/alarm|repeater/.test(row.key) || has(d.loc));
 }
 /* ---------- 互斥讀數（v0.3.4）：填咗其中一邊，另一邊可留空（兩邊都填都得） ----------
-   問卷 直砸（AA11/AA12）↔ 1泵／2泵（AA13–AA16）；TR-H2 每個 Zone：最高出水位 冇開泵 ↔ 1號／2號泵、最低出水位 水缸直砸 ↔ 1號／2號泵；
+   問卷 冇泵（AA11/AA12）↔ 1泵／2泵（AA13–AA16）；TR-H2 每個 Zone：最高出水位 冇開泵 ↔ 1號／2號泵、最低出水位 水缸冇泵 ↔ 1號／2號泵；
    消防處·栓轆 表一：消防水缸重力供水 ↔ 1號／2號固定消防泵＋1號／2號中途泵；消防處·花灑 表二：花灑水缸重力供水 ↔ 花灑泵 1／2＋花灑中途泵 1／2 */
 const H2_PUMP = ['p1_static', 'p1_run', 'p1_flow', 'p2_static', 'p2_run', 'p2_flow'];
 const FH_PUMPS = ['fix1', 'fix2', 'bst1', 'bst2'], SPR_PUMPS = ['pump1', 'pump2', 'bst1', 'bst2'];
 function optGroups(r) {
   const G = [];
-  const nt = noSprTank(r); // 冇花灑水缸：泵欄位已隱藏 → 唔參與互斥（隱藏咗嘅舊數唔會令直砸變可留空）
-  if (!nt) G.push({ a: ['q.AA11', 'q.AA12'], b: ['q.AA13', 'q.AA14', 'q.AA15', 'q.AA16'], la: '直砸', lb: '泵' });
+  const nt = noSprTank(r); // 冇花灑水缸：泵欄位已隱藏 → 唔參與互斥（隱藏咗嘅舊數唔會令冇泵變可留空）
+  if (!nt) G.push({ a: ['q.AA11', 'q.AA12'], b: ['q.AA13', 'q.AA14', 'q.AA15', 'q.AA16'], la: '冇泵', lb: '泵' });
   ((r.h2 || {}).zones || []).forEach((z, i) => { const t = `h2.zones.${i}.top.`, l = `h2.zones.${i}.low.`;
     G.push({ a: ['np_bar', 'np_flow'].map(k => t + k), b: H2_PUMP.map(k => t + k), la: '冇開泵', lb: '泵' });
-    G.push({ a: ['tk_static', 'tk_run', 'tk_flow'].map(k => l + k), b: H2_PUMP.map(k => l + k), la: '直砸', lb: '泵' }); });
+    G.push({ a: ['tk_static', 'tk_run', 'tk_flow'].map(k => l + k), b: H2_PUMP.map(k => l + k), la: '冇泵', lb: '泵' }); });
   ((((r.fsd || {}).fhhr || {}).t || {}).zones || []).forEach((z, i) => { const sb = `fsd.fhhr.t.zones.${i}.src.`, F = ['flow', 'p', 'p0'];
-    G.push({ a: F.map(f => sb + 'tank.' + f), ax: [sb + 'tank.ok'], b: FH_PUMPS.flatMap(k => F.map(f => sb + k + '.' + f)), bx: FH_PUMPS.map(k => sb + k + '.ok'), la: '直砸', lb: '泵' }); });
+    G.push({ a: F.map(f => sb + 'tank.' + f), ax: [sb + 'tank.ok'], b: FH_PUMPS.flatMap(k => F.map(f => sb + k + '.' + f)), bx: FH_PUMPS.map(k => sb + k + '.ok'), la: '冇泵', lb: '泵' }); });
   if (!nt) ((((r.fsd || {}).spr || {}).t || {}).sitems || []).forEach((z, i) => { const sb = `fsd.spr.t.sitems.${i}.src.`, P = ['f1', 'p1', 'f2', 'p2', 'f3', 'p3'];
-    G.push({ a: ['f1', 'p1', 'f2', 'p2'].map(f => sb + 'tank.' + f), b: SPR_PUMPS.flatMap(k => P.map(f => sb + k + '.' + f)), bx: SPR_PUMPS.map(k => sb + k + '.no'), la: '直砸', lb: '泵' }); });
+    G.push({ a: ['f1', 'p1', 'f2', 'p2'].map(f => sb + 'tank.' + f), b: SPR_PUMPS.flatMap(k => P.map(f => sb + k + '.' + f)), bx: SPR_PUMPS.map(k => sb + k + '.no'), la: '冇泵', lb: '泵' }); });
   return G;
 }
 // 冇花灑水缸（問卷 SPR_TANK＝冇，App 自己問）→ 花灑泵／中途泵嘅題目、表二來源、消防處部分全部隱藏（v0.4.1；之前係可留空）
@@ -804,7 +808,7 @@ const NOTANK_HINT = '冇花灑水缸（已隱藏）';
 const NOTANK_SRC = ['pump1', 'pump2', 'bst1', 'bst2']; // 表二：花灑泵 1／2、花灑中途泵 1／2
 const noSprTank = r => r.q.AA6 === '有' && r.q.SPR_TANK === '冇';
 function optFilled(r, b) { return has(getP(r, b)) && (!/\.src\./.test(b) || !!getP(r, b.replace(/\.[^.]+$/, '.on'))); } // 表格來源要剔咗先算
-function optMap(r) { // bind → 「已填直砸，可留空」／「已填泵，可留空」
+function optMap(r) { // bind → 「已填冇泵，可留空」／「已填泵，可留空」
   const M = new Map();
   optGroups(r).forEach(g => { const A = g.a.some(b => optFilled(r, b)), B = g.b.some(b => optFilled(r, b));
     if (A) g.b.concat(g.bx || []).forEach(b => M.set(b, `已填${g.la}，可留空`));
@@ -1565,7 +1569,7 @@ function stepH2(r) {
     <div class="g2">${txtField(base + '.floor', d.floor, '試水樓層', '例：25/F')}${txtField(base + '.stair', d.stair, '梯 / Riser', '例：1')}</div>
     ${pump(base, d, 1)}${pump(base, d, 2)}
     ${o === 'top' ? `<div class="sub"><h4>冇開泵</h4><div class="opth" data-optfor="${base}.np_bar"></div><div class="g2">${numField(base + '.np_bar', d.np_bar, 'bar', 'Bar', true)}${numField(base + '.np_flow', d.np_flow, 'l/s', 'Flow')}</div></div>`
-      : `<div class="sub"><h4>冇開泵（水缸直砸）</h4><div class="opth" data-optfor="${base}.tk_static"></div><div class="g3">${numField(base + '.tk_static', d.tk_static, 'bar', '死磅', true)}${numField(base + '.tk_run', d.tk_run, 'bar', 'Bar', true)}${numField(base + '.tk_flow', d.tk_flow, 'l/s', 'Flow')}</div></div>`}</div>`; };
+      : `<div class="sub"><h4>冇開泵（水缸冇泵）</h4><div class="opth" data-optfor="${base}.tk_static"></div><div class="g3">${numField(base + '.tk_static', d.tk_static, 'bar', '死磅', true)}${numField(base + '.tk_run', d.tk_run, 'bar', 'Bar', true)}${numField(base + '.tk_flow', d.tk_flow, 'l/s', 'Flow')}</div></div>`}</div>`; };
   const par = r.h2.parity || [];
   return `<button class="btn phbtn" data-act="waphotos" id="waphotos">📷 查看當日照片<small class="mut" style="display:block;font-weight:400;font-size:13px">WhatsApp 相片 · ${esc(r.date || '未填日期')} · ${esc(((r.estate && r.estate.zh) || '') + ' ' + ((r.block && r.block.zh) || ''))} · 要有網，相唔會存喺手機</small></button>
   <div class="hint">${isHalf(r) ? '<b>TR-G2（半年檢，範本 G2-1／G2-2(半年檢)）</b>：同年檢 TR-H2 用同一組讀數格。' : 'TR-H2：'}壓力用 <b>bar</b> 輸入（一個小數位），Excel 會自動 ×100 變 kPa；Flow 用 l/s。2號泵如果冇做可以留空。</div>
@@ -1913,10 +1917,30 @@ function sprSysFloorHtml(r) {
       <div class="g2">${SPR_TOT_UI.map(([f, l]) => `<div class="fld"><label>${esc(l)}</label><input class="inp ${has(tot[f]) ? 'filled' : ''}" inputmode="numeric" data-bind="${tb}.${f}" data-kind="int" value="${has(tot[f]) ? esc(tot[f]) : ''}" placeholder="0"></div>`).join('')}</div></div>`;
   }).join('')}</div>`;
 }
+function sprHazardFlows(r) {
+  /* v0.6.230：FAN 確認額定流量（l/min）。AA8＝LH／OH1–4（無 Wet／Dry 掣）→ 當該 OH 嘅 Wet 列：
+     LH 225／—；OH1(Wet) 375／540；OH1(Dry)/OH2(Wet) 725／1000；OH2(Dry)/OH3(Wet) 1100／1350；OH3(Dry)/OH4(Wet) 1800／2100。
+     High「—」→ null（唔發明數）。取代舊工作表3 A33:C37（LH 欄位對調、OH4 空）。 */
+  const TABLE = {
+    LH: { low: 225, high: null },
+    OH1: { low: 375, high: 540 },
+    OH2: { low: 725, high: 1000 },
+    OH3: { low: 1100, high: 1350 },
+    OH4: { low: 1800, high: 2100 }
+  };
+  const haz = r && r.q && r.q.AA8;
+  if (!has(haz)) return { low: null, high: null };
+  const row = TABLE[String(haz).trim()];
+  return row ? { low: row.low, high: row.high } : { low: null, high: null };
+}
 function sprT2SrcFromQ(r, z) {
   /* v0.6.152：AA20＝有 → 剔穩壓泵＋花灑泵1／2（編號 1、2）
      v0.6.153：SPR_STREET_MAIN＝是 → 剔「由街喉直接供水」（main）
      v0.6.154：AA36＝是 且 SPR_STREET_MAIN＝否 → 剔「花灑水缸重力供水」（tank）；街喉＝是 唔剔重力
+     v0.6.229／230：三個供水模式（已剔先填；空先填，唔蓋師傅改過）—
+       冇泵 tank／main：壓力1／2←AA11／AA12；流量1／2←AA8 額定表
+       1泵 pump1：壓力1／2←AA14／AA13（Low／High）；流量同上
+       2泵 pump2：壓力1／2←AA16／AA15；流量同上
      從未設過 on（undefined／null）先填；師傅剔走（on=''）唔蓋。冇花灑水缸時唔剔花灑泵（已隱藏）。 */
   if (!r) return;
   const src = z.src || (z.src = {});
@@ -1935,10 +1959,25 @@ function sprT2SrcFromQ(r, z) {
   }
   if (r.q.SPR_STREET_MAIN === '是') touch('main');
   else if (r.q.SPR_STREET_MAIN === '否' && r.q.AA36 === '是' && r.q.SPR_TANK === '有') touch('tank');
+  /* 壓力＝該模式 Low／High bar；流量＝AA8 OH／LH 額定 L/min（問卷 bar 格本身冇升／分鐘） */
+  const fl = sprHazardFlows(r);
+  const fillFp = (k, lowCell, highCell) => {
+    const o = src[k];
+    if (!o || !o.on) return;
+    if (has(r.q[lowCell]) && !has(o.p1)) o.p1 = +r.q[lowCell];
+    if (has(r.q[highCell]) && !has(o.p2)) o.p2 = +r.q[highCell];
+    if (fl.low != null && !has(o.f1)) o.f1 = fl.low;
+    if (fl.high != null && !has(o.f2)) o.f2 = fl.high;
+  };
+  fillFp('tank', 'AA11', 'AA12');   /* 冇泵 */
+  fillFp('main', 'AA11', 'AA12');
+  fillFp('pump1', 'AA14', 'AA13');  /* 1泵：AA14 Low、AA13 High */
+  fillFp('pump2', 'AA16', 'AA15');  /* 2泵：AA16 Low、AA15 High */
 }
 function sprT2Sync(r) {
   /* v0.6.147：表二 sitems 長度＝N（同表一）；floors 跟 systems[i].valves[0].cover
-     v0.6.152–154：AA20／街喉／天台缸 → 供水來源預剔 */
+     v0.6.152–154：AA20／街喉／天台缸 → 供水來源預剔
+     v0.6.229／230：tank／main／pump1／pump2 ← 各模式 bar＋AA8 流量 */
   if (!r) return [];
   const d = fsdRec(r, 'spr'), t = d.t;
   const systems = sprT1Sync(r);
@@ -2186,7 +2225,7 @@ function fsdTableHtml(r, c, s) {
     const foot = (N > 1
       ? ('<div class="mut" style="margin-top:6px">要加／減系統份數：改問卷花灑系統數量（而家 ' + N + '）。減數量會刪走後面系統已填資料。</div>')
       : '')
-      + '<div class="mut" style="margin-top:6px">讀數由師傅實測輸入（一個小數位）。水泵／中途泵有 3 組空格（照表），最少填第 1、2 組（註 2：兩項額定流量特點）；App 唔會自動填任何數值。</div>';
+      + '<div class="mut" style="margin-top:6px">中途泵讀數由師傅實測輸入（一個小數位；3 組空格，最少填第 1、2 組）。花灑水缸重力供水／街喉直接供水（冇泵）：壓力 1／2←AA11／AA12；花灑泵 1／2：壓力 1／2←AA14／AA13、AA16／AA15；流量 1／2 一律跟 Hazard AA8（LH 225／—；OH1 375／540；OH2 725／1000；OH3 1100／1350；OH4 1800／2100）；空先填，師傅改過唔蓋。</div>';
     return '<div id="ft-' + c.key + '-t2">' + parts + foot + '</div>';
   }
 
@@ -2679,7 +2718,8 @@ function lkDetail(d) {
    2) xlFill(o)：跟 import_submission.py fill() 一樣嘅規則將提交 JSON 寫入儲存格
    3) 細公式引擎（IF／IFERROR／VLOOKUP、比較、&、加減乘除）計範本公式
    4) canvas 逐頁畫（A4，150 dpi），自己砌 PDF（每頁一張 JPEG）→ 唔使外部程式庫，離線都用得；中文用手機系統字型畫，一定顯示到
-   只係預覽：正式版以 Excel（公司電腦 import_submission.py 出）為準。 */
+   只係預覽：正式版以 Excel（公司電腦 import_submission.py 出）為準。
+   v0.6.228：消防處年檢核對表（X_FSD 工作表剔號＋App提交紀錄結果／表值）用模擬手寫（sim/hwx 字型同手剔）。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -2919,6 +2959,61 @@ const xFont = n => { n = String(n || '').toLowerCase();
   if (/mingliu|明體/.test(n)) return '"PMingLiU","MingLiU","Noto Serif CJK TC",serif';
   if (/symbol|wingding/.test(n)) return '"Noto Sans Symbols","Segoe UI Symbol","DejaVu Sans",' + XF_SANS;
   return 'Arial,"Liberation Sans",Arimo,"Helvetica Neue",Helvetica,' + XF_SANS; };
+
+/* ----- v0.6.228 消防處 checklist 模擬手寫（跟 /workspace/sim/sim_pdf.py + sim/hwx/make.py）-----
+   字型：ChenYuluoyan-nohint（CJK）＋ ReenieBeanie（拉丁／數字）；剔號用手畫貝塞爾（唔用 √ 字型）。
+   抖動用固定種子 PRNG（build 禁 Math.ran…）；只套喺 X_FSD 工作表剔格 同 App提交紀錄 消防處結果／表值。 */
+const X_FSD = new Set(['Fire Hydrant Hose Reel Systems', 'Supply Tanks', 'Annex A', 'Annex B', 'Sprinkler checklist（修訂 01 )', 'Checklist for Water Supplies', 'Annual Inspection Checklist for', 'Sprinkler checklist（修訂 01 ) (2)']);
+const X_FSD_TICK = /^\[\s*[√✓]\s*\]$/;
+const XF_HW_CJK = 'ChenYuluoyanHW', XF_HW_LAT = 'ReenieBeanieHW';
+let XHW_OK = null;
+function xHwSeed(s) { let h = 2166136261 >>> 0; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function xHwRng(seed) { let a = seed >>> 0; return () => { a = Math.imul(a ^ (a >>> 15), a | 1); a ^= a + Math.imul(a ^ (a >>> 7), a | 61); return ((a ^ (a >>> 14)) >>> 0) / 4294967296; }; }
+function xHwInk(rnd) { const base = [0.11, 0.17, 0.45], k = 0.78 + rnd() * 0.4; return '#' + base.map(v => Math.round(Math.min(1, Math.max(0, v * k + (rnd() - 0.5) * 0.06)) * 255).toString(16).padStart(2, '0')).join(''); }
+async function xHwLoad() {
+  if (XHW_OK !== null) return XHW_OK;
+  if (!(document.fonts && document.fonts.add)) { XHW_OK = false; return false; }
+  let base; try { base = new URL('./fonts/', location.href).href; } catch (e) { base = 'fonts/'; }
+  try {
+    for (const [fam, file] of [[XF_HW_CJK, 'ChenYuluoyan-nohint.ttf'], [XF_HW_LAT, 'ReenieBeanie.ttf']]) {
+      const f = new FontFace(fam, 'url(' + base + file + ')'); await f.load(); document.fonts.add(f);
+    }
+    XHW_OK = true;
+  } catch (e) { XHW_OK = false; }
+  return XHW_OK;
+}
+function xHwTick(ctx, R, seed) {
+  const rnd = xHwRng(seed), bw = R[2] - R[0], bh = R[3] - R[1], box = Math.min(bw, bh);
+  const cx = (R[0] + R[2]) / 2 + (rnd() - 0.5) * box * 0.22, cy = (R[1] + R[3]) / 2 + (rnd() - 0.5) * box * 0.12;
+  const sc = (0.5 + rnd() * 0.28) * (box / 16), ang = (rnd() - 0.5) * 0.56;
+  const a = [-4.2 + (rnd() - 0.5) * 2, -0.6 + (rnd() - 0.5) * 2.4], v = [-1.0 + (rnd() - 0.5) * 1.4, 4.6 + (rnd() - 0.5) * 1.6], e = [6.8 + (rnd() - 0.5) * 4, -8.8 + (rnd() - 0.5) * 4];
+  const tr = q => { const px = q[0] * sc, py = q[1] * sc; return [cx + px * Math.cos(ang) - py * Math.sin(ang), cy + px * Math.sin(ang) + py * Math.cos(ang)]; };
+  const ctrl = (p, q, bend) => { const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1; return [mx - dy / L * bend, my + dx / L * bend]; };
+  const A_ = tr(a), V = tr(v), E = tr(e), c1 = ctrl(A_, V, (rnd() - 0.5) * 1.4), c2 = ctrl(V, E, -1.5 + rnd() * 2.1);
+  const col = xHwInk(rnd), wd = (0.75 + rnd() * 0.6) * (box / 22);
+  ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = wd; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (rnd() < 0.25) { ctx.beginPath(); ctx.moveTo(A_[0] - (0.3 + rnd()) * sc, A_[1] - (0.5 + rnd()) * sc); ctx.lineTo(A_[0], A_[1]); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(A_[0], A_[1]); ctx.quadraticCurveTo(c1[0], c1[1], V[0], V[1]); ctx.quadraticCurveTo(c2[0], c2[1], E[0], E[1]); ctx.stroke();
+  if (rnd() < 0.6) { ctx.lineWidth = Math.max(0.5, wd * 0.55); ctx.beginPath(); ctx.moveTo(V[0], V[1]); ctx.quadraticCurveTo(c2[0], c2[1], E[0] + (rnd() - 0.5) * 0.8, E[1] + (rnd() - 0.5) * 0.8); ctx.stroke(); }
+  ctx.restore();
+}
+function xHwText(ctx, text, x0, y0, size, seed, maxW) {
+  const rnd = xHwRng(seed), slant = Math.tan((7 + rnd() * 6) * Math.PI / 180), drift = 0.03 + rnd() * 0.04;
+  let cx = x0;
+  for (const ch of String(text)) {
+    if (ch === ' ') { cx += size * (0.25 + rnd() * 0.2); continue; }
+    const cjk = XCJK.test(ch), fn = cjk ? XF_HW_CJK : XF_HW_LAT, s0 = cjk ? size * 1.12 : size * 1.55;
+    const s = s0 * (0.86 + rnd() * 0.28), dy = (rnd() - 0.6) * size / 9 - (cx - x0) * drift;
+    const rot = ((rnd() - 0.5) * 16 * (cjk ? 1 : 0.7) - drift * 40) * Math.PI / 180;
+    ctx.save(); ctx.translate(cx + (rnd() - 0.5) * 0.6, y0 + dy); ctx.transform(1, 0, -slant, 1, 0, 0); ctx.rotate(rot);
+    ctx.font = s + 'px "' + fn + '"'; ctx.fillStyle = xHwInk(rnd); ctx.textBaseline = 'alphabetic'; ctx.fillText(ch, 0, 0);
+    const adv = ctx.measureText(ch).width; ctx.restore();
+    cx += adv * (cjk ? (0.9 + rnd() * 0.12) : (0.82 + rnd() * 0.15)) + (cjk ? size * 0.05 : 0);
+    if (maxW && cx - x0 > maxW) break;
+  }
+  return cx;
+}
+
 /* 字寬表（XLS.mt，由 make_sheets.py 喺 build 時抽）：排版用固定字寬，畫字時橫向縮放到呢個闊度 →
    電話冇 Arial／Times／正黑體都唔會走位（每部機換行、位置一樣） */
 const XCJK = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000-\u303F\uAC00-\uD7AF]/;
@@ -3023,7 +3118,17 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
       const img = XIMG[im.i] || (XIMG[im.i] = await xImg(XLS.images[im.i])); if (img && w > 0 && h > 0) ctx.drawImage(img, x0, y0, w, h); }
     /* 字（富文字逐段；中文逐字、英文逐詞換行） */
     list.forEach(o => { if (!o.t || inMerge[o.r + ',' + o.c]) return; const st = sty(o.s), f0 = st.f || ['Arial', 10, 0, 0, '', 0, '000000']; const R = rectOf(o.r, o.c); if (!R) return;
+      /* v0.6.228：消防處表 → 已剔格用手畫剔（模擬手寫；跟 sim/hwx） */
+      if (XHW_OK && X_FSD.has(S.n) && X_FSD_TICK.test(String(o.t).trim())) { xHwTick(ctx, R, xHwSeed(S.n + ':' + colL(o.c) + o.r + ':' + o.t)); return; }
       const rawc = S.cells[colL(o.c) + o.r], ovd = B.ovs[S.n] && (colL(o.c) + o.r) in B.ovs[S.n];
+      /* 消防處表：覆寫格（填入答案）用模擬手寫字 */
+      if (XHW_OK && X_FSD.has(S.n) && ovd && o.t && !/^\[\s*\]$/.test(String(o.t).trim())) {
+        const pad = 2 * 0.75 * sc * K; const fs = (f0[1] || 10) * sc * K; const hAlign = st.h || 'left', vAlign = st.v || 'bottom';
+        let x = hAlign === 'right' ? R[2] - pad : hAlign === 'center' ? (R[0] + R[2]) / 2 : R[0] + pad;
+        let yy = vAlign === 'top' ? R[1] + fs : vAlign === 'center' ? (R[1] + R[3]) / 2 + fs * 0.35 : R[3] - fs * 0.25;
+        if (hAlign === 'center') { ctx.save(); ctx.font = fs + 'px "' + XF_HW_CJK + '", "' + XF_HW_LAT + '"'; x -= ctx.measureText(String(o.t)).width / 2; ctx.restore(); }
+        xHwText(ctx, o.t, x, yy, fs * 0.95, xHwSeed(S.n + ':' + colL(o.c) + o.r), R[2] - R[0] - pad * 2); return;
+      }
       let runs = (!ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) ? rawc[0].rt.map(x => [x[0], x[1] || f0]) : [[o.t, f0]];
       runs = runs.map(([t, f]) => [/wingdings/i.test(f[0] || '') ? String(t).split('').map(ch => XWD2[ch] || ch).join('') : String(t), f]);
       const pad = 2 * 0.75 * sc * K + (st.ind ? st.ind * 9 * 0.75 * sc * K : 0); const cw = R[2] - R[0] - pad * 2;
@@ -3109,8 +3214,17 @@ function xDoc(sink, sheet) { /* sink：每頁畫完即刻轉 JPEG、放走 canva
     const drawRow = (cells, head) => { font(sz, head); const L = cells.map((c, i) => xLines(ctx, c === null || c === undefined ? '' : String(c), ws[i] - 12)); const h = Math.max(...L.map(l => l.length)) * lh + 10;
       if (y + h > H - M - 30) { np(); if (!head && o.head) drawRow(cols.map(c => c.t), true); }
       let x = M; L.forEach((ls, i) => { if (head) { ctx.fillStyle = '#e5e7eb'; ctx.fillRect(x, y, ws[i], h); } ctx.strokeStyle = '#555'; ctx.lineWidth = 1.2; ctx.strokeRect(x, y, ws[i], h);
-        const col = (o.color && !head) ? o.color(cells, i) : null; font(sz, head || (col && col.b)); ctx.fillStyle = (col && col.c) || '#111';
-        ls.forEach((l, k) => { const w = ctx.measureText(l).width; const xx = cols[i].a === 'c' ? x + (ws[i] - w) / 2 : x + 6; ctx.fillText(l, xx, y + 5 + sz + k * lh); }); x += ws[i]; });
+        const col = (o.color && !head) ? o.color(cells, i) : null; const useHw = !head && XHW_OK && o.hwCols && o.hwCols.has(i);
+        if (!useHw) { font(sz, head || (col && col.b)); ctx.fillStyle = (col && col.c) || '#111'; }
+        ls.forEach((l, k) => {
+          if (useHw) {
+            const tw = (() => { ctx.save(); ctx.font = sz + 'px "' + XF_HW_CJK + '", "' + XF_HW_LAT + '"'; const w = ctx.measureText(l).width; ctx.restore(); return w; })();
+            const xx = cols[i].a === 'c' ? x + (ws[i] - tw) / 2 : x + 6;
+            xHwText(ctx, l, xx, y + 5 + sz + k * lh, sz * 0.95, xHwSeed('doc:' + (curP && curP.sheet) + ':' + y + ':' + i + ':' + k + ':' + l), ws[i] - 12);
+          } else {
+            const w = ctx.measureText(l).width; const xx = cols[i].a === 'c' ? x + (ws[i] - w) / 2 : x + 6; ctx.fillText(l, xx, y + 5 + sz + k * lh);
+          }
+        }); x += ws[i]; });
       y += h; };
     if (o.head !== false) { ensure(lh * 2 + 20); drawRow(cols.map(c => c.t), true); o.head = true; } rows.forEach(r => drawRow(r, false)); y += 14; };
   const img = async (src, cap) => { const im = await xImg(src); if (!im) { text('（相片讀唔到）' + cap, { sz: 18, color: '#b91c1c' }); return; }
@@ -3132,6 +3246,7 @@ async function xBuildPages(o, opt, prog) {
     p.cv.width = 1; p.cv.height = 1; p.cv = null; pages.push(p); };
   const est = o.estate || {}, blk = o.block || {};
   if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) { } }
+  if (prog) prog('載入模擬手寫字型…'); await xHwLoad();
   /* 封面 */
   const D = xDoc(sink, '封面'); D.np();
   D.text('消防裝置檢查紀錄 — 成套 Check List 預覽', { sz: 34, b: 1, after: 4 });
@@ -3159,9 +3274,9 @@ async function xBuildPages(o, opt, prog) {
   if (fsd.length) { const E = xDoc(sink, 'App提交紀錄'); E.np(); E.text('消防處年檢核對表（App 記錄）', { sz: 30, b: 1, after: 2 }); E.text('Excel 入面喺「App提交紀錄」工作表。', { sz: 18, color: '#475569', after: 10 });
     fsd.forEach(c => { E.text(`${c.title}${c.whole_na ? '（整份不適用）' : ''}`, { sz: 24, b: 1, after: 0 }); E.text(`${c.circular || ''} ${c.revision || ''}`, { sz: 17, color: '#475569', after: 4 });
       const rows = Object.keys(c.items || {}).map(k => { const a = c.items[k]; return [k, a.text || '', a.result || (a.tick_only ? '' : '—'), a.remark || (a.optional || '')]; });
-      if (rows.length) E.table([{ t: '項目', w: 0.1 }, { t: '內容', w: 0.56 }, { t: '結果', w: 0.12, a: 'c' }, { t: '備註', w: 0.22 }], rows, { sz: 15, color: (r, i) => i === 2 ? (r[2] === '否' ? { c: '#b91c1c', b: 1 } : r[2] === '是' || r[2] === '✓' ? { c: '#15803d', b: 1 } : null) : null });
+      if (rows.length) E.table([{ t: '項目', w: 0.1 }, { t: '內容', w: 0.56 }, { t: '結果', w: 0.12, a: 'c' }, { t: '備註', w: 0.22 }], rows, { sz: 15, hwCols: new Set([2, 3]), color: (r, i) => i === 2 ? (r[2] === '否' ? { c: '#b91c1c', b: 1 } : r[2] === '是' || r[2] === '✓' ? { c: '#15803d', b: 1 } : null) : null });
       const tb = []; (function fl(v, pre) { if (v === null || v === undefined || v === '') return; if (typeof v !== 'object') { tb.push([pre, String(v)]); return; } if (Array.isArray(v)) v.forEach((x, i) => fl(x, (pre ? pre + ' ' : '') + '#' + (i + 1))); else Object.keys(v).forEach(k => fl(v[k], pre ? pre + '.' + k : k)); })(c.tables || {}, '');
-      if (tb.length) { E.text('表格讀數', { sz: 20, b: 1 }); E.table([{ t: '欄', w: 0.5 }, { t: '值', w: 0.5 }], tb, { sz: 15 }); } });
+      if (tb.length) { E.text('表格讀數', { sz: 20, b: 1 }); E.table([{ t: '欄', w: 0.5 }, { t: '值', w: 0.5 }], tb, { sz: 15, hwCols: new Set([1]) }); } });
     E.done(); }
   /* 備註＋相片附錄 */
   const photos = o.photos || []; let phOk = 0, phMiss = 0;
