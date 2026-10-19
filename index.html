@@ -417,8 +417,11 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.212';
-/* v0.6.212：edge app_data have:'' 強制重拉（修 FA_REPEATER 等上線後唔見） */
+const APP_VERSION = '0.6.222';
+/* v0.6.222：FSD 承辦商參考編號全部預填 RC1/0044、RC2/0037 */
+/* v0.6.221：FA_MCP_PANEL＝冇 → §1.e 剔適用（T），兼 1.a–d 清／禁剔 */
+/* v0.6.220：F15＝有 → §1.a 剔適用（T）；1.b／1.d 已接 */
+/* v0.6.219：F20＝有 → §1.d 剔適用（T）；1.b 已接 FA_REPEATER */
 /* v0.6.207：FA_REPEATER＝冇 → A1.3.l */
 /* v0.6.206：FA_REPEATER＝冇 → A1.3.f／h */
 /* v0.6.205：FA_REPEATER＝冇 → A1.3.d（兼 A1.3.b／A1.2.h） */
@@ -1671,6 +1674,10 @@ function qFsdMapBuild() {
             }
           });
         }
+        if (it.q_untick && it.q_untick[0]) {
+          const e = ens(it.q_untick[0]);
+          (e.defs[sh] || (e.defs[sh] = [])).push(it.k + '(禁剔)');
+        }
       });
       (s.subs || []).forEach(walk);
     };
@@ -1693,6 +1700,18 @@ function qFsdHintHtml(cell) {
   return `<div class="qfsd">${esc(parts.join(' · '))}</div>`;
 }
 const FSD_V = { Y: '是', N: '否', NA: '不適用', T: '✓' };
+/* v0.6.222：消防處核對表「註冊消防裝置承辦商參考編號」全部預填 */
+const FSD_REF_DEFAULT = 'RC1/0044、RC2/0037';
+function fsdEnsureRef(r, key) {
+  if (!r || !key) return;
+  const d = fsdRec(r, key);
+  if (!has(d.h.ref)) { d.h.ref = FSD_REF_DEFAULT; Store.touch(r); }
+}
+function fsdEnsureAllRefs(r) {
+  if (!r) return;
+  (FSD || []).forEach(c => { if (fsdVisible(r, c)) fsdEnsureRef(r, c.key); });
+}
+
 /* v0.6.143：q_skip 支援 [cell, ans] 全等，或 [cell, 'lt', n]（已答且 Number(答) < n → 整部不適用；未答唔觸發）
    v0.6.156：['and', [cell, ans], …] → 全部條件齊先整部不適用（例：AA20有＋天台缸＋街喉否 → 附錄 I） */
 const qSkipMatch = (s, r) => {
@@ -1724,7 +1743,10 @@ const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：�
 /* v0.6.134：it.q_def_all = [[cell…], {答:Y/NA}] → 全部 cell 同答先預設（例如 M7+M8 同時冇→2.8.k／2.8.l NA）；優先於單格 q_def */
 /* v0.6.135：a.by=technician|bulk；全部揀是→bulk；舊 a.v 無 by＝legacy。bulk／legacy 同 def_v／q_def（尤其 NA）衝突時跟預設，唔再俾「是」蓋過不適用 */
 /* v0.6.211：it.q_def_and = ['and', [cell,ans], …, result] → 全部條件齊先預設（優先於 q_def_all／q_def；例：數碼是＋isolator冇→N） */
+/* v0.6.221：it.q_untick = [cell, ans] → 問卷答齊時強制空（by=lock，蓋過 technician；mode y 禁剔） */
 const fsdDefault = (r, c, s, it, M) => {
+  if (it.q_untick && r.q[it.q_untick[0]] === it.q_untick[1])
+    return { v: '', by: 'lock' };
   if (it.q_def_and && it.q_def_and[0] === 'and' && it.q_def_and.length >= 3) {
     const parts = it.q_def_and.slice(1, -1), result = it.q_def_and[it.q_def_and.length - 1];
     if (parts.every(p => p && r.q[p[0]] === p[1]) && result)
@@ -1760,6 +1782,7 @@ const fsdDefault = (r, c, s, it, M) => {
 const fsdEff = (r, c, s, it, M) => {
   const a = (fsdGet(r, c.key).a || {})[it.k] || {};
   const def = fsdDefault(r, c, s, it, M);
+  if (def.by === 'lock') return def; /* v0.6.221：禁剔／清剔蓋過師傅 */
   if (a.v && a.by === 'technician') return { v: a.v, by: 'technician' };
   /* bulk／legacy（無 by）若同 def_v／q_def 預設唔同 → 跟預設（例如 NA 蓋過舊「是」） */
   if (a.v && (a.by === 'bulk' || !a.by) && def.v && def.v !== a.v) return def;
@@ -1769,14 +1792,24 @@ const fsdEff = (r, c, s, it, M) => {
 /* 開頁清走同預設衝突嘅 bulk／legacy a.v，令不適用真係顯示同埋存得住 */
 function fsdMigrateStale(r, c) {
   const d = fsdRec(r, c.key); let ch = false;
-  fsdActive(r, c).forEach(([s, it]) => {
-    const a = d.a[it.k]; if (!a || !a.v || a.by === 'technician') return;
+  const sweep = (s, it) => {
+    const a = d.a[it.k]; if (!a || !a.v) return;
     const def = fsdDefault(r, c, s, it);
+    /* v0.6.221：lock → 清走任何已存剔（含 technician） */
+    if (def.by === 'lock') {
+      delete a.v; delete a.by;
+      if (!has(a.note)) delete d.a[it.k]; else d.a[it.k] = a;
+      ch = true; return;
+    }
+    if (a.by === 'technician') return;
     if (!(def.v && def.v !== a.v)) return;
     delete a.v; delete a.by;
     if (!has(a.note)) delete d.a[it.k]; else d.a[it.k] = a;
     ch = true;
-  });
+  };
+  fsdActive(r, c).forEach(([s, it]) => sweep(s, it));
+  /* mode y（✓ 適用）唔喺 fsdActive → 另 sweep */
+  fsdWalk(c, d, (s, dep, sk) => { if (!sk) (s.items || []).forEach(it => { if (it.mode === 'y') sweep(s, it); }); }, fsdIsOff(r, c), fsdHide(r, c), r);
   if (ch) Store.touch(r);
 };
 const fsdGet = (r, key) => { const d = r.fsd && r.fsd[key]; return d ? (d.a && d.skip && d.t && d.h && d.force_on ? d : Object.assign({ a: {}, skip: {}, t: {}, h: {}, force_on: {} }, d)) : { a: {}, skip: {}, t: {}, h: {}, force_on: {} }; }; // 唯讀（改用 fsdRec）
@@ -2035,8 +2068,11 @@ let fsdOpenNote = {};
 function fsdItemHtml(r, c, s, it) {
   const d = fsdGet(r, c.key), a = d.a[it.k] || {}, ef = fsdEff(r, c, s, it), v = ef.v || '', bk = `fsd.${c.key}.a.${it.k.replace(/\./g, '~')}`;
   const note = it.note ? `<div class="en">${esc(it.note)}</div>` : '';
-  if (it.mode === 'y') return `<div class="item fitem ${v ? 'v-ok' : ''}" id="${fsdDom(c.key, it.k)}"><div class="ih"><span class="iid">${esc(it.id || s.id)}</span><div><div class="zh">${esc(it.text)}</div>${note}</div></div>
-    <div class="tri fsdtri"><button class="ok ${v === 'T' ? 'on' : ''}" data-act="fsdv" data-c="${c.key}" data-k="${esc(it.k)}" data-v="T">✓ 適用（剔）</button></div></div>`;
+  if (it.mode === 'y') {
+    const locked = ef.by === 'lock';
+    return `<div class="item fitem ${v ? 'v-ok' : ''}${locked ? ' dflt' : ''}" id="${fsdDom(c.key, it.k)}"><div class="ih"><span class="iid">${esc(it.id || s.id)}</span><div><div class="zh">${esc(it.text)}</div>${note}${locked ? '<span class="dtag">問卷禁剔（冇警鐘撳手 panel）</span>' : ''}</div></div>
+    <div class="tri fsdtri"><button class="ok ${v === 'T' ? 'on' : ''}" data-act="fsdv" data-c="${c.key}" data-k="${esc(it.k)}" data-v="T"${locked ? ' disabled aria-disabled="true"' : ''}>✓ 適用（剔）</button></div></div>`;
+  }
   const cls = v === 'Y' ? 'v-ok' : v === 'N' ? 'v-x' : v === 'NA' ? 'v-na' : '';
   const ph = (r.photos || []).filter(p => p.item === c.key + ':' + it.k);
   const showNote = v === 'N' || has(a.note) || fsdOpenNote[c.key + ':' + it.k];
@@ -2159,7 +2195,7 @@ function fsdTableHtml(r, c, s) {
   return '';
 }
 function stepFsd(r, key) {
-  const c = FSD_BY[key]; fsdMigrateStale(r, c); if (key === 'spr') { sprT1Sync(r); sprT2Sync(r); } const d = fsdGet(r, key);
+  const c = FSD_BY[key]; fsdMigrateStale(r, c); fsdEnsureRef(r, key); if (key === 'spr') { sprT1Sync(r); sprT2Sync(r); } const d = fsdGet(r, key);
   const act = fsdActive(r, c), M0 = optMap(r), un = act.filter(([s, it]) => !fsdEff(r, c, s, it, M0).v).length;
   const off = fsdIsOff(r, c);
   let body = '';
@@ -2184,7 +2220,7 @@ function stepFsd(r, key) {
   return `<div class="hint"><b>${esc(c.title)}</b>（${esc(c.circular)}${c.revision ? '，' + esc(c.revision) : ''}）<br>發出 ${esc(c.issued)} · 生效 ${esc(c.effective)} · <a href="${esc(c.source)}" target="_blank" rel="noopener">官方 PDF</a><br>
     <span class="mut">${esc(c.legend)}</span><br><span class="mut">工作用數位副本，方便現場記錄；正式呈交／簽署仍以消防處原表格為準。</span></div>
   <div class="card"><div class="kv"><b>FS 251編號</b><span>${esc(fs251 || '—（基本頁可填）')}</span><b>完成年檢日期</b><span>${esc(r.date || '—')}</span><b>建築物／處所地址</b><span>${esc(addr || '—')}</span></div>
-    ${txtField(`fsd.${key}.h.ref`, d.h && d.h.ref, '註冊消防裝置承辦商參考編號（可留空）', '')}</div>
+    ${txtField(`fsd.${key}.h.ref`, (d.h && d.h.ref) || FSD_REF_DEFAULT, '註冊消防裝置承辦商參考編號', FSD_REF_DEFAULT)}</div>
   ${fsdOffAllowed(r, c) ? `<div class="card"><div class="mut">問卷 F9 答「有」（有煙霧頭／熱力頭）。按消防處通函第 4/2025 號，連接火警偵測系統的火警警報系統應記錄喺「火警偵測系統年檢核對表」；獨立火警警報系統先用呢份。</div>
     <button class="fskip ${off ? 'on' : ''}" data-act="fsdoff" data-c="${key}">${off ? '☑' : '☐'} 呢座火警警報系統已連接火警偵測系統 → 呢份整份不適用</button></div>` : ''}
   ${off ? '<div class="okbox">已揀整份不適用（改用火警偵測系統年檢核對表）。</div>' : (act.length ? (un ? `<button class="btn" style="width:100%;margin:4px 0" data-act="fsdallok" data-c="${key}">未揀嘅 ${un} 項全部揀「是」</button>` : `<div class="okbox">呢份核對表全部項目已揀。</div>`) : '') + body}`;
@@ -2193,6 +2229,9 @@ function stepFsd(r, key) {
 async function fsdAct(act, el, r) {
   const key = el.dataset.c, c = FSD_BY[key]; if (!c || !r) return;
   if (act === 'fsdv') { const d = fsdRec(r, key), k = el.dataset.k, a = d.a[k] || {}, tap = el.dataset.v;
+    /* v0.6.221：q_untick lock → 唔准改 */
+    { let lockIt = null; fsdWalk(c, d, (s, dep, sk) => { if (sk || lockIt) return; (s.items || []).forEach(it => { if (it.k === k) lockIt = it; }); }, fsdIsOff(r, c), fsdHide(r, c), r);
+      if (lockIt && fsdDefault(r, c, null, lockIt).by === 'lock') return; }
     /* v0.6.135：只有 by=technician 先當「撳返清除」；bulk／legacy 撳任何掣都寫成師傅揀 */
     if (a.v === tap && a.by === 'technician') { delete a.v; delete a.by; if (!has(a.note)) delete d.a[k]; else d.a[k] = a; }
     else { a.v = tap; a.by = 'technician'; d.a[k] = a; }
@@ -2252,6 +2291,7 @@ function fsdExport(r) {
     const meta = { title: c.title, circular: c.circular, version: c.version, revision: c.revision, issued: c.issued, effective: c.effective, source: c.source, gate: { cell: c.gate, answer: r.q[c.gate] || '' } };
     if (!fsdVisible(r, c)) { out[c.key] = Object.assign(meta, { applicable: false }); return; }
     if (c.key === 'spr') { sprT1Sync(r); sprT2Sync(r); }
+    fsdEnsureRef(r, c.key); /* v0.6.222：提交前都預填承辦商參考編號 */
     const d = fsdGet(r, c.key), off = fsdIsOff(r, c), items = {}, skipped = [];
     fsdWalk(c, d, (s, dep, sk, why) => { if (why === 'own') skipped.push(s.id);
       s.items.forEach(it => { const a = d.a[it.k] || {};
@@ -2260,7 +2300,7 @@ function fsdExport(r) {
         else { const ef = fsdEff(r, c, s, it, OM); o.result = ef.v ? FSD_V[ef.v] : null; if (ef.by) o.set_by = ef.by; if (!ef.v && it.mode !== 'y' && fsdItemOpt(OM, c, s)) o.optional = fsdItemOpt(OM, c, s); }
         if (has((a.note || '').trim())) o.remark = a.note.trim();
         items[it.k] = o; }); }, off, fsdHide(r, c), r);
-    out[c.key] = Object.assign(meta, { applicable: true, whole_na: off, header: { contractor_ref: (d.h || {}).ref || '' }, skipped_sections: skipped, items, tables: fsdTablesOut(r, c, d) });
+    out[c.key] = Object.assign(meta, { applicable: true, whole_na: off, header: { contractor_ref: (d.h || {}).ref || FSD_REF_DEFAULT }, skipped_sections: skipped, items, tables: fsdTablesOut(r, c, d) });
     if (fsdHide(r, c)) out[c.key].hidden_sections = { sections: NOTANK_SEC.slice(), why: '冇花灑水缸（問卷 SPR_TANK＝冇）' };
   });
   return out;
