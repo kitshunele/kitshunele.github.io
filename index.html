@@ -375,10 +375,11 @@ a.jump{color:var(--pri);font-weight:700}
 /* v0.6.198：電腦／闊螢幕大版面（≥900px；手機保持原 720 窄欄） */
 
 /* v0.6.234：CL-A 總表隔離「基本」；每份選擇表最底 #haLive */
+/* v0.6.239：CL-A 改頂欄獨立 tab（問卷隔離）；.basicla 側欄唔再用 */
 .clapanel .clah{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:4px}
 .clapanel .clah b{font-size:16px}
 .clamut{font-size:12px;color:var(--mut);margin-bottom:8px;line-height:1.35}
-.clalist{display:flex;flex-direction:column;gap:2px;max-height:320px;overflow:auto;-webkit-overflow-scrolling:touch}
+.clalist{display:flex;flex-direction:column;gap:2px;max-height:min(70vh,560px);overflow:auto;-webkit-overflow-scrolling:touch}
 .clar{display:grid;grid-template-columns:22px 36px 1fr auto;gap:4px 6px;align-items:center;padding:4px 2px;border-radius:8px;font-size:13px;line-height:1.25}
 .clar.on{background:#f0fdf4}
 .clar.off{opacity:.55}
@@ -452,10 +453,15 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.235';
+const APP_VERSION = '0.6.240';
+/* v0.6.240：F9＝有 → 顯示房署 CL-D（火警偵測）畀填；F9＝冇 → 唔出／整份 NA（同 CL-E←F15） */
+/* v0.6.239：CL-A／Check A 總表改做頂欄獨立 tab（問卷隔離）；唔再塞基本右欄；A-1／A-2 實時 PDF 跟 CL-A tab */
 /* v0.6.227：AA11／AA12「直砸」→「冇泵」；互斥提示 la 直砸→冇泵 */
 /* v0.6.229：表二 tank／main 壓力1／2←AA11／AA12；流量1／2←AA8 */
 /* v0.6.230：FAN 流量表（LH 225／— … OH4 1800／2100）；1泵／2泵同冇泵接表二；取代工作表3 查表 */
+/* v0.6.238：F21＝有 → CL-E g ✓；F21＝冇 → g＝NA（同 F23→e2／T8→e3／F22→e4；na_unless 早已有，補問卷 note） */
+/* v0.6.237：F22＝有 → CL-E e4 ✓；F22＝冇 → e4＝NA（同 F23→e2／T8→e3；na_unless 早已有，補問卷 note） */
+/* v0.6.236：F23＝有 → CL-E e2 ✓；F23＝冇 → e2＝NA（同 T8→e3；na_unless 早已有，補問卷 note） */
 /* v0.6.235：房署 Appendix C 跟 HA 36 頁空白（工作表3 LH/OH4、J Hazard、G2/H2 Riser 1/2）；消防處唔郁 */
 /* v0.6.234：CL-A 總表隔離「基本」；每份選擇表最底各自實時 PDF（唔再問卷最底大堆） */
 /* v0.6.233：問卷入面唔再顯示 CL-A／Check A 摘要；最底 #haLive 房署實時 PDF 保留 */
@@ -540,7 +546,7 @@ coreFormsFix();
 /* v0.4.7：C1 消防泵 i（低電流 relay）、m（消音掣）長期 NA → 唔顯示俾師傅、唔計未填；importer 寫 NA（上水泵 C1U 不變） */
 const ALWAYS_NA = '消防泵呢項長期 NA（App 唔顯示）';
 const QBY = {}; function coreQby() { Object.keys(QBY).forEach(k => delete QBY[k]); QS.forEach(s => s.items.forEach(it => { QBY[it.cell] = Object.assign({ sec: s.key }, it); })); } coreQby();
-const FORM_KEYS = ['C1U', 'C1', 'C1S', 'BU', 'B', 'BS', 'CL-E', 'H1', 'G1', 'CL-J', 'CL-K']; /* v0.5.0：C1S／BS 花灑泵（年檢／半年檢） */ /* v0.4.9：CL-J 花灑（半年檢）、CL-K 花灑（年檢） */ // v0.4.8：BU／B（CL-B 半年檢）、G1（半年檢） // v0.4.2：C1 分開 上水泵（C1U，範本 Upfeed Pump）同 消防泵（C1，範本 FS Pump） // v0.3.4：CL-A 總表唔問師傅（提交時由問卷自動，見 buildExport）
+const FORM_KEYS = ['C1U', 'C1', 'C1S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'H1', 'G1', 'CL-J', 'CL-K']; /* v0.6.240：CL-D 火警偵測（F9） */ /* v0.5.0：C1S／BS 花灑泵（年檢／半年檢） */ /* v0.4.9：CL-J 花灑（半年檢）、CL-K 花灑（年檢） */ // v0.4.8：BU／B（CL-B 半年檢）、G1（半年檢） // v0.4.2：C1 分開 上水泵（C1U，範本 Upfeed Pump）同 消防泵（C1，範本 FS Pump） // v0.3.4：CL-A 總表唔問師傅（提交時由問卷自動，見 buildExport）
 
 /* ---------- helpers ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -737,7 +743,7 @@ const formOffNA = (r, key) => { const f = FORMS[key]; if (!f || formVisible(r, k
 function itemMode(r, it) {
   if (it.show_if && !isYes(r, it.show_if)) return 'hidden';
   if (it.always_na) return 'autona';
-  if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8 半年檢：CL-E *k–*n（REW）只限年檢 → 隱藏、記 NA
+  if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8／0.6.240 半年檢：CL-E *k–*n／CL-D *g–*h（REW）只限年檢 → 隱藏、記 NA
   if (it.na_any && it.na_any.every(c => qA(r, c) === '冇')) return 'autona';
   if (it.na_if && qA(r, it.na_if[0]) === it.na_if[1]) return 'autona';
   /* v0.6.143：na_lt = [cell, n] → 已答且 Number(答) < n → 自動 NA（未答唔觸發；CL-J n 跟 AA31） */
@@ -865,13 +871,14 @@ function h2Need(r) { let done = 0, total = 0; const M = optMap(r); (r.h2.zones |
 
 /* ---------- steps & progress ---------- */
 function stepList(r) {
-  const L = [{ k: 'basic', t: '基本' }, { k: 'q', t: '問卷' }];
+  const L = [{ k: 'basic', t: '基本' }, { k: 'q', t: '問卷' }, { k: 'CL-A', t: 'CL-A' }]; /* v0.6.239：問卷隔離獨立 CL-A tab */
   if (formVisible(r, 'C1U')) L.push({ k: 'C1U', t: 'C1 上水泵' }, { k: 'TR-C2U', t: 'TR-C2 上水泵' });
   if (formVisible(r, 'C1')) L.push({ k: 'C1', t: 'C1 消防泵' }, { k: 'TR-C2', t: 'TR-C2 消防泵' });
   if (formVisible(r, 'C1S')) L.push({ k: 'C1S', t: 'C1 花灑泵' }, { k: 'TR-C2S', t: 'TR-C2 花灑泵' }); // v0.5.0 年檢
   if (formVisible(r, 'BU')) L.push({ k: 'BU', t: 'B 上水泵' });   // v0.4.8 半年檢
   if (formVisible(r, 'B')) L.push({ k: 'B', t: 'B 消防泵' });
   if (formVisible(r, 'BS')) L.push({ k: 'BS', t: 'B 花灑泵' }); // v0.5.0 半年檢
+  if (formVisible(r, 'CL-D')) L.push({ k: 'CL-D', t: 'CL-D' }); /* v0.6.240：F9＝有 */
   if (formVisible(r, 'CL-E')) L.push({ k: 'CL-E', t: 'CL-E' });
   if (formVisible(r, 'H1')) L.push({ k: 'H1', t: 'H1' }, { k: 'TR-H2', t: 'TR-H2' });
   if (formVisible(r, 'G1')) L.push({ k: 'G1', t: 'G1' }, { k: 'TR-H2', t: 'TR-G2' });
@@ -883,6 +890,7 @@ function stepList(r) {
 }
 function prog(r, k) {
   if (k === 'basic') return { done: (has(r.block.zh) || has(r.block.en) ? 1 : 0) + (has(r.date) ? 1 : 0) + (ITYPE[r.itype] ? 1 : 0), total: 3 };
+  if (k === 'CL-A') return null; /* v0.6.239：唯讀總表，唔計師傅填寫進度 */
   if (k === 'q') { let d = 0, t = 0; const M = optMap(r); QS.forEach(s => s.items.forEach(it => { if (qVisible(r, it, s)) { if (!has(r.q[it.cell]) && M.has('q.' + it.cell)) return; t++; if (has(r.q[it.cell])) d++; } })); return { done: d, total: t }; }
   if (FORMS[k]) { let d = 0, t = 0, err = 0; FORMS[k].items.forEach(it => { if (itemMode(r, it) === 'input') { if (!it.optional) { t++; if (has(inVal(r, k, it))) d++; } return; } if (itemMode(r, it) !== 'ask') return; t++; const a = itemVal(r, k, it); if (a.v) { d++; if (a.v === 'X' && !has((a.note || '').trim())) err++; } }); return { done: d, total: t, err }; }
   if (isC2(k)) { const rows = c2Set(k)(r); return { done: rows.filter(x => c2RowDone(r, x)).length, total: rows.length }; }
@@ -894,6 +902,7 @@ function prog(r, k) {
 const H2_LBL = { floor: '樓層', stair: '梯', p1_static: '1號泵死磅', p1_run: '1號泵行泵', p1_flow: '1號泵Flow', np_bar: '冇開泵Bar', np_flow: '冇開泵Flow', tk_run: '水缸Bar', tk_flow: '水缸Flow' };
 function pageMissing(r, k) { // → [{code, sel}]
   const out = [];
+  if (k === 'CL-A') return out; /* v0.6.239：唯讀總表，唔阻下一頁 */
   if (k === 'basic') {
     if (!has(r.block.zh) && !has(r.block.en)) out.push({ code: '樓名', sel: '#cbwrap' });
     if (!has(r.date)) out.push({ code: '檢查日期', sel: '[data-bind="date"]' });
@@ -1425,7 +1434,7 @@ function viewRec(r) {
   const chips = steps.map(s => { const p = prog(r, s.k); const full = p && p.total > 0 && p.done >= p.total && !p.err; const err = p && p.err;
     return `<button class="chip ${s.k === cur.step ? 'cur' : ''} ${full ? 'full' : ''} ${err ? 'err' : ''}" data-act="step" data-k="${s.k}">${esc(s.t)}${p && p.total ? `<span class="p">${p.done}/${p.total}</span>` : ''}</button>`; }).join('');
   const st = status(r);
-  const body = ({ basic: stepBasic, q: stepQ, 'TR-C2': r => stepC2(r, 'TR-C2'), 'TR-C2U': r => stepC2(r, 'TR-C2U'), 'TR-C2S': r => stepC2(r, 'TR-C2S'), 'TR-H2': stepH2, notes: stepNotes, submit: stepSubmit })[cur.step];
+  const body = ({ basic: stepBasic, q: stepQ, 'CL-A': stepCla, 'TR-C2': r => stepC2(r, 'TR-C2'), 'TR-C2U': r => stepC2(r, 'TR-C2U'), 'TR-C2S': r => stepC2(r, 'TR-C2S'), 'TR-H2': stepH2, notes: stepNotes, submit: stepSubmit })[cur.step];
   const html = body ? body(r) : (fsdKeyOf(cur.step) ? stepFsd(r, fsdKeyOf(cur.step)) : stepForm(r, cur.step));
   const haSlot = (typeof haLiveMountHtml === 'function') ? haLiveMountHtml(cur.step) : '';
   const prev = steps[i - 1], next = steps[i + 1];
@@ -1510,15 +1519,19 @@ function stepBasic(r) {
   ${extraE}${extraB}${kvB}</div>
   <div class="card" id="fe-card"><h3>滅火筒數量 <span class="mut">（唯讀 · 滅火筒表）</span></h3><div id="fe-body">${feCard(r, false)}</div></div>
   <div class="card ${ITYPE[r.itype] ? '' : 'unans'}" id="itype"><h3>檢查類別（必揀）</h3><div class="seg">${['annual', 'half'].map(v => `<button class="v-opt ${r.itype === v ? 'on' : ''}" data-act="ans" data-bind="itype" data-v="${v}">${ITYPE[v]}</button>`).join('')}</div>
-    <div class="mut" style="margin-top:6px">${r.itype === 'half' ? '半年檢：用 CL-B 消防泵／上水泵、CL-G1＋TR-G2、CL-E（*k–*n 只限年檢）；C1／TR-C2、H1／TR-H2、消防處年檢核對表唔使做。' : r.itype === 'annual' ? '年檢：C1＋TR-C2、H1＋TR-H2、CL-E、消防處年檢核對表。' : '請揀年檢定半年檢（會決定要填邊啲表、Excel 用邊份 CL-A）。'}</div></div>
+    <div class="mut" style="margin-top:6px">${r.itype === 'half' ? '半年檢：用 CL-B 消防泵／上水泵、CL-G1＋TR-G2、CL-D（*g–*h 只限年檢）、CL-E（*k–*n 只限年檢）；C1／TR-C2、H1／TR-H2、消防處年檢核對表唔使做。' : r.itype === 'annual' ? '年檢：C1＋TR-C2、H1＋TR-H2、CL-D、CL-E、消防處年檢核對表。' : '請揀年檢定半年檢（會決定要填邊啲表、Excel 用邊份 CL-A）。'}</div></div>
   <div class="card"><h3>2. 檢查日期（香港時間）</h3><input class="inp" type="date" data-bind="date" value="${esc(r.date || '')}"><div class="mut" style="margin-top:6px">今日：${hkDate()}</div></div>
   <div class="card"><h3>3. 師傅姓名</h3><input class="inp" data-bind="technician" data-pref="tech" value="${esc(r.technician || '')}" placeholder="例：陳大文"><div class="mut" style="margin-top:6px">會記低，下一座自動填。</div></div>
   <div class="card"><button class="btn danger" style="width:100%" data-act="delrec">🗑 刪除呢個紀錄</button></div>`;
-  /* v0.6.234：CL-A 總表隔離「基本」問卷（闊螢幕右欄 sticky；手機喺基本欄目下面） */
-  return `<div class="basicla"><div class="basicla-main">${main}</div>${claPanel(r)}</div>`;
+  /* v0.6.239：基本淨欄（屋邨／日期）；CL-A 總表改去頂欄「CL-A」tab（問卷隔離） */
+  return main;
+}
+function stepCla(r) {
+  /* v0.6.239：獨立 CL-A tab；摘要 + 下面 #haLive A-1／A-2 */
+  return `<div class="hint">房署 Check A（CL-A）總表跟問卷自動：有＝✓／冇＝空${isHalf(r) ? '／半年檢部分行「—」' : ''}。唔使師傅填；完整 A-1／A-2 實時 PDF 喺下面。</div>${claPanel(r)}`;
 }
 /* ----- step: questionnaire ----- */
-/* v0.6.234：問卷唔再放 CL-A／唔再最底大堆 PDF；CL-A 喺「基本」隔離；PDF 各自喺選擇表下面 */
+/* v0.6.239：問卷唔放 CL-A；CL-A 喺頂欄「問卷」隔離獨立 tab；PDF 各自喺選擇表／CL-A tab 下面 */
 function qInput(r, it) {
   const v = r.q[it.cell], b = 'q.' + it.cell;
   /* v0.6.137：還原有／冇（是／否／OH）掣；撤銷 0.6.136／137 打剔 UI */
@@ -1534,7 +1547,7 @@ function qInput(r, it) {
   return `<input class="inp ${has(v) ? 'filled' : ''}" data-bind="${b}" value="${esc(v || '')}" placeholder="例：G/F、5/F、R/F">`;
 }
 function stepQ(r) {
-  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺「基本」隔離；每份選擇表最底有該份實時 PDF。</div>` + QS.map(s => {
+  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺「問卷」隔離（頂欄 CL-A）；每份選擇表最底有該份實時 PDF。</div>` + QS.map(s => {
     const items = s.items.filter(it => qVisible(r, it, s)), OM = optMap(r);
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
@@ -2784,7 +2797,8 @@ function lkDetail(d) {
    4) canvas 逐頁畫（A4，150 dpi），自己砌 PDF（每頁一張 JPEG）→ 唔使外部程式庫，離線都用得；中文用手機系統字型畫，一定顯示到
    只係預覽：正式版以 Excel（公司電腦 import_submission.py 出）為準。
    v0.6.228／0.6.231：消防處年檢核對表模擬手寫；0.6.231 是／否／不適用 [ ] 框保留、剔入框內（跟 make.py）。
-   v0.6.234：每份選擇表最底各自實時 PDF；basic＝CL-A A-1／A-2。 */
+   v0.6.234：每份選擇表最底各自實時 PDF；basic＝CL-A A-1／A-2。
+   v0.6.239：A-1／A-2 改掛 CL-A tab（唔再 basic）。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -2825,7 +2839,7 @@ const X_C2SA = { S_main: 12, S_cable_fix1: 15, S_cable_fix2: 16, S_cable_bst1: 1
 const X_C2SB = { S_outgoing: 13, S_mercury_roof: 14, S_mercury_sump: 15, S_pressure: 16 };
 const X_C2BL = { B_alarm1: 'Fire alarm at', B_alarm2: 'Fire alarm at', B_alarm3: 'Fire alarm at', B_alarm4: 'Fire alarm at', B_repeater: 'Repeater panel at' };
 const X_OFFNA = ['CL-J', 'CL-K', 'C1S', 'BS'];
-const X_REMARK = { 'CL-E': ['E', 'A35', 1], H1: ['H1', 'A25', 1], G1: ['G1-2(半年檢)', 'A13', 1], B: ['B1-2 FS Pump(半年檢)', 'E13', 0], BU: ['B1-2 Upfeed Pump(半年檢)', 'E13', 0], 'CL-J': ['J-2(半年檢)', 'A19', 1], BS: ['B1-2 Sprinkler Pump(半年檢)', 'E13', 0] };
+const X_REMARK = { 'CL-D': ['D', 'A27', 1], 'CL-E': ['E', 'A35', 1], H1: ['H1', 'A25', 1], G1: ['G1-2(半年檢)', 'A13', 1], B: ['B1-2 FS Pump(半年檢)', 'E13', 0], BU: ['B1-2 Upfeed Pump(半年檢)', 'E13', 0], 'CL-J': ['J-2(半年檢)', 'A19', 1], BS: ['B1-2 Sprinkler Pump(半年檢)', 'E13', 0] };
 const X_TICK = { '✓': '√', X: 'X', NA: 'NA' };
 function xFill(o) {
   const ov = {}, put = (sh, ref, v) => { (ov[sh] = ov[sh] || {})[ref] = (v === undefined || v === '') ? null : v; };
@@ -3278,18 +3292,18 @@ function xPlan(o) {
 }
 
 /* ----- v0.6.234：每份選擇表最底各自房署實時 PDF（跟 xPlan；唔包消防處 FSD） -----
-   basic → A-1／A-2（CL-A）；H1 → H1；C1 → C1 FS Pump…；類推。問卷步驟唔再堆晒全部。 */
-const HA_LIVE_STEPS = new Set(['basic', 'C1U', 'TR-C2U', 'C1', 'TR-C2', 'C1S', 'TR-C2S', 'BU', 'B', 'BS', 'CL-E', 'H1', 'TR-H2', 'G1', 'CL-J', 'CL-K']);
+   CL-A → A-1／A-2；H1 → H1；C1 → C1 FS Pump…；類推。問卷步驟唔再堆晒全部。 */
+const HA_LIVE_STEPS = new Set(['CL-A', 'C1U', 'TR-C2U', 'C1', 'TR-C2', 'C1S', 'TR-C2S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'H1', 'TR-H2', 'G1', 'CL-J', 'CL-K']);
 function haLiveStepOk(step) { return HA_LIVE_STEPS.has(step); }
 function haLiveMountHtml(step) {
   if (!haLiveStepOk(step)) return '';
-  const lab = step === 'basic' ? 'CL-A（A-1／A-2）實時 PDF' : `Checklist ${step} 實時 PDF`;
+  const lab = step === 'CL-A' ? 'CL-A（A-1／A-2）實時 PDF' : `Checklist ${step} 實時 PDF`;
   return `<section class="halive" id="haLive" data-ha-step="${esc(step)}" aria-label="${esc(lab)}"><div class="halive-msg">準備實時 PDF…</div></section>`;
 }
 function haSheetsForStep(step, all) {
   const f = pred => all.filter(pred);
   switch (step) {
-    case 'basic': return f(n => /^A-[12]/.test(n));
+    case 'CL-A': return f(n => /^A-[12]/.test(n));
     case 'H1': return f(n => n === 'H1');
     case 'TR-H2': return f(n => /^H2-/.test(n) || /^G2-/.test(n));
     case 'G1': return f(n => /^G1-/.test(n));
@@ -3302,6 +3316,7 @@ function haSheetsForStep(step, all) {
     case 'BU': return f(n => /^B1-\d.*Upfeed Pump/.test(n));
     case 'B': return f(n => /^B1-\d.*FS Pump/.test(n));
     case 'BS': return f(n => /^B1-\d.*Sprinkler Pump/.test(n));
+    case 'CL-D': return f(n => n === 'D');
     case 'CL-E': return f(n => n === 'E');
     case 'CL-J': return f(n => /^J-/.test(n));
     case 'CL-K': return f(n => n === 'K');
@@ -3309,7 +3324,7 @@ function haSheetsForStep(step, all) {
   }
 }
 function haLiveTitle(step) {
-  if (step === 'basic') return 'CL-A 實時 PDF（A-1／A-2）';
+  if (step === 'CL-A') return 'CL-A 實時 PDF（A-1／A-2）';
   if (step === 'TR-H2') return 'H2／G2 實時 PDF';
   if (step === 'G1') return 'Checklist G1 實時 PDF';
   return 'Checklist ' + step + ' 實時 PDF';
@@ -11212,7 +11227,7 @@ function help() {
   <li>主頁撳「＋ 新增一座」，揀屋邨、樓名（可以喺清單揀，或者直接打字）、日期。</li>
   <li>做完一座，下一座可以撳「📋 選擇樓宇」，喺「📱 呢部機」或者「☁️ 上傳紀錄」（公司 Drive，要網址＋PIN）揀返做過嘅一座 →「📋 複製樓宇」（問卷答案會照抄，記得逐條核對）或者「📄 查看 PDF」（睇返成套 check list）。</li>
   <li>「問卷」照公司 Excel 工作表2 答有／冇；答「冇」嘅系統會自動略過。</li>
-  <li>每份表逐項撳 ✓／X／NA。揀 X 一定要寫原因／建議，可以影相。「基本」隔離有 CL-A 總表；每份選擇表（例 H1）最底有該份房署實時 PDF。CL-A 唔使師傅填（由問卷自動）。</li>
+  <li>每份表逐項撳 ✓／X／NA。揀 X 一定要寫原因／建議，可以影相。「問卷」隔離有頂欄「CL-A」總表；每份選擇表（例 H1）最底有該份房署實時 PDF。CL-A 唔使師傅填（由問卷自動）。</li>
   <li>TR-C2、TR-H2 嘅讀數要自己輸入（一個小數位），App 唔會自動填。</li>
   <li>所有嘢自動儲存喺手機，冇網都用得。</li>
   <li>問卷答「有」嘅系統會多出「消防處·…」頁：消防處年檢核對表（照官方通函），逐項揀 是／否／不適用；「否」要寫備註（位置）。</li>
