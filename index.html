@@ -451,9 +451,13 @@ a.jump{color:var(--pri);font-weight:700}
 'use strict';
 /* 消防年檢 App（測試版）— 合約 20259005 Appendix C
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
-   所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
+   讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.241';
+const APP_VERSION = '0.6.245';
+/* v0.6.245：CL-J k（後備花灑頭數目）預設 24（ndef；可改） */
+/* v0.6.244：AA30＞0 → CL-J e2／f ✓；＝0 → NA；AA25＝有 → CL-J g ✓；冇 → NA；CL-J e1／CL-E e1 預設剔（範本 √） */
+/* v0.6.243：T8＝冇 → G1 h7／h8／h9＝NA（同 CL-E e3；範本 G1-1 H41–H43 改 T8 VLOOKUP） */
+/* v0.6.242：CL-A 有剔（問卷＝有）→ 顯示相關 checklist 畀填：F28→CL-F、AH6→CL-I、F30→CL-L、F11→CL-M、F20→CL-N、F18→CL-O、F29→CL-P（已有：T6→C1、F9→CL-D、F15→CL-E、F6→H1/G1、AA6→CL-K/J） */
 /* v0.6.241：F30＝有 → CL-A l ✓；F30＝冇 → l 一橫 —（範本 A-1／A-1半年檢／L-1／L-2 公式 F31→F30；CL-A UI 冇＝— 跟 Excel VLOOKUP） */
 /* v0.6.240：F9＝有 → 顯示房署 CL-D（火警偵測）畀填；F9＝冇 → 唔出／整份 NA（同 CL-E←F15） */
 /* v0.6.239：CL-A／Check A 總表改做頂欄獨立 tab（問卷隔離）；唔再塞基本右欄；A-1／A-2 實時 PDF 跟 CL-A tab */
@@ -547,7 +551,7 @@ coreFormsFix();
 /* v0.4.7：C1 消防泵 i（低電流 relay）、m（消音掣）長期 NA → 唔顯示俾師傅、唔計未填；importer 寫 NA（上水泵 C1U 不變） */
 const ALWAYS_NA = '消防泵呢項長期 NA（App 唔顯示）';
 const QBY = {}; function coreQby() { Object.keys(QBY).forEach(k => delete QBY[k]); QS.forEach(s => s.items.forEach(it => { QBY[it.cell] = Object.assign({ sec: s.key }, it); })); } coreQby();
-const FORM_KEYS = ['C1U', 'C1', 'C1S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'H1', 'G1', 'CL-J', 'CL-K']; /* v0.6.240：CL-D 火警偵測（F9） */ /* v0.5.0：C1S／BS 花灑泵（年檢／半年檢） */ /* v0.4.9：CL-J 花灑（半年檢）、CL-K 花灑（年檢） */ // v0.4.8：BU／B（CL-B 半年檢）、G1（半年檢） // v0.4.2：C1 分開 上水泵（C1U，範本 Upfeed Pump）同 消防泵（C1，範本 FS Pump） // v0.3.4：CL-A 總表唔問師傅（提交時由問卷自動，見 buildExport）
+const FORM_KEYS = ['C1U', 'C1', 'C1S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'CL-F', 'H1', 'G1', 'CL-I', 'CL-J', 'CL-K', 'CL-L', 'CL-M', 'CL-N', 'CL-O', 'CL-P']; /* v0.6.242：CL-F/I/L/M/N/O/P；v0.6.240：CL-D（F9） */ /* v0.5.0：C1S／BS 花灑泵（年檢／半年檢） */ /* v0.4.9：CL-J 花灑（半年檢）、CL-K 花灑（年檢） */ // v0.4.8：BU／B（CL-B 半年檢）、G1（半年檢） // v0.4.2：C1 分開 上水泵（C1U，範本 Upfeed Pump）同 消防泵（C1，範本 FS Pump） // v0.3.4：CL-A 總表唔問師傅（提交時由問卷自動，見 buildExport）
 
 /* ---------- helpers ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -717,7 +721,13 @@ function itemDef(r, it) {
   return it.tdef || '✓';
 }
 function defWhy(r, k, it) { const cs = [FORMS[k].show_if].concat(FORMS[k].need || [], it.na_any || (it.na_unless ? [it.na_unless] : []), it.na_lt ? [it.na_lt[0]] : []).filter(Boolean); return it.tdef === 'NA' ? '範本預設 NA' : '問卷 ' + cs.map(c => c + '＝' + (r.q[c] || '')).join('、'); }
-const inVal = (r, k, it) => (r.items[k + '.' + it.id] || {}).n; /* v0.4.9 輸入項目（數目／讀數） */
+function inInfo(r, k, it) { /* v0.6.245：數目／讀數 → { n, by:'technician'|'default'|'' }；ndef＝範本／公司預設（例如 CL-J k＝24） */
+  const a = r.items[k + '.' + it.id] || {};
+  if (has(a.n)) return { n: a.n, by: 'technician' };
+  if (it.ndef != null && it.ndef !== '' && itemMode(r, it) === 'input') return { n: it.ndef, by: 'default' };
+  return { n: a.n, by: '' };
+}
+const inVal = (r, k, it) => inInfo(r, k, it).n; /* v0.4.9／0.6.245 輸入項目（數目／讀數；有 ndef 就預設） */
 function itemVal(r, k, it) { // → { v, note, by: 'technician' | 'default' | '' }
   const a = r.items[k + '.' + it.id] || {};
   if (a.v) return { v: a.v, note: a.note || '', by: 'technician' };
@@ -755,7 +765,7 @@ function itemMode(r, it) {
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏（例如 CL-K *b–*d 跟 AA20） */
   if (it.na_unless && qA(r, it.na_unless) === '冇' && (it.measure || it.input)) return 'autona';
   if (it.measure) return 'measure';
-  if (it.input) return 'input'; /* v0.4.9 讀數／數目（例如 CL-J k 後備花灑頭數目）：唔會預設 */
+  if (it.input) return 'input'; /* v0.4.9 讀數／數目；v0.6.245：有 ndef（例如 CL-J k＝24）先預設 */
   if (it.na_unless && qA(r, it.na_unless) === '冇') return 'autona';
   return 'ask';
 }
@@ -881,10 +891,17 @@ function stepList(r) {
   if (formVisible(r, 'BS')) L.push({ k: 'BS', t: 'B 花灑泵' }); // v0.5.0 半年檢
   if (formVisible(r, 'CL-D')) L.push({ k: 'CL-D', t: 'CL-D' }); /* v0.6.240：F9＝有 */
   if (formVisible(r, 'CL-E')) L.push({ k: 'CL-E', t: 'CL-E' });
+  if (formVisible(r, 'CL-F')) L.push({ k: 'CL-F', t: 'CL-F' }); /* v0.6.242：F28＝有 */
   if (formVisible(r, 'H1')) L.push({ k: 'H1', t: 'H1' }, { k: 'TR-H2', t: 'TR-H2' });
   if (formVisible(r, 'G1')) L.push({ k: 'G1', t: 'G1' }, { k: 'TR-H2', t: 'TR-G2' });
+  if (formVisible(r, 'CL-I')) L.push({ k: 'CL-I', t: 'CL-I' }); /* v0.6.242：AH6＝有 */
   if (formVisible(r, 'CL-J')) L.push({ k: 'CL-J', t: 'CL-J 花灑' }); // v0.4.9 半年檢
   if (formVisible(r, 'CL-K')) L.push({ k: 'CL-K', t: 'CL-K 花灑' }); // v0.4.9 年檢
+  if (formVisible(r, 'CL-L')) L.push({ k: 'CL-L', t: 'CL-L' }); /* v0.6.242：F30＝有 */
+  if (formVisible(r, 'CL-M')) L.push({ k: 'CL-M', t: 'CL-M' }); /* v0.6.242：F11＝有 */
+  if (formVisible(r, 'CL-N')) L.push({ k: 'CL-N', t: 'CL-N' }); /* v0.6.242：F20＝有 */
+  if (formVisible(r, 'CL-O')) L.push({ k: 'CL-O', t: 'CL-O' }); /* v0.6.242：F18＝有 */
+  if (formVisible(r, 'CL-P')) L.push({ k: 'CL-P', t: 'CL-P' }); /* v0.6.242：F29＝有 */
   (DATA.fsd || []).forEach(c => { if (fsdVisible(r, c)) L.push({ k: 'FSD-' + c.key, t: c.chip }); }); // 消防處年檢核對表（app_5fsd.js；只限年檢）
   L.push({ k: 'notes', t: '備註相片' }, { k: 'submit', t: '提交' });
   return L;
@@ -1520,7 +1537,7 @@ function stepBasic(r) {
   ${extraE}${extraB}${kvB}</div>
   <div class="card" id="fe-card"><h3>滅火筒數量 <span class="mut">（唯讀 · 滅火筒表）</span></h3><div id="fe-body">${feCard(r, false)}</div></div>
   <div class="card ${ITYPE[r.itype] ? '' : 'unans'}" id="itype"><h3>檢查類別（必揀）</h3><div class="seg">${['annual', 'half'].map(v => `<button class="v-opt ${r.itype === v ? 'on' : ''}" data-act="ans" data-bind="itype" data-v="${v}">${ITYPE[v]}</button>`).join('')}</div>
-    <div class="mut" style="margin-top:6px">${r.itype === 'half' ? '半年檢：用 CL-B 消防泵／上水泵、CL-G1＋TR-G2、CL-D（*g–*h 只限年檢）、CL-E（*k–*n 只限年檢）；C1／TR-C2、H1／TR-H2、消防處年檢核對表唔使做。' : r.itype === 'annual' ? '年檢：C1＋TR-C2、H1＋TR-H2、CL-D、CL-E、消防處年檢核對表。' : '請揀年檢定半年檢（會決定要填邊啲表、Excel 用邊份 CL-A）。'}</div></div>
+    <div class="mut" style="margin-top:6px">${r.itype === 'half' ? '半年檢：用 CL-B 消防泵／上水泵、CL-G1＋TR-G2、CL-D／E／I／L／M／P（REW 項只限年檢）；C1／H1／CL-F／N／O／消防處年檢核對表唔使做。' : r.itype === 'annual' ? '年檢：C1＋TR-C2、H1＋TR-H2、CL-D／E／F／I／L／M／N／O／P、消防處年檢核對表（跟問卷有剔先出）。' : '請揀年檢定半年檢（會決定要填邊啲表、Excel 用邊份 CL-A）。'}</div></div>
   <div class="card"><h3>2. 檢查日期（香港時間）</h3><input class="inp" type="date" data-bind="date" value="${esc(r.date || '')}"><div class="mut" style="margin-top:6px">今日：${hkDate()}</div></div>
   <div class="card"><h3>3. 師傅姓名</h3><input class="inp" data-bind="technician" data-pref="tech" value="${esc(r.technician || '')}" placeholder="例：陳大文"><div class="mut" style="margin-top:6px">會記低，下一座自動填。</div></div>
   <div class="card"><button class="btn danger" style="width:100%" data-act="delrec">🗑 刪除呢個紀錄</button></div>`;
@@ -1578,15 +1595,15 @@ function stepForm(r, k) {
   f.items.forEach(it => { const m = itemMode(r, it); if (m === 'ask' || m === 'input') ask_.push(it); else if (m === 'measure') meas.push(it); else if (m === 'autona' && it.annual_only && isHalf(r)) halfHidden.push(it); else if (m === 'autona' && !it.always_na) (it.na_if ? ask_ : auto).push(it); }); /* always_na（C1 i／m）、半年檢 CL-D *g–*h／CL-E *k–*n：唔顯示；na_if（天台缸）：原位鎖定 NA */
   const unanswered = ask_.filter(it => itemMode(r, it) === 'ask' && !itemVal(r, k, it).v).length;
   const inMiss = ask_.filter(it => itemMode(r, it) === 'input' && !it.optional && !has(inVal(r, k, it))).length; /* v0.4.9 */
-  const nDef = ask_.filter(it => itemMode(r, it) === 'ask' && itemVal(r, k, it).by === 'default').length;
+  const nDef = ask_.filter(it => itemMode(r, it) === 'ask' && itemVal(r, k, it).by === 'default').length + ask_.filter(it => itemMode(r, it) === 'input' && inInfo(r, k, it).by === 'default').length; /* v0.6.245：數目 ndef 都計 */
   const toStep = (k === 'H1' || k === 'G1' || k === 'B' || k === 'BU') ? 'TR-H2' : k === 'C1U' ? 'TR-C2U' : k === 'C1S' ? 'TR-C2S' : k === 'BS' ? 'CL-J' : 'TR-C2';
   let header = '';
   if (k === 'C1') { const q = r.q; header = `<div class="card"><div class="kv"><b>泵數</b><span>${q.T16 === '有' ? '3（1號、2號 + Jockey）' : q.T16 === '冇' ? '2（1號、2號）' : '（問卷 T16 未答）'}</span><b>泵類</b><span>${q.T8 === '有' ? 'Booster no. 1 & 2' : q.T8 === '冇' ? 'Fixed no. 1 & 2' : '（問卷 T8 未答）'}</span><b>系統</b><span>FH/HR（消防泵：Fixed／Booster 中途泵）</span><b>範本</b><span>C1-1／C1-2 FS Pump</span></div></div>`; }
   if (k === 'C1S') header = `<div class="card"><div class="kv"><b>泵數</b><span>3（1號、2號 + Jockey）</span><b>泵類</b><span>Fixed no. 1, 2 & Jockey</span><b>系統</b><span>Sprinkler</span><b>範本</b><span>C1-1／C1-2 Sprinkler Pump</span></div></div>`;
   if (k === 'C1U') header = `<div class="card"><div class="kv"><b>泵數</b><span>2（Feed no. 1 & 2）</span><b>泵類</b><span>上水泵（Feed／Transfer／Upfeed）</span><b>系統</b><span>Upfeed</span><b>範本</b><span>C1-1／C1-2 Upfeed Pump</span></div></div>`;
   const one = it => { const key = k + '.' + it.id;
-    if (itemMode(r, it) === 'input') { const n = inVal(r, k, it), kind = it.input === 'int' ? 'int' : 'num1'; /* v0.4.9 數目／讀數：唔會預設 */
-      return `<div class="item inp ${has(n) ? 'v-ok' : ''}" id="it-${key.replace(/\./g, '-')}"><div class="ih"><span class="iid">${esc(it.id)}</span><div><div class="zh">${esc(it.zh)}</div><div class="en">${esc(it.en)}</div>${it.optional ? '<span class="dtag">可留空（留空 = NA）</span>' : ''}</div></div>
+    if (itemMode(r, it) === 'input') { const info = inInfo(r, k, it), n = info.n, dflt = info.by === 'default', kind = it.input === 'int' ? 'int' : 'num1'; /* v0.6.245：ndef 預設（CL-J k＝24） */
+      return `<div class="item inp ${has(n) ? 'v-ok' : ''} ${dflt ? 'dflt' : ''}" id="it-${key.replace(/\./g, '-')}"><div class="ih"><span class="iid">${esc(it.id)}</span><div><div class="zh">${esc(it.zh)}</div><div class="en">${esc(it.en)}</div>${dflt ? `<span class="dtag">預設 ${esc(String(n))} · 可改</span>` : (it.optional ? '<span class="dtag">可留空（留空 = NA）</span>' : '')}</div></div>
       <div class="row" style="align-items:center;gap:8px"><input class="num ${has(n) ? 'filled' : (it.optional ? '' : 'need')}" style="max-width:150px" inputmode="${kind === 'int' ? 'numeric' : 'decimal'}" data-bind="items.${key.replace(/\./g, '~')}.n" data-kind="${kind}" value="${has(n) ? esc(kind === 'num1' ? show1(n) : String(n)) : ''}" placeholder="${kind === 'int' ? '例：24' : '例：7.5'}"><span class="mut">${esc(it.unit || '')}</span></div></div>`; }
     if (it.na_if && itemMode(r, it) === 'autona') return `<div class="item v-na locked" id="it-${key.replace(/\./g, '-')}"><div class="ih"><span class="iid">${esc(it.id)}</span><div><div class="zh">${esc(it.zh)}</div><div class="en">${esc(it.en)}</div></div></div>
     <div class="tri"><button class="ok" disabled aria-label="合格">✓</button><button class="x" disabled aria-label="唔合格">X</button><button class="na on" disabled aria-label="不適用">NA</button></div><div class="locknote">🔒 ${ROOF_NA}（問卷 ${it.na_if[0]}「${esc((QBY[it.na_if[0]] || {}).label || '')}」＝${esc(it.na_if[1])}）</div></div>`;
@@ -1600,7 +1617,7 @@ function stepForm(r, k) {
       <div class="row" style="margin-top:6px"><button class="btn sm" data-act="photo" data-src="cam" data-item="${key}">📷 影相</button><button class="btn sm" data-act="photo" data-src="gal" data-item="${key}">🖼 揀相</button></div>
       ${ph.length ? `<div class="thumbs">${ph.map(thumbHtml).join('')}</div>` : ''}</div>` : ''}</div>`; };
   return `<div class="hint"><b>${esc(f.title)}</b>：${esc(f.hint || '')}</div>${header}
-  ${nDef ? `<div class="hint dhint">問卷答「有」：${nDef} 項已預設（有「預設」字）。請逐項檢查；唔啱就改 X（要寫原因）或者 NA。讀數唔會預設。</div>` : ''}
+  ${nDef ? `<div class="hint dhint">已預設 ${nDef} 項（有「預設」字）。請逐項檢查；唔啱就改。泵房流量等讀數唔會預設。</div>` : ''}
   ${halfHidden.length ? `<div class="notank">半年檢：${halfHidden.map(it => '*' + esc(it.id)).join('、')}（REW 電氣安全）只限年檢，已隱藏（提交記 NA）</div>` : ''}
   ${ask_.length ? (unanswered ? `<button class="btn" style="width:100%;margin:4px 0" data-act="allok" data-form="${k}">✓ 未揀嘅 ${unanswered} 項全部剔 ✓</button>` : (inMiss ? `<div class="warnbox">仲有 ${inMiss} 項數目／讀數未填（${ask_.filter(it => itemMode(r, it) === 'input' && !it.optional && !has(inVal(r, k, it))).map(it => esc(it.id)).join('、')}）。</div>` : `<div class="okbox">呢份表全部項目已有答案${nDef ? '（包括預設）' : ''}。</div>`)) : ''}
   ${ask_.map(one).join('')}
@@ -2839,8 +2856,8 @@ const X_C2UB = { U_outgoing: 13, U_mercury_roof: 14, U_mercury_sump: 15, U_press
 const X_C2SA = { S_main: 12, S_cable_fix1: 15, S_cable_fix2: 16, S_cable_bst1: 17, S_cable_bst2: 18, S_cable_jockey: 19, S_motor_fix1: 22, S_motor_fix2: 23, S_motor_bst1: 24, S_motor_bst2: 25, S_motor_jockey: 26 };
 const X_C2SB = { S_outgoing: 13, S_mercury_roof: 14, S_mercury_sump: 15, S_pressure: 16 };
 const X_C2BL = { B_alarm1: 'Fire alarm at', B_alarm2: 'Fire alarm at', B_alarm3: 'Fire alarm at', B_alarm4: 'Fire alarm at', B_repeater: 'Repeater panel at' };
-const X_OFFNA = ['CL-J', 'CL-K', 'C1S', 'BS'];
-const X_REMARK = { 'CL-D': ['D', 'A27', 1], 'CL-E': ['E', 'A35', 1], H1: ['H1', 'A25', 1], G1: ['G1-2(半年檢)', 'A13', 1], B: ['B1-2 FS Pump(半年檢)', 'E13', 0], BU: ['B1-2 Upfeed Pump(半年檢)', 'E13', 0], 'CL-J': ['J-2(半年檢)', 'A19', 1], BS: ['B1-2 Sprinkler Pump(半年檢)', 'E13', 0] };
+const X_OFFNA = ['CL-J', 'CL-K', 'C1S', 'BS', 'CL-F', 'CL-I', 'CL-L', 'CL-M', 'CL-N', 'CL-O', 'CL-P'];
+const X_REMARK = { 'CL-D': ['D', 'A27', 1], 'CL-E': ['E', 'A35', 1], 'CL-F': ['F', 'A35', 1], H1: ['H1', 'A25', 1], G1: ['G1-2(半年檢)', 'A13', 1], B: ['B1-2 FS Pump(半年檢)', 'E13', 0], BU: ['B1-2 Upfeed Pump(半年檢)', 'E13', 0], 'CL-J': ['J-2(半年檢)', 'A19', 1], BS: ['B1-2 Sprinkler Pump(半年檢)', 'E13', 0], 'CL-L': ['L-2', 'A11', 1], 'CL-M': ['M', 'A31', 1], 'CL-N': ['N', 'A21', 1], 'CL-O': ['O', 'A27', 1], 'CL-P': ['P', 'A26', 1] };
 const X_TICK = { '✓': '√', X: 'X', NA: 'NA' };
 function xFill(o) {
   const ov = {}, put = (sh, ref, v) => { (ov[sh] = ov[sh] || {})[ref] = (v === undefined || v === '') ? null : v; };
@@ -3294,7 +3311,7 @@ function xPlan(o) {
 
 /* ----- v0.6.234：每份選擇表最底各自房署實時 PDF（跟 xPlan；唔包消防處 FSD） -----
    CL-A → A-1／A-2；H1 → H1；C1 → C1 FS Pump…；類推。問卷步驟唔再堆晒全部。 */
-const HA_LIVE_STEPS = new Set(['CL-A', 'C1U', 'TR-C2U', 'C1', 'TR-C2', 'C1S', 'TR-C2S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'H1', 'TR-H2', 'G1', 'CL-J', 'CL-K']);
+const HA_LIVE_STEPS = new Set(['CL-A', 'C1U', 'TR-C2U', 'C1', 'TR-C2', 'C1S', 'TR-C2S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'CL-F', 'H1', 'TR-H2', 'G1', 'CL-I', 'CL-J', 'CL-K', 'CL-L', 'CL-M', 'CL-N', 'CL-O', 'CL-P']);
 function haLiveStepOk(step) { return HA_LIVE_STEPS.has(step); }
 function haLiveMountHtml(step) {
   if (!haLiveStepOk(step)) return '';
@@ -3319,8 +3336,15 @@ function haSheetsForStep(step, all) {
     case 'BS': return f(n => /^B1-\d.*Sprinkler Pump/.test(n));
     case 'CL-D': return f(n => n === 'D');
     case 'CL-E': return f(n => n === 'E');
+    case 'CL-F': return f(n => n === 'F');
+    case 'CL-I': return f(n => n === 'I');
     case 'CL-J': return f(n => /^J-/.test(n));
     case 'CL-K': return f(n => n === 'K');
+    case 'CL-L': return f(n => /^L-/.test(n));
+    case 'CL-M': return f(n => n === 'M');
+    case 'CL-N': return f(n => n === 'N');
+    case 'CL-O': return f(n => n === 'O');
+    case 'CL-P': return f(n => n === 'P');
     default: return [];
   }
 }
@@ -10746,7 +10770,7 @@ async function buildExport(r, when) {
     FORMS[k].items.forEach(it => { const m = itemMode(r, it), a = itemVal(r, k, it);
       if (m === 'hidden') return;
       if (m === 'measure') items[it.id] = { result: null, measure: it.measure };
-      else if (m === 'input') { const n = inVal(r, k, it); items[it.id] = Object.assign({ result: null, input: it.input, unit: it.unit || '', value: has(n) ? n : null }, has(n) ? { set_by: 'technician' } : it.optional ? { optional: true, blank_means: 'NA' } : {}); } /* v0.4.9 數目／讀數（唔會預設） */
+      else if (m === 'input') { const info = inInfo(r, k, it), n = info.n; items[it.id] = Object.assign({ result: null, input: it.input, unit: it.unit || '', value: has(n) ? n : null }, has(n) ? { set_by: info.by || 'technician' } : it.optional ? { optional: true, blank_means: 'NA' } : {}); } /* v0.4.9／0.6.245：數目 ndef → set_by=default */
       else if (m === 'autona' && it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) items[it.id] = { result: 'NA', auto: true, by: 'SPR_TANK', answer: r.q.SPR_TANK, write: true, why: NOTANK_HINT };
       else if (m === 'autona' && it.wna && !it.always_na && !(it.annual_only && isHalf(r)) && !it.na_if) items[it.id] = { result: 'NA', auto: true, by: it.na_unless || (it.na_lt && it.na_lt[0]) || '', answer: (it.na_unless ? r.q[it.na_unless] : (it.na_lt ? r.q[it.na_lt[0]] : '')) || '', write: true }; /* 範本係常數 √（CL-J／CL-K a）→ 自動 NA 要寫入；v0.6.143 na_lt */
       else if (m === 'autona') items[it.id] = (it.annual_only && isHalf(r)) ? { result: 'NA', auto: true, by: 'half_yearly', write: true, why: HALF_NA } : it.always_na ? { result: 'NA', auto: true, by: 'fixed', write: true, why: ALWAYS_NA } : it.na_if ? { result: 'NA', auto: true, by: it.na_if[0], answer: r.q[it.na_if[0]], write: true, why: ROOF_NA } : it.na_lt ? { result: 'NA', auto: true, by: it.na_lt[0], answer: r.q[it.na_lt[0]] || '', write: true } : { result: 'NA', auto: true, by: it.na_unless };
