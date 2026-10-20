@@ -452,10 +452,11 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.234';
+const APP_VERSION = '0.6.235';
 /* v0.6.227：AA11／AA12「直砸」→「冇泵」；互斥提示 la 直砸→冇泵 */
 /* v0.6.229：表二 tank／main 壓力1／2←AA11／AA12；流量1／2←AA8 */
 /* v0.6.230：FAN 流量表（LH 225／— … OH4 1800／2100）；1泵／2泵同冇泵接表二；取代工作表3 查表 */
+/* v0.6.235：房署 Appendix C 跟 HA 36 頁空白（工作表3 LH/OH4、J Hazard、G2/H2 Riser 1/2）；消防處唔郁 */
 /* v0.6.234：CL-A 總表隔離「基本」；每份選擇表最底各自實時 PDF（唔再問卷最底大堆） */
 /* v0.6.233：問卷入面唔再顯示 CL-A／Check A 摘要；最底 #haLive 房署實時 PDF 保留 */
 /* v0.6.232：問卷頂 CL-A 摘要 + 最底全部房署 checklist 實時 PDF */
@@ -1635,7 +1636,7 @@ function stepH2(r) {
       : `<div class="sub"><h4>冇開泵（水缸冇泵）</h4><div class="opth" data-optfor="${base}.tk_static"></div><div class="g3">${numField(base + '.tk_static', d.tk_static, 'bar', '死磅', true)}${numField(base + '.tk_run', d.tk_run, 'bar', 'Bar', true)}${numField(base + '.tk_flow', d.tk_flow, 'l/s', 'Flow')}</div></div>`}</div>`; };
   const par = r.h2.parity || [];
   return `<button class="btn phbtn" data-act="waphotos" id="waphotos">📷 查看當日照片<small class="mut" style="display:block;font-weight:400;font-size:13px">WhatsApp 相片 · ${esc(r.date || '未填日期')} · ${esc(((r.estate && r.estate.zh) || '') + ' ' + ((r.block && r.block.zh) || ''))} · 要有網，相唔會存喺手機</small></button>
-  <div class="hint">${isHalf(r) ? '<b>TR-G2（半年檢，範本 G2-1／G2-2(半年檢)）</b>：同年檢 TR-H2 用同一組讀數格。' : 'TR-H2：'}壓力用 <b>bar</b> 輸入（一個小數位），Excel 會自動 ×100 變 kPa；Flow 用 l/s。2號泵如果冇做可以留空。</div>
+  <div class="hint">${isHalf(r) ? '<b>TR-G2（半年檢，範本 G2-1／G2-2(半年檢)）</b>：同年檢 TR-H2 用同一組讀數格。' : 'TR-H2：'}壓力用 <b>bar</b> 輸入（一個小數位），Excel 會自動 ×100 變 kPa；Flow 用 l/s。房署表 Riser/Stair 預印 1／2（兩行）；App「1號泵／2號泵」對應嗰兩行讀數，第 2 行冇做可以留空。</div>
   ${zones.map((z, zi) => { z = z || {}; return `<div class="card"><h3>Zone ${zi + 1}</h3><div class="g2">${txtField(`h2.zones.${zi}.from`, z.from, 'Zone 由（樓）', '例：G/F')}${txtField(`h2.zones.${zi}.to`, z.to, '至（樓）', '例：12/F')}</div>${outlet(zi, 'top', z.top || {})}${outlet(zi, 'low', z.low || {})}</div>`; }).join('')}
   <div class="row">${zones.length < 5 ? `<button class="btn" data-act="zone" data-d="1">＋ 加 Zone ${zones.length + 1}</button>` : ''}${zones.length > 1 ? `<button class="btn danger" data-act="zone" data-d="-1">− 刪 Zone ${zones.length}</button>` : ''}</div>
   <div class="card"><h3>Part B：Parity valve 出水口壓力</h3><div class="mut">（如有）樓層／梯／bar</div>
