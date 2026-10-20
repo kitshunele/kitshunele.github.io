@@ -453,7 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    所有讀數由師傅輸入；程式唔會自動產生任何數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.240';
+const APP_VERSION = '0.6.241';
+/* v0.6.241：F30＝有 → CL-A l ✓；F30＝冇 → l 一橫 —（範本 A-1／A-1半年檢／L-1／L-2 公式 F31→F30；CL-A UI 冇＝— 跟 Excel VLOOKUP） */
 /* v0.6.240：F9＝有 → 顯示房署 CL-D（火警偵測）畀填；F9＝冇 → 唔出／整份 NA（同 CL-E←F15） */
 /* v0.6.239：CL-A／Check A 總表改做頂欄獨立 tab（問卷隔離）；唔再塞基本右欄；A-1／A-2 實時 PDF 跟 CL-A tab */
 /* v0.6.227：AA11／AA12「直砸」→「冇泵」；互斥提示 la 直砸→冇泵 */
@@ -1489,7 +1490,7 @@ function claMark(r, it) {
   if (!it.show_if) return { m: '✓', cls: 'on' };
   const a = r.q[it.show_if];
   if (a === '有') return { m: '✓', cls: 'on' };
-  if (a === '冇') return { m: '', cls: 'off' };
+  if (a === '冇') return { m: '—', cls: 'dash' }; /* v0.6.241：跟 Excel 工作表3 VLOOKUP（冇→-） */
   return { m: '', cls: 'pend' };
 }
 function claPanel(r) {
@@ -1499,7 +1500,7 @@ function claPanel(r) {
     return `<div class="clar ${mk.cls}"><span class="clam">${esc(mk.m)}</span><span class="clai">${esc(it.id)}</span><span class="claz">${esc(it.zh)}</span>${it.show_if ? `<span class="clac">${esc(it.show_if)}</span>` : '<span class="clac"></span>'}</div>`;
   }).join('');
   return `<div class="card clapanel" id="cla-panel"><div class="clah"><b>房署 Check A</b><span class="mut">CL-A 總表 · 跟問卷自動</span></div>
-  <div class="clamut">有＝✓／冇＝空${isHalf(r) ? '／半年檢部分行「—」' : ''}。完整 A-1／A-2 實時 PDF 喺下面；唔使師傅填。</div>
+  <div class="clamut">有＝✓／冇＝—${isHalf(r) ? '／半年檢部分行「—」' : ''}。完整 A-1／A-2 實時 PDF 喺下面；唔使師傅填。</div>
   <div class="clalist">${rows}</div></div>`;
 }
 function stepBasic(r) {
@@ -1528,7 +1529,7 @@ function stepBasic(r) {
 }
 function stepCla(r) {
   /* v0.6.239：獨立 CL-A tab；摘要 + 下面 #haLive A-1／A-2 */
-  return `<div class="hint">房署 Check A（CL-A）總表跟問卷自動：有＝✓／冇＝空${isHalf(r) ? '／半年檢部分行「—」' : ''}。唔使師傅填；完整 A-1／A-2 實時 PDF 喺下面。</div>${claPanel(r)}`;
+  return `<div class="hint">房署 Check A（CL-A）總表跟問卷自動：有＝✓／冇＝—${isHalf(r) ? '／半年檢部分行「—」' : ''}。唔使師傅填；完整 A-1／A-2 實時 PDF 喺下面。</div>${claPanel(r)}`;
 }
 /* ----- step: questionnaire ----- */
 /* v0.6.239：問卷唔放 CL-A；CL-A 喺頂欄「問卷」隔離獨立 tab；PDF 各自喺選擇表／CL-A tab 下面 */
@@ -1569,12 +1570,12 @@ function floorField(bind, v, label, ph, kind) { // 樓層欄：自動補 /F；pu
 }
 function txtField(bind, v, label, ph) { const fk = floorKind(bind); if (fk) return floorField(bind, v, label, ph, fk); return `<div class="fld">${label ? `<label>${esc(label)}</label>` : ''}<input class="inp ${has(v) ? 'filled' : ''}" data-bind="${bind}" value="${esc(v || '')}" placeholder="${esc(ph || '')}"></div>`; }
 
-/* ----- step: forms (CL-A / C1 / CL-E / H1) ----- */
+/* ----- step: forms (CL-A / C1 / CL-D / CL-E / H1 …) ----- */
 function stepForm(r, k) {
   const f = FORMS[k]; if (!f) return '';
   const ask_ = [], meas = [], auto = [];
   const halfHidden = [];
-  f.items.forEach(it => { const m = itemMode(r, it); if (m === 'ask' || m === 'input') ask_.push(it); else if (m === 'measure') meas.push(it); else if (m === 'autona' && it.annual_only && isHalf(r)) halfHidden.push(it); else if (m === 'autona' && !it.always_na) (it.na_if ? ask_ : auto).push(it); }); /* always_na（C1 i／m）、半年檢 CL-E *k–*n：唔顯示；na_if（天台缸）：原位鎖定 NA */
+  f.items.forEach(it => { const m = itemMode(r, it); if (m === 'ask' || m === 'input') ask_.push(it); else if (m === 'measure') meas.push(it); else if (m === 'autona' && it.annual_only && isHalf(r)) halfHidden.push(it); else if (m === 'autona' && !it.always_na) (it.na_if ? ask_ : auto).push(it); }); /* always_na（C1 i／m）、半年檢 CL-D *g–*h／CL-E *k–*n：唔顯示；na_if（天台缸）：原位鎖定 NA */
   const unanswered = ask_.filter(it => itemMode(r, it) === 'ask' && !itemVal(r, k, it).v).length;
   const inMiss = ask_.filter(it => itemMode(r, it) === 'input' && !it.optional && !has(inVal(r, k, it))).length; /* v0.4.9 */
   const nDef = ask_.filter(it => itemMode(r, it) === 'ask' && itemVal(r, k, it).by === 'default').length;
@@ -10753,7 +10754,7 @@ async function buildExport(r, when) {
     });
     forms[k] = { applicable: true, items };
   });
-  if (FORMS['CL-A']) forms['CL-A'] = { applicable: true, auto: true, source: '問卷（工作表2）', // 唔問師傅：有嘅系統 ✓，冇就留空（範本公式）
+  if (FORMS['CL-A']) forms['CL-A'] = { applicable: true, auto: true, source: '問卷（工作表2）', // 唔問師傅：有 ✓、冇 —（範本 VLOOKUP；UI claMark 同步；PDF／Excel 跟公式）
     items: Object.fromEntries(FORMS['CL-A'].items.map(it => [it.id, { result: (!it.show_if || r.q[it.show_if] === '有') ? '✓' : null, auto: true, by: it.show_if || '', answer: it.show_if ? (r.q[it.show_if] || '') : '' }])) };
   const c2of = rows => { const o = {}; rows.forEach(row => { const d = Object.assign({ label: row.en, part: row.part, kind: row.kind }, r.c2[row.key] || {}); if (row.part === 'B' && !isB0(row.key)) { delete d.LN; delete d.NE; } o[row.key] = d; }); return o; };
   const c2 = formVisible(r, 'C1') ? c2of(c2Rows(r)) : {}; // 消防泵（範本 C2-x FS Pump）
