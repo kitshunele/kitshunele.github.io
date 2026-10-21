@@ -453,7 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.245';
+const APP_VERSION = '0.6.246';
+/* v0.6.246：待處理工作加「📋 查看已完成紀錄」（PW.doneView；pending_confirms＋可選 archived／done_records） */
 /* v0.6.245：CL-J k（後備花灑頭數目）預設 24（ndef；可改） */
 /* v0.6.244：AA30＞0 → CL-J e2／f ✓；＝0 → NA；AA25＝有 → CL-J g ✓；冇 → NA；CL-J e1／CL-E e1 預設剔（範本 √） */
 /* v0.6.243：T8＝冇 → G1 h7／h8／h9＝NA（同 CL-E e3；範本 G1-1 H41–H43 改 T8 VLOOKUP） */
@@ -1349,7 +1350,7 @@ function parseHash() {
   else cur = { view: 'grid', id: null, step: null }; /* v0.6.4 KitShun 主頁（功能格） */
   if (cur.view !== 'lookup') lkReset(); // 查閱紀錄只留喺記憶體，離開就清
 }
-window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cur.view !== 'ecall') { EC.live = false; EC.err = ''; } if (cur.view !== 'wo') { WO.live = false; WO.err = ''; WO.perr = ''; WO.show = WO_PAGE; woPriceOff(); } if (cur.view !== 'clock') ckReset(); if (cur.view !== 'sched') { SC.live = false; SC.err = ''; } if (cur.view !== 'echist') { EH.err = ''; EH.show = EH_PAGE; if (typeof EH !== 'undefined') { EH.det = null; EH.fold = null; EH.ferr = ''; EH.ferrCode = ''; EH.thumbs = {}; } } if (cur.view !== 'pend') { PW.live = false; PW.err = ''; } render(true); if ((typeof accLocked === 'function' && accLocked()) || (typeof APPD !== 'undefined' && !APPD.ready)) return; lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); });
+window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cur.view !== 'ecall') { EC.live = false; EC.err = ''; } if (cur.view !== 'wo') { WO.live = false; WO.err = ''; WO.perr = ''; WO.show = WO_PAGE; woPriceOff(); } if (cur.view !== 'clock') ckReset(); if (cur.view !== 'sched') { SC.live = false; SC.err = ''; } if (cur.view !== 'echist') { EH.err = ''; EH.show = EH_PAGE; if (typeof EH !== 'undefined') { EH.det = null; EH.fold = null; EH.ferr = ''; EH.ferrCode = ''; EH.thumbs = {}; } } if (cur.view !== 'pend') { PW.live = false; PW.err = ''; PW.doneView = false; } render(true); if ((typeof accLocked === 'function' && accLocked()) || (typeof APPD !== 'undefined' && !APPD.ready)) return; lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); });
 
 /* ---------- render ---------- */
 /* v0.6.133：消防檢查核對表（view=rec）每頁記住 scrollY；key = 紀錄id|步驟（含 FSD-…） */
@@ -5586,12 +5587,13 @@ function viewEhDetail(id) {
    伺服器版本用逐段比較（'1.10' > '1.9'）；伺服器 < 1.10（或者回 pending_no_photo）→ 冇相選項停用／講清楚要更新。v1.8 已經得；v1.9 伺服器再加 unconfirmed_by／unconfirmed_at／history 同試算表「取消完成」一行。
    （v0.6.45／v1.38 完工相檔名加工作內容：held／未使；0.6.46 唔包。）
    v0.6.12.7（Apps Script v1.11）：清單改由 Google Sheet「待處理工作 list表」讀（伺服器做，JSON 格式一樣）；顯示「資料來源」（Sheet／讀唔到 → pending_work.json 加提示）；
-   由第二個 App 返嚟（visibilitychange）超過 1 分鐘自動再讀。請求係 POST + no-store，Service Worker 唔快取，所以「🔄 重新載入」一定係最新。 */
+   由第二個 App 返嚟（visibilitychange）超過 1 分鐘自動再讀。請求係 POST + no-store，Service Worker 唔快取，所以「🔄 重新載入」一定係最新。
+   v0.6.246：主清單加「📋 查看已完成紀錄」→ PW.doneView 內頁（pending_confirms 已完成；可選合併 pwCache archived／done_records，標「已歸檔」）。日後 Sheet 第三日自動搬「已完成」分頁係 GAS，唔喺呢版。 */
 const LS_PW = 'fsapp20259005.pending.v1';
 const PW_ST = ['未處理', '跟進中', '已完成', '暫停 (Hold)'];
 const PW_CLS = { '未處理': 'pwa', '跟進中': 'pwb', '已完成': 'pwc', '暫停 (Hold)': 'pwh' };
 /* v0.6.13.2 FAN：待處理工作頁唔要公司 logo／公司名（PW_LOGO 已刪） */
-let PW = { loading: false, err: '', errCode: '', live: false, st: '', q: '', open: {}, est: '', house: '', cfOld: false, cfErr: '', cfBusy: false, srv: '', liveAt: 0 };
+let PW = { loading: false, err: '', errCode: '', live: false, st: '', q: '', open: {}, est: '', house: '', cfOld: false, cfErr: '', cfBusy: false, srv: '', liveAt: 0, doneView: false }; /* v0.6.246 doneView＝已完成紀錄頁 */
 const PW_CF_OK = ['未處理', '跟進中', '暫停 (Hold)']; /* 原表已完成嘅唔使確認 */
 const pwVerGE = (a, b) => { const x = String(a || '0').split('.').map(n => parseInt(n, 10) || 0), y = String(b).split('.').map(n => parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return true; }; /* 版本逐段比較：1.10 > 1.9 */
@@ -5644,8 +5646,16 @@ function pwNorm(data) { /* 只讀需要嘅欄；其他欄（就算有）唔要 *
     est: T(o.estate), en: T(o.estate_en), houses: A(o.houses), period: T(o.inspection_period), pages: A(o.pages), sheet: T(o.sheet), note: T(o.note),
     contract: T(o.contract_no), idate: T(o.inspection_date), insp: T(o.inspector), rno: T(o.report_no)
   }));
-  return { recs, ests, dls: pwDlNorm(d.deadlines), updated: T(d.updated), title: T(d.title) };
+  const archRaw = [].concat(d.archived || [], d.done_records || []).filter(o => o && typeof o === 'object');
+  const archived = archRaw.map((o, i) => ({
+    id: T(o.id) || T(o.item_id) || 'arch' + i, est: T(o.estate) || T(o.est), house: T(o.house),
+    defect: T(o.defect), loc: T(o.location) || T(o.loc), technician: T(o.technician) || T(o.completed_by),
+    completed_hkt: T(o.completed_hkt) || T(o.done_hkt), completion_date: T(o.completion_date) || T(o.completed_date),
+    photos: Array.isArray(o.photos) ? o.photos : [], no_photo: !!o.no_photo, photo_count: o.photo_count
+  }));
+  return { recs, ests, dls: pwDlNorm(d.deadlines), updated: T(d.updated), title: T(d.title), archived }; /* v0.6.246：已歸檔／done_records 透傳 */
 }
+
 function pwCfAll() { try { const c = JSON.parse(localStorage.getItem(LS_PWCF) || 'null'); return c && c.url === upCfg().url && c.items && typeof c.items === 'object' ? c.items : {}; } catch (e) { return {}; } }
 function pwCfPut(list, replace) { /* 每個項目只留最新一次確認 */
   const m = replace ? {} : pwCfAll();
@@ -5730,13 +5740,60 @@ document.addEventListener('click', e => { const el = e.target && e.target.closes
   '.pwdl.past{background:#f1f5f9;border-color:#e2e8f0;color:#94a3b8}.pwdl.past .tag{background:#e2e8f0;color:#64748b}.pwdl.big{font-size:16px;padding:10px 12px}' +
   '.pwdlsum .t{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:17px}.pwdlgo{display:block;width:100%;text-align:left;border:0;background:none;padding:4px 0;font:inherit;color:inherit}.pwdlgo .mut{font-size:12px}';
   document.head.appendChild(s); } catch (e) {} })();
+/* ---------- v0.6.246 📋 查看已完成紀錄（pending_confirms；可選 archived／done_records）---------- */
+function pwDoneRows(ca) {
+  const by = new Map(), cf = pwCfAll();
+  Object.keys(cf).forEach(id => {
+    const r = cf[id]; if (!r || r.status !== '已完成') return;
+    const x = (ca.recs || []).find(o => o.id === id) || {};
+    by.set(id, {
+      id, est: r.estate || r.est || x.est || '', house: r.house || x.house || '',
+      defect: r.defect || x.defect || '', loc: r.location || r.loc || x.loc || '',
+      tech: r.technician || '', hkt: r.completed_hkt || '',
+      photos: Array.isArray(r.photos) ? r.photos.length : 0, noPhoto: !!r.no_photo, archived: false
+    });
+  });
+  ((ca && ca.archived) || []).forEach(o => {
+    const id = o.id || '';
+    if (!id) return;
+    if (by.has(id)) { by.get(id).archived = true; return; }
+    by.set(id, {
+      id, est: o.est || '', house: o.house || '', defect: o.defect || '', loc: o.loc || '',
+      tech: o.technician || '', hkt: o.completed_hkt || o.completion_date || '',
+      photos: Array.isArray(o.photos) ? o.photos.length : (+o.photo_count || 0),
+      noPhoto: !!o.no_photo, archived: true
+    });
+  });
+  return [...by.values()].sort((a, b) => String(b.hkt).localeCompare(String(a.hkt)));
+}
+function pwDoneView(ca) {
+  const L = pwDoneRows(ca);
+  const rows = L.length ? L.map(x => {
+    const ph = x.photos ? `${x.photos} 張相` : (x.noPhoto ? '冇相' : '—');
+    const open = (ca.recs || []).some(r => r.id === x.id);
+    const body = `<div class="pwmain"><b>${esc(x.est || '—')} · ${esc(x.house || '—')}</b>${x.archived ? ' <span class="mut">（已歸檔）</span>' : ''}
+        <div class="mut">${esc(x.defect || '—')}</div>
+        <div class="mut">位置：${esc(x.loc || '—')}</div>
+        <div class="mut">完成人：${esc(x.tech || '—')} · ${x.hkt ? esc(x.hkt) + ' HKT' : '—'} · ${esc(ph)}</div></div>`;
+    return open
+      ? `<button class="pwrow" data-act="pwopen" data-id="${esc(x.id)}" style="border-top:1px solid var(--line)">${body}<span class="pwgo">›</span></button>`
+      : `<div class="pwrow" style="border-top:1px solid var(--line);cursor:default">${body}</div>`;
+  }).join('') : '<div class="card mut">暫時未有已完成紀錄</div>';
+  return pwTop('已完成紀錄', 'pwdoneback') + `<main>
+    <div class="card"><b>已完成紀錄</b><div class="mut" style="margin-top:4px">跟手機上次讀到嘅完成確認（pending_confirms）${L.length ? ' · ' + L.length + ' 項' : ''} · 新到舊</div>
+      <button class="btn" style="width:100%;margin-top:8px" data-act="pwdoneback">← 返回待處理工作</button></div>
+    <div id="pwdonelist">${rows}</div>
+    <button class="btn" style="width:100%;margin:12px 0" data-act="pwdoneback">← 返回待處理工作</button></main>`;
+}
 function viewPend() {
+
   const c = upCfg();
   if (!c.url || !c.pin) return pwTop('Defect list · 只讀 · 經公司 Apps Script（要 PIN）') + `<main><div class="warnbox">未設定上傳網址／PIN。請喺 ☰ 選單 →「⚙️ 上傳設定」填好先。</div><button class="btn pri" style="width:100%" data-act="settings">⚙️ 上傳設定</button></main>`;
   const ca = pwCache();
   const msg = PW.loading ? '<div class="card mut">載入緊…</div>'
     : PW.err ? `<div class="${PW.errCode === 'bad_action' || PW.errCode === 'not_found' ? 'warnbox' : 'errbox'}" id="pwmsg">${esc(PW.err)}${ca ? '<br>下面係手機上次讀到嘅清單（可能唔係最新）。' : ''}</div>` : '';
   if (!ca) return pwTop('Defect list · 只讀 · 經公司 Apps Script（要 PIN）') + `<main>${msg}${PW.loading ? '' : '<button class="btn pri" style="width:100%" data-act="pwreload">🔄 重新載入</button>'}</main>`;
+  if (PW.doneView && !cur.id) return pwDoneView(ca);
   if (cur.id) { const x = ca.recs.find(r => r.id === cur.id); if (x) return pwDetail(ca, x); }
   const gen = ca.updated && !isNaN(new Date(ca.updated)) ? stamp(ca.updated) : (ca.file && ca.file.updated_hkt) || '';
   const n = s => ca.recs.filter(x => x.st === s).length, sts = PW_ST.filter(s => n(s));
@@ -5751,7 +5808,8 @@ function viewPend() {
         <select data-pw="house" aria-label="大廈" ${PW.est ? '' : 'disabled'}><option value="">${PW.est ? `全部大廈（${pwHouses(ca, PW.est).length}）` : '大廈：先揀屋邨'}</option>${PW.est ? pwHouses(ca, PW.est).map(v => `<option value="${esc(v)}" ${PW.house === v ? 'selected' : ''}>${esc(v)}（${ca.recs.filter(x => x.est === PW.est && x.house === v).length}）</option>`).join('') : ''}</select></div>
       <div class="ecst" style="margin-top:8px">${stBtn('', `全部 ${ca.recs.length}`)}${sts.map(s => stBtn(s, `${s} ${n(s)}`)).join('')}</div>
       <div class="mut" style="margin-top:6px">資料更新：${esc(gen)} HKT · 手機上次讀取 ${stamp(ca.at)}</div>${pwSrc(ca)}
-      <button class="btn" style="width:100%;margin-top:6px" data-act="pwreload">🔄 重新載入</button></div>
+      <button class="btn" style="width:100%;margin-top:6px" data-act="pwreload">🔄 重新載入</button>
+      <button class="btn" style="width:100%;margin-top:8px" data-act="pwdone">📋 查看已完成紀錄</button></div>
     ${hdl.length ? `<div class="card" id="pwdlb"><b>${esc(PW.est)} · ${esc(hdl[0].bld)}</b><div class="pwdls">${hdl.map(d => pwDlChip(ca, d, true)).join('')}</div></div>` : ''}
     <div id="pwlist">${pwListHtml()}</div>
     <button class="btn" style="width:100%;margin:12px 0" data-act="pwclear">🗑 清除手機上嘅待處理工作資料</button></main>`;
@@ -11108,6 +11166,8 @@ document.addEventListener('click', async e => {
     case 'pwest': PW.open[el.dataset.v || ''] = !PW.open[el.dataset.v || '']; { const l = $('#pwlist'); if (l) l.innerHTML = pwListHtml(); } return;
     case 'pwopen': if (el.dataset.id) { PW.y = window.scrollY; return go('#/pend/' + encodeURIComponent(el.dataset.id)); } return;
     case 'pwback': { const y = PW.y || 0; go('#/pend'); setTimeout(() => window.scrollTo(0, y), 0); } return;
+    case 'pwdone': PW.doneView = true; window.scrollTo(0, 0); return render();
+    case 'pwdoneback': PW.doneView = false; window.scrollTo(0, 0); return render();
     case 'pwclear': return pwClear();
     case 'screload': SC.live = false; SC.err = ''; return scLoad();
     case 'scprev': SC.m = scAddM(SC.m || hkDate().slice(0, 7), -1); return render();
