@@ -453,8 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.246';
-/* v0.6.246：待處理工作加「📋 查看已完成紀錄」（PW.doneView；pending_confirms＋可選 archived／done_records） */
+const APP_VERSION = '0.6.247';
+/* v0.6.247：已完成紀錄加搜尋／屋邨／大廈篩選＋按屋邨手風琴分類（PW.dQ／dEst／dHouse／dPh；唔動主清單篩選） */
 /* v0.6.245：CL-J k（後備花灑頭數目）預設 24（ndef；可改） */
 /* v0.6.244：AA30＞0 → CL-J e2／f ✓；＝0 → NA；AA25＝有 → CL-J g ✓；冇 → NA；CL-J e1／CL-E e1 預設剔（範本 √） */
 /* v0.6.243：T8＝冇 → G1 h7／h8／h9＝NA（同 CL-E e3；範本 G1-1 H41–H43 改 T8 VLOOKUP） */
@@ -5588,12 +5588,13 @@ function viewEhDetail(id) {
    （v0.6.45／v1.38 完工相檔名加工作內容：held／未使；0.6.46 唔包。）
    v0.6.12.7（Apps Script v1.11）：清單改由 Google Sheet「待處理工作 list表」讀（伺服器做，JSON 格式一樣）；顯示「資料來源」（Sheet／讀唔到 → pending_work.json 加提示）；
    由第二個 App 返嚟（visibilitychange）超過 1 分鐘自動再讀。請求係 POST + no-store，Service Worker 唔快取，所以「🔄 重新載入」一定係最新。
-   v0.6.246：主清單加「📋 查看已完成紀錄」→ PW.doneView 內頁（pending_confirms 已完成；可選合併 pwCache archived／done_records，標「已歸檔」）。日後 Sheet 第三日自動搬「已完成」分頁係 GAS，唔喺呢版。 */
+   v0.6.246：主清單加「📋 查看已完成紀錄」→ PW.doneView 內頁（pending_confirms 已完成；可選合併 pwCache archived／done_records，標「已歸檔」）。
+   v0.6.247：已完成頁加搜尋／屋邨／大廈／有相冇相＋按屋邨手風琴（PW.dQ／dEst／dHouse／dPh／dOpen；唔動主清單篩選）。 */
 const LS_PW = 'fsapp20259005.pending.v1';
 const PW_ST = ['未處理', '跟進中', '已完成', '暫停 (Hold)'];
 const PW_CLS = { '未處理': 'pwa', '跟進中': 'pwb', '已完成': 'pwc', '暫停 (Hold)': 'pwh' };
 /* v0.6.13.2 FAN：待處理工作頁唔要公司 logo／公司名（PW_LOGO 已刪） */
-let PW = { loading: false, err: '', errCode: '', live: false, st: '', q: '', open: {}, est: '', house: '', cfOld: false, cfErr: '', cfBusy: false, srv: '', liveAt: 0, doneView: false }; /* v0.6.246 doneView＝已完成紀錄頁 */
+let PW = { loading: false, err: '', errCode: '', live: false, st: '', q: '', open: {}, est: '', house: '', cfOld: false, cfErr: '', cfBusy: false, srv: '', liveAt: 0, doneView: false, dQ: '', dEst: '', dHouse: '', dPh: '', dOpen: {} }; /* v0.6.246 doneView；v0.6.247 dQ／dEst／dHouse／dPh／dOpen＝已完成頁獨立篩選 */
 const PW_CF_OK = ['未處理', '跟進中', '暫停 (Hold)']; /* 原表已完成嘅唔使確認 */
 const pwVerGE = (a, b) => { const x = String(a || '0').split('.').map(n => parseInt(n, 10) || 0), y = String(b).split('.').map(n => parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return true; }; /* 版本逐段比較：1.10 > 1.9 */
@@ -5740,7 +5741,7 @@ document.addEventListener('click', e => { const el = e.target && e.target.closes
   '.pwdl.past{background:#f1f5f9;border-color:#e2e8f0;color:#94a3b8}.pwdl.past .tag{background:#e2e8f0;color:#64748b}.pwdl.big{font-size:16px;padding:10px 12px}' +
   '.pwdlsum .t{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:17px}.pwdlgo{display:block;width:100%;text-align:left;border:0;background:none;padding:4px 0;font:inherit;color:inherit}.pwdlgo .mut{font-size:12px}';
   document.head.appendChild(s); } catch (e) {} })();
-/* ---------- v0.6.246 📋 查看已完成紀錄（pending_confirms；可選 archived／done_records）---------- */
+/* ---------- v0.6.246／v0.6.247 📋 查看已完成紀錄（搜尋＋屋邨／大廈＋按屋邨分類；獨立 PW.d* 唔動主清單）---------- */
 function pwDoneRows(ca) {
   const by = new Map(), cf = pwCfAll();
   Object.keys(cf).forEach(id => {
@@ -5766,23 +5767,63 @@ function pwDoneRows(ca) {
   });
   return [...by.values()].sort((a, b) => String(b.hkt).localeCompare(String(a.hkt)));
 }
-function pwDoneView(ca) {
-  const L = pwDoneRows(ca);
-  const rows = L.length ? L.map(x => {
-    const ph = x.photos ? `${x.photos} 張相` : (x.noPhoto ? '冇相' : '—');
-    const open = (ca.recs || []).some(r => r.id === x.id);
-    const body = `<div class="pwmain"><b>${esc(x.est || '—')} · ${esc(x.house || '—')}</b>${x.archived ? ' <span class="mut">（已歸檔）</span>' : ''}
-        <div class="mut">${esc(x.defect || '—')}</div>
+const pwDoneMatch = (x, q) => !q || pwQ([x.est, x.house, x.loc, x.defect, x.tech, x.id, x.hkt].join('|')).includes(q);
+const pwDoneFilt = x => (!PW.dEst || x.est === PW.dEst) && (!PW.dHouse || x.house === PW.dHouse)
+  && (PW.dPh !== 'yes' || (!!x.photos && !x.noPhoto)) && (PW.dPh !== 'no' || !!x.noPhoto || !x.photos);
+const pwDoneEsts = L => pkSort([...new Set(L.map(x => x.est).filter(Boolean))], 'estate');
+const pwDoneHouses = (L, est) => pkSort([...new Set(L.filter(x => x.est === est).map(x => x.house).filter(Boolean))], 'block', est);
+function pwDoneRowHtml(ca, x) {
+  const ph = x.photos ? `${x.photos} 張相` : (x.noPhoto ? '冇相' : '—');
+  const open = (ca.recs || []).some(r => r.id === x.id);
+  const body = `<div class="pwmain"><b>${esc(x.house || '—')} · ${esc(x.defect || '—')}</b>${x.archived ? ' <span class="mut">（已歸檔）</span>' : ''}
         <div class="mut">位置：${esc(x.loc || '—')}</div>
         <div class="mut">完成人：${esc(x.tech || '—')} · ${x.hkt ? esc(x.hkt) + ' HKT' : '—'} · ${esc(ph)}</div></div>`;
-    return open
-      ? `<button class="pwrow" data-act="pwopen" data-id="${esc(x.id)}" style="border-top:1px solid var(--line)">${body}<span class="pwgo">›</span></button>`
-      : `<div class="pwrow" style="border-top:1px solid var(--line);cursor:default">${body}</div>`;
-  }).join('') : '<div class="card mut">暫時未有已完成紀錄</div>';
+  return open
+    ? `<button class="pwrow" data-act="pwopen" data-id="${esc(x.id)}">${body}<span class="pwgo">›</span></button>`
+    : `<div class="pwrow" style="cursor:default">${body}</div>`;
+}
+function pwDoneListHtml(ca) {
+  const all = pwDoneRows(ca);
+  if (!all.length) return `<div class="card mut" id="pwdnone">暫時未有已完成紀錄</div>`;
+  if (PW.dEst && !pwDoneEsts(all).includes(PW.dEst)) { PW.dEst = ''; PW.dHouse = ''; }
+  if (PW.dHouse && !pwDoneHouses(all, PW.dEst).includes(PW.dHouse)) PW.dHouse = '';
+  const q = pwQ(PW.dQ), L = all.filter(x => pwDoneFilt(x) && pwDoneMatch(x, q));
+  if (!L.length) {
+    const why = PW.dQ.trim() ? `搵唔到「${esc(PW.dQ)}」` : (PW.dEst || PW.dHouse || PW.dPh ? '冇符合篩選嘅已完成紀錄' : '暫時未有已完成紀錄');
+    return `<div class="card mut" id="pwdnone">${why}</div>`;
+  }
+  const order = (ca.ests || []).map(e => e.est), by = new Map();
+  L.forEach(x => { const k = x.est || '—'; if (!by.has(k)) by.set(k, []); by.get(k).push(x); });
+  const keys = [...by.keys()].sort((a, b) => ((order.indexOf(a) + 1) || 999) - ((order.indexOf(b) + 1) || 999) || a.localeCompare(b, 'zh-Hant'));
+  const filt = !!(q || PW.dEst || PW.dHouse || PW.dPh);
+  return `<div class="mut" style="margin:6px 2px" id="pwdcount">${filt ? `搵到 ${L.length} 項（${keys.length} 個屋邨）` : `共 ${L.length} 項 · ${keys.length} 個屋邨（撳屋邨展開；新到舊）`}</div>` + keys.map(k => {
+    const xs = by.get(k); /* already newest-first from pwDoneRows */
+    const open = filt || PW.dOpen[k];
+    const e = (ca.ests || []).find(e => e.est === k) || {};
+    const nPh = xs.filter(x => x.photos && !x.noPhoto).length, nNo = xs.filter(x => x.noPhoto || !x.photos).length;
+    const houses = [...new Set(xs.map(x => x.house).filter(Boolean))];
+    return `<div class="card pwest" data-est="${esc(k)}"><button class="pwesth" data-act="pwdest" data-v="${esc(k)}" aria-expanded="${open ? 'true' : 'false'}">
+      <div class="t"><span>${esc(k)}</span><span class="mut">${xs.length} 項 ${open ? '▾' : '▸'}</span></div>
+      ${e.en ? `<div class="mut">${esc(e.en)}</div>` : ''}<div class="mut">${esc(houses.join('、') || '—')}</div>
+      <div class="pwcnt">${nPh ? `<span class="badge pwc">有相 ${nPh}</span>` : ''}${nNo ? `<span class="badge wona">冇相 ${nNo}</span>` : ''}${xs.filter(x => x.archived).length ? `<span class="badge wona">已歸檔 ${xs.filter(x => x.archived).length}</span>` : ''}</div></button>
+      ${open ? xs.map(x => pwDoneRowHtml(ca, x)).join('') : ''}</div>`;
+  }).join('');
+}
+function pwDoneView(ca) {
+  const all = pwDoneRows(ca);
+  if (PW.dEst && !pwDoneEsts(all).includes(PW.dEst)) { PW.dEst = ''; PW.dHouse = ''; }
+  if (PW.dHouse && !pwDoneHouses(all, PW.dEst).includes(PW.dHouse)) PW.dHouse = '';
+  const ests = pwDoneEsts(all), houses = PW.dEst ? pwDoneHouses(all, PW.dEst) : [];
+  const nPh = all.filter(x => x.photos && !x.noPhoto).length, nNo = all.filter(x => x.noPhoto || !x.photos).length;
+  const phBtn = (v, t) => `<button class="chip ${PW.dPh === v ? 'cur' : ''}" data-act="pwdph" data-v="${esc(v)}">${esc(t)}</button>`;
   return pwTop('已完成紀錄', 'pwdoneback') + `<main>
-    <div class="card"><b>已完成紀錄</b><div class="mut" style="margin-top:4px">跟手機上次讀到嘅完成確認（pending_confirms）${L.length ? ' · ' + L.length + ' 項' : ''} · 新到舊</div>
+    <div class="card lkf"><b>已完成紀錄</b><div class="mut" style="margin-top:4px">跟手機上次讀到嘅完成確認（pending_confirms）${all.length ? ' · ' + all.length + ' 項' : ''} · 可搜尋／揀屋邨大廈 · 按屋邨分類</div>
+      <input data-pwd="q" type="search" placeholder="搵缺陷／位置／完成人／編號（屋邨／大廈用下面下拉）" value="${esc(PW.dQ)}" aria-label="搵已完成紀錄" style="width:100%;margin-top:8px">
+      <div class="pwsel"><select data-pwd="est" aria-label="屋邨"><option value="">全部屋邨（${ests.length}）</option>${ests.map(v => `<option value="${esc(v)}" ${PW.dEst === v ? 'selected' : ''}>${esc(v)}（${all.filter(x => x.est === v).length}）</option>`).join('')}</select>
+        <select data-pwd="house" aria-label="大廈" ${PW.dEst ? '' : 'disabled'}><option value="">${PW.dEst ? `全部大廈（${houses.length}）` : '大廈：先揀屋邨'}</option>${PW.dEst ? houses.map(v => `<option value="${esc(v)}" ${PW.dHouse === v ? 'selected' : ''}>${esc(v)}（${all.filter(x => x.est === PW.dEst && x.house === v).length}）</option>`).join('') : ''}</select></div>
+      <div class="ecst" style="margin-top:8px">${phBtn('', `全部 ${all.length}`)}${nPh ? phBtn('yes', `有相 ${nPh}`) : ''}${nNo ? phBtn('no', `冇相 ${nNo}`) : ''}</div>
       <button class="btn" style="width:100%;margin-top:8px" data-act="pwdoneback">← 返回待處理工作</button></div>
-    <div id="pwdonelist">${rows}</div>
+    <div id="pwdonelist">${pwDoneListHtml(ca)}</div>
     <button class="btn" style="width:100%;margin:12px 0" data-act="pwdoneback">← 返回待處理工作</button></main>`;
 }
 function viewPend() {
@@ -5857,9 +5898,14 @@ function pwDetail(ca, x) {
     <div class="pwnav"><button class="btn" data-act="pwopen" data-id="${prev ? esc(prev.id) : ''}" ${prev ? '' : 'disabled'}>‹ 上一項</button><button class="btn" data-act="pwopen" data-id="${next ? esc(next.id) : ''}" ${next ? '' : 'disabled'}>下一項 ›</button></div>
     <button class="btn" style="width:100%;margin-bottom:12px" data-act="pwback">‹ 返回清單</button></main>`;
 }
-document.addEventListener('change', e => { const el = e.target; if (!el.dataset || (el.dataset.pw !== 'est' && el.dataset.pw !== 'house')) return;
-  if (el.dataset.pw === 'est') { PW.est = el.value; PW.house = ''; } else PW.house = el.value; render(); });
-document.addEventListener('input', e => { const el = e.target; if (!el.dataset || el.dataset.pw !== 'q') return; PW.q = el.value; const l = $('#pwlist'); if (l) l.innerHTML = pwListHtml(); });
+document.addEventListener('change', e => { const el = e.target; if (!el.dataset) return;
+  if (el.dataset.pw === 'est' || el.dataset.pw === 'house') {
+    if (el.dataset.pw === 'est') { PW.est = el.value; PW.house = ''; } else PW.house = el.value; render(); return; }
+  if (el.dataset.pwd === 'est' || el.dataset.pwd === 'house') {
+    if (el.dataset.pwd === 'est') { PW.dEst = el.value; PW.dHouse = ''; } else PW.dHouse = el.value; render(); } });
+document.addEventListener('input', e => { const el = e.target; if (!el.dataset) return;
+  if (el.dataset.pw === 'q') { PW.q = el.value; const l = $('#pwlist'); if (l) l.innerHTML = pwListHtml(); return; }
+  if (el.dataset.pwd === 'q') { PW.dQ = el.value; const l = $('#pwdonelist'); if (l) { const ca = pwCache(); if (ca) l.innerHTML = pwDoneListHtml(ca); } } });
 async function pwClear() {
   if (!(await ask('清除待處理工作資料？', '手機上儲存咗嘅待處理工作清單會刪走（公司 Drive 嗰份唔受影響）。之後要有網先睇得返。', '清除', '取消'))) return;
   try { localStorage.removeItem(LS_PW); localStorage.removeItem(LS_PWCF); } catch (e) {} PW.live = false; PW.err = ''; render(); toast('已清除');
@@ -11168,6 +11214,8 @@ document.addEventListener('click', async e => {
     case 'pwback': { const y = PW.y || 0; go('#/pend'); setTimeout(() => window.scrollTo(0, y), 0); } return;
     case 'pwdone': PW.doneView = true; window.scrollTo(0, 0); return render();
     case 'pwdoneback': PW.doneView = false; window.scrollTo(0, 0); return render();
+    case 'pwdest': PW.dOpen[el.dataset.v || ''] = !PW.dOpen[el.dataset.v || '']; { const l = $('#pwdonelist'); const ca = pwCache(); if (l && ca) l.innerHTML = pwDoneListHtml(ca); } return;
+    case 'pwdph': PW.dPh = el.dataset.v || ''; return render();
     case 'pwclear': return pwClear();
     case 'screload': SC.live = false; SC.err = ''; return scLoad();
     case 'scprev': SC.m = scAddM(SC.m || hkDate().slice(0, 7), -1); return render();
