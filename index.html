@@ -453,7 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.247';
+const APP_VERSION = '0.6.248';
+/* v0.6.248：單據報銷 AI 加總後自動填「金額」；試算表一張單一行＋分類（停車場／買料…；要 GAS v1.76+） */
 /* v0.6.247：已完成紀錄加搜尋／屋邨／大廈篩選＋按屋邨手風琴分類（PW.dQ／dEst／dHouse／dPh；唔動主清單篩選） */
 /* v0.6.245：CL-J k（後備花灑頭數目）預設 24（ndef；可改） */
 /* v0.6.244：AA30＞0 → CL-J e2／f ✓；＝0 → NA；AA25＝有 → CL-J g ✓；冇 → NA；CL-J e1／CL-E e1 預設剔（範本 √） */
@@ -10315,12 +10316,15 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
 /* ---------- v0.6.100 單據報銷（FAN 2026-10-17：開頁出編號；影相→AI加總；Sheet＋Drive；撞單） ----------
    FAN（2026-10-18）：影相上限 20；手機暫存（跟度數：localStorage＋PhotoDB；autosave；送出成功先清；可繼續）。
    FAN 0.6.100：reload／AI 撈緊保相——影相即存 draft；pagehide／visibilitychange flush；AI 前後存；還原時剔冇 blob 嘅 id。
-   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.69+ 認 20 張）。 */
+   v0.6.248：AI 加總後必填「金額」（修 exSaveDraft→exReadForm 抹走）；試算表一張單＝一行＋分類（停車場／買料…）；要 GAS v1.76+。
+   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.69+ 認 20 張；v1.76+ 收據分行）。 */
 const EX_MAX_PHOTOS = 20;
 const EX_DRAFT_LS = 'fsapp20259005.expense.drafts.v1';
+const EX_CATS = ['停車場', '買料', '交通', '膳食', '工具', '雜項', '其他'];
 const EX = {
   claimNo: '', amount: '', purpose: '', date: '', photoIds: [],
   aiAmount: null, aiNote: '', aiBusy: false, aiPending: false, amountFromAi: false, aiPhotoN: 0,
+  aiReceipts: [], /* [{amount, category, note, photo_index}] 一張單一行 */
   submitting: false, lastReply: null, msg: '',
   draftId: null, /* 而家編緊邊份手機暫存 */
   _draftTimer: null, _restored: false
@@ -10340,6 +10344,7 @@ function exResetForm() {
   EX.aiBusy = false;
   EX.aiPending = false;
   EX.aiPhotoN = 0;
+  EX.aiReceipts = [];
   EX.amountFromAi = false;
   EX.lastReply = null;
   EX.msg = '';
@@ -10379,6 +10384,7 @@ function exSnapDraft() {
     photoIds: (EX.photoIds || []).slice(),
     aiAmount: EX.aiAmount,
     aiNote: EX.aiNote || '',
+    aiReceipts: Array.isArray(EX.aiReceipts) ? EX.aiReceipts.map(x => Object.assign({}, x)) : [],
     amountFromAi: !!EX.amountFromAi,
     updated: Date.now()
   };
@@ -10438,6 +10444,7 @@ function exOpenDraft(rid) {
   EX.photoIds = Array.isArray(d.photoIds) ? d.photoIds.slice() : [];
   EX.aiAmount = (d.aiAmount != null && d.aiAmount > 0) ? d.aiAmount : null;
   EX.aiNote = d.aiNote || '';
+  EX.aiReceipts = Array.isArray(d.aiReceipts) ? d.aiReceipts.map(x => Object.assign({}, x)) : [];
   EX.amountFromAi = !!d.amountFromAi;
   EX.aiBusy = false;
   EX.aiPending = false;
@@ -10514,6 +10521,7 @@ function exTryRestoreOnEnter() {
   EX.photoIds = Array.isArray(d.photoIds) ? d.photoIds.slice() : [];
   EX.aiAmount = (d.aiAmount != null && d.aiAmount > 0) ? d.aiAmount : null;
   EX.aiNote = d.aiNote || '';
+  EX.aiReceipts = Array.isArray(d.aiReceipts) ? d.aiReceipts.map(x => Object.assign({}, x)) : [];
   EX.amountFromAi = !!d.amountFromAi;
   try { exPruneMissingPhotos(); } catch (e) {}
 }
@@ -10548,6 +10556,50 @@ async function exClearPhotos() {
   for (const id of EX.photoIds.slice()) await exDelPhotoId(id);
   EX.photoIds = [];
 }
+function exNormCat(c) {
+  const s = String(c || '').trim();
+  return EX_CATS.includes(s) ? s : '其他';
+}
+/** AI 結果寫入金額欄：先同步 DOM，再暫存（唔好俾 exReadForm 用舊 input 抹走） */
+function exFillAmountFromAi(total) {
+  const n = Number(total);
+  if (!(isFinite(n) && n > 0)) return false;
+  const curAmt = Number(EX.amount);
+  const blank = !String(EX.amount || '').trim() || !(curAmt > 0);
+  if (!(blank || EX.amountFromAi)) return false;
+  EX.amount = String(Math.round(n * 100) / 100);
+  EX.amountFromAi = true;
+  try {
+    const a = (typeof $ === 'function') ? $('#ex_amt') : null;
+    if (a) a.value = EX.amount;
+  } catch (e) {}
+  return true;
+}
+function exReceiptsFromAi(o) {
+  const out = [];
+  const raw = (o && Array.isArray(o.receipts) && o.receipts.length) ? o.receipts
+    : ((o && Array.isArray(o.lines) && o.lines.length) ? o.lines.map(function (L) {
+        return { amount: L.value, category: L.category || '其他', note: L.note || '', photo_index: L.photo_index != null ? L.photo_index : null };
+      }) : []);
+  raw.forEach(function (r, i) {
+    const amt = Number(r && (r.amount != null ? r.amount : r.value));
+    if (!(isFinite(amt) && amt > 0 && amt < 1e7)) return;
+    out.push({
+      amount: Math.round(amt * 100) / 100,
+      category: exNormCat(r.category),
+      note: String((r && r.note) || '').slice(0, 80),
+      photo_index: (r && r.photo_index != null && isFinite(Number(r.photo_index))) ? Number(r.photo_index) : (i + 1)
+    });
+  });
+  return out;
+}
+function exReceiptsHtml() {
+  if (!EX.aiReceipts || !EX.aiReceipts.length) return '';
+  const rows = EX.aiReceipts.map(function (r, i) {
+    return `<div class="exrec"><span class="exrecn">${i + 1}</span><b>${esc(r.category || '其他')}</b> · $${esc(String(r.amount))}${r.note ? ` · <span class="mut">${esc(r.note)}</span>` : ''}</div>`;
+  }).join('');
+  return `<div class="exrecs" id="exrecs"><div class="mut" style="margin-bottom:4px">AI 分類（試算表一張單一行；可改總金額）</div>${rows}</div>`;
+}
 function viewExpense() {
   exTryRestoreOnEnter();
   exEnsureDate();
@@ -10561,8 +10613,8 @@ function viewExpense() {
     : '<div class="mut">未有單據相。撳下面影相（淨相機）；影完會自動讀銀碼加總。</div>';
   const camDis = EX.photoIds.length >= EX_MAX_PHOTOS || !!EX.submitting;
   const aiHint = EX.aiBusy ? '🤖 讀緊單據銀碼…'
-    : (EX.aiAmount != null ? `AI 加總：$${EX.aiAmount}${EX.amountFromAi ? '（已填入，可改）' : ''}${EX.aiNote ? ' · ' + EX.aiNote : ''}`
-      : (EX.photoIds.length ? '可人手填金額；有 AI 時會自動加總' : ''));
+    : (EX.aiAmount != null ? `AI 加總：$${EX.aiAmount}${EX.amountFromAi ? '（已填入金額，可改）' : ''}${EX.aiNote ? ' · ' + EX.aiNote : ''}`
+      : (EX.photoIds.length ? '可人手填金額；有 AI 時會自動加總並填入' : ''));
   return `<div class="top"><div class="bar"><button data-act="grid" aria-label="返主頁">‹ 主頁</button><div class="ttl">🧾 單據報銷<small>測試版 v${APP_VERSION} · 最多 ${EX_MAX_PHOTOS} 張</small></div><button data-act="menu" aria-label="選單">☰</button></div></div>
   <main class="exmain">
     ${exDraftsHtml()}
@@ -10572,10 +10624,11 @@ function viewExpense() {
     </div>
     <div class="card">
       <h3>報銷資料</h3>
-      <div class="mut" style="margin-bottom:8px">師傅：<b>${esc(nm || '（未登記名）')}</b> · 送出後寫試算表＋Drive「單據報銷」</div>
+      <div class="mut" style="margin-bottom:8px">師傅：<b>${esc(nm || '（未登記名）')}</b> · 送出後寫試算表＋Drive「單據報銷」（一張單一行）</div>
       <label class="exlbl">日期<input class="inp" type="date" id="ex_date" value="${esc(EX.date)}" ${EX.submitting ? 'disabled' : ''}></label>
       <label class="exlbl">金額（港幣）<input class="inp" type="number" inputmode="decimal" step="0.01" min="0" id="ex_amt" value="${esc(EX.amount)}" placeholder="影相後自動加總／可改" ${EX.submitting ? 'disabled' : ''}></label>
       ${aiHint ? `<div class="mut" id="exaihint" style="margin-top:4px">${esc(aiHint)}</div>` : ''}
+      ${exReceiptsHtml()}
       <label class="exlbl">用途<input class="inp" id="ex_pur" value="${esc(EX.purpose)}" placeholder="買咗咩／點解報銷" maxlength="200" autocomplete="off" ${EX.submitting ? 'disabled' : ''}></label>
     </div>
     <div class="card">
@@ -10643,7 +10696,7 @@ async function exRmPhoto(id) {
   EX.photoIds = EX.photoIds.filter(x => x !== id);
   await exDelPhotoId(id);
   if (!EX.photoIds.length) {
-    EX.aiAmount = null; EX.aiNote = ''; EX.amountFromAi = false;
+    EX.aiAmount = null; EX.aiNote = ''; EX.aiReceipts = []; EX.amountFromAi = false;
   } else {
     exScheduleAiSum();
   }
@@ -10685,14 +10738,26 @@ async function exRunAiSum() {
     if (EX.photoIds.length !== nAtStart) { EX.aiPending = true; return; }
     if (o && o.ok && o.ai_amount > 0) {
       EX.aiAmount = o.ai_amount;
-      EX.aiNote = (photos.length > 1 ? photos.length + ' 張相加總' : '') + (o.note ? ((photos.length > 1 ? ' · ' : '') + o.note) : '');
-      const curAmt = Number(EX.amount);
-      if (!EX.amount || EX.amountFromAi || !(curAmt > 0)) {
-        EX.amount = String(o.ai_amount);
-        EX.amountFromAi = true;
-        toast('AI 加總 $' + o.ai_amount + (photos.length > 1 ? '（' + photos.length + ' 張）' : '') + '（可改）', 2500);
+      EX.aiReceipts = exReceiptsFromAi(o);
+      EX.aiNote = (photos.length > 1 ? photos.length + ' 張相加總' : '')
+        + (EX.aiReceipts.length > 1 ? ' · ' + EX.aiReceipts.length + ' 張單' : '')
+        + (o.note ? ((photos.length > 1 || EX.aiReceipts.length > 1 ? ' · ' : '') + o.note) : '');
+      const filled = exFillAmountFromAi(o.ai_amount);
+      if (filled) {
+        toast('已填金額 $' + o.ai_amount + (photos.length > 1 ? '（' + photos.length + ' 張）' : '')
+          + (EX.aiReceipts.length ? ' · ' + EX.aiReceipts.length + ' 項' : '') + '（可改）', 2500);
       } else {
         toast('AI 加總 $' + o.ai_amount + '（你已填 $' + EX.amount + '，唔會覆寫）', 3000);
+      }
+      /* 用途空白時，用分類／備註提示（人手仍可改） */
+      if (!String(EX.purpose || '').trim() && EX.aiReceipts.length) {
+        const hint = EX.aiReceipts.map(function (r) {
+          return r.category + (r.note ? '（' + r.note + '）' : '');
+        }).join('、').slice(0, 200);
+        if (hint) {
+          EX.purpose = hint;
+          try { const p = $('#ex_pur'); if (p) p.value = EX.purpose; } catch (e) {}
+        }
       }
       try { exSaveDraft(true); } catch (e) {}
     } else {
@@ -10744,6 +10809,16 @@ async function exPayloadWithPhotos() {
     photo_count: photos.length
   };
   if (EX.aiAmount != null && EX.aiAmount > 0) o.ai_amount = EX.aiAmount;
+  if (EX.aiReceipts && EX.aiReceipts.length) {
+    o.receipts = EX.aiReceipts.map(function (r) {
+      return {
+        amount: Number(r.amount),
+        category: exNormCat(r.category),
+        note: String(r.note || '').slice(0, 80),
+        photo_index: r.photo_index != null ? r.photo_index : null
+      };
+    });
+  }
   return o;
 }
 async function exSubmit() {
@@ -10830,10 +10905,12 @@ document.addEventListener('visibilitychange', () => { try { if (document.visibil
       '.exmain .exlbl{display:block;font-size:13px;color:#555;margin:10px 0 0}.exmain .inp{width:100%;box-sizing:border-box;margin-top:2px;font-size:17px;min-height:46px}' +
       '.exclaim{text-align:center;padding:14px 12px}.exclaimno{font-size:28px;font-weight:700;letter-spacing:1px;font-family:ui-monospace,Menlo,Consolas,monospace;color:#0b5;margin-top:4px;user-select:all}' +
       '.exthumbs{margin-top:8px}' +
+      '.exrecs{margin-top:8px;padding:8px 10px;background:#f8fafc;border-radius:10px;border:1px solid #e5e7eb}.exrec{font-size:14px;margin:4px 0;line-height:1.35}.exrecn{display:inline-block;min-width:1.4em;color:#64748b;font-weight:600}' +
       '.exdraft{border-top:1px solid #e5e7eb;padding:10px 0 4px;margin-top:8px}.exdrafta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.exdrafta .btn{flex:1;min-width:120px}';
     document.head.appendChild(s);
   } catch (e) {}
 })();
+
 
 /* ---------- 樓層 /F ---------- */
 function floorSync(r) { // 記錄 + 畫面上嘅樓層欄位一齊整理（下一頁／提交前）
