@@ -453,7 +453,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.257';
+const APP_VERSION = '0.6.258';
 /* v0.6.252：尋找相片返下拉（屋邨／大廈）；唔顯示日期（固定近 93 日）；photo_search＋photo_places；GAS 1.79 可繼續但 UI 唔用 browse */
 /* v0.6.251：睇相瀏覽式（已擱置 UI；GAS photo_browse_* 仍在） */
 /* v0.6.248：單據報銷 AI 加總後自動填「金額」；試算表一張單一行＋分類（要 GAS v1.76+） */
@@ -10218,7 +10218,8 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.255：修開新單編號唔變（newId 頭 4 字撞車；改由尾抽＋避舊號）。
    v0.6.256：開新單唔再存兩份淨編號空白；暫存要有金額／用途／相（FAN App房 2026-10-24）。
    v0.6.257：管理員隱藏掣「查找／修改單據」（ACC.mgrOk｜同 PE pecMgr）；只搵手機暫存，開用 exOpenDraft（FAN App房 2026-10-24）。
-   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.69+ 認 20 張；v1.76+ 收據分行）。 */
+   v0.6.258：管理員查找雲端 Sheet（expense_list／get）；開單入表單；改單 expense_update（刪舊行＋append；keep_photos 可唔重傳相）；要 GAS v1.80+（FAN App房 2026-10-24）。
+   主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`／`expense_list`／`expense_get`／`expense_update`（GAS v1.69+ 認 20 張；v1.76+ 收據分行；v1.80+ 雲端改）。 */
 const EX_MAX_PHOTOS = 20;
 const EX_DRAFT_LS = 'fsapp20259005.expense.drafts.v1';
 const EX_CATS = ['停車場', '買料', '交通', '膳食', '工具', '雜項', '其他'];
@@ -10229,6 +10230,8 @@ const EX = {
   submitting: false, lastReply: null, msg: '',
   draftId: null, /* 而家編緊邊份手機暫存 */
   findOpen: false, findQ: '', /* v0.6.257 管理員查找面板 */
+  findCloud: [], findBusy: false, findErr: '', findSearched: false, /* v0.6.258 雲端結果 */
+  cloudEdit: null, /* {claim_no, folder_id, photosDirty} 開咗雲端單就用 expense_update */
   _draftTimer: null, _restored: false
 };
 let _exAiTimer = null;
@@ -10251,6 +10254,7 @@ function exResetForm() {
   EX.lastReply = null;
   EX.msg = '';
   EX.draftId = null;
+  EX.cloudEdit = null;
   if (_exAiTimer) { clearTimeout(_exAiTimer); _exAiTimer = null; }
   if (EX._draftTimer) { clearTimeout(EX._draftTimer); EX._draftTimer = null; }
   exEnsureClaimNo();
@@ -10350,6 +10354,7 @@ async function exPruneMissingPhotos() {
   }
 }
 function exOpenDraft(rid) {
+  EX.cloudEdit = null;
   const d = exDraftsAll()[rid];
   if (!d) return toast('搵唔到呢份暫存');
   EX.draftId = rid;
@@ -10389,6 +10394,7 @@ async function exDeleteDraft(rid) {
   exPaint();
 }
 async function exNewDraft() {
+  EX.cloudEdit = null;
   /* FAN 2026-10-24：一撳換新編號；有內容先暫存舊單；唔好存兩份淨編號空白 */
   const oldNo = String(EX.claimNo || '');
   if (exFormHasContent()) exSaveDraft(true);
@@ -10417,10 +10423,103 @@ function exFindList() {
     .filter(d => exFindMatch(d, q))
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
 }
+function exCloudLabel(c) {
+  const no = (c && c.claim_no) || '（無編號）';
+  const amt = (c && c.amount != null) ? ('$' + c.amount) : '未填金額';
+  const pur = (c && c.purpose) ? String(c.purpose).slice(0, 24) : '未填用途';
+  const n = (c && c.photo_count) || 0;
+  const cats = (c && c.categories && c.categories.length) ? (' · ' + c.categories.join('/')) : '';
+  return no + ' · ' + amt + ' · ' + pur + (n ? ' · ' + n + ' 張相' : '') + cats;
+}
+async function exCloudSearch() {
+  if (!exMgr()) { toast('要管理員先用'); return; }
+  if (EX.findBusy) return;
+  EX.findBusy = true; EX.findErr = ''; EX.findSearched = true; exPaint();
+  try {
+    const q = String(EX.findQ || '').trim();
+    const o = await gasCall({ action: 'expense_list', q: q, limit: 50, app_version: APP_VERSION }, 60000);
+    if (!o || !o.ok) {
+      const err = (o && o.error) || 'bad_reply';
+      EX.findCloud = [];
+      EX.findErr = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.80+ expense_list）'
+        : (typeof upErrText === 'function' ? upErrText(err) : err);
+      toast(EX.findErr, 4000);
+    } else {
+      EX.findCloud = Array.isArray(o.items) ? o.items : [];
+      if (!EX.findCloud.length) toast(q ? ('雲端搵唔到「' + q + '」') : '雲端未有報銷紀錄', 2500);
+      else toast('雲端 ' + EX.findCloud.length + ' 單', 2000);
+    }
+  } catch (ex) {
+    EX.findCloud = [];
+    EX.findErr = (ex && ex.message) || '搵唔到';
+    toast(EX.findErr, 4000);
+  } finally { EX.findBusy = false; exPaint(); }
+}
+async function exOpenCloud(claimNo) {
+  if (!exMgr()) return toast('要管理員先用');
+  const no = String(claimNo || '').replace(/\s+/g, '').toUpperCase();
+  if (!/^[A-Z0-9]{4}$/.test(no)) return toast('編號無效');
+  if (EX.findBusy) return;
+  EX.findBusy = true; EX.msg = ''; exPaint();
+  try {
+    toast('開緊雲端單 ' + no + '…', 2000);
+    const o = await gasCall({
+      action: 'expense_get', claim_no: no, include_photos: true, app_version: APP_VERSION
+    }, 120000);
+    if (!o || !o.ok) {
+      const err = (o && o.error) || 'bad_reply';
+      const msg = err === 'ex_not_found' ? '雲端搵唔到呢單'
+        : err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.80+）'
+        : (typeof upErrText === 'function' ? upErrText(err) : err);
+      toast(msg, 4000);
+      return;
+    }
+    await exClearPhotos();
+    EX.draftId = null;
+    EX.claimNo = String(o.claim_no || no).toUpperCase();
+    EX.amount = o.amount != null ? String(o.amount) : '';
+    EX.purpose = o.purpose || '';
+    EX.date = o.date || (typeof hkDate === 'function' ? hkDate() : '');
+    EX.aiAmount = (o.ai_amount != null && Number(o.ai_amount) > 0) ? Number(o.ai_amount) : null;
+    EX.aiNote = o.note || '';
+    EX.aiReceipts = Array.isArray(o.receipts) ? o.receipts.map(function (r) {
+      return {
+        amount: r.amount, category: exNormCat(r.category), note: r.note || '',
+        photo_index: r.photo_index != null ? r.photo_index : null
+      };
+    }) : [];
+    EX.amountFromAi = false;
+    const photos = Array.isArray(o.photos) ? o.photos : [];
+    const ids = [];
+    for (let i = 0; i < photos.length; i++) {
+      const ph = photos[i] || {};
+      if (!ph.base64) continue;
+      const mime = String(ph.mime || 'image/jpeg');
+      const dataUrl = 'data:' + (mime.indexOf('image/') === 0 ? mime : 'image/jpeg') + ';base64,' + ph.base64;
+      const id = (typeof newId === 'function' ? newId('exc') : ('exc' + Date.now() + i));
+      try {
+        await PhotoDB.put({ id: id, rec: 'expense', dataUrl: dataUrl, w: 0, h: 0 });
+        thumbs.set(id, dataUrl);
+        ids.push(id);
+      } catch (e) {}
+    }
+    EX.photoIds = ids;
+    EX.cloudEdit = {
+      claim_no: EX.claimNo,
+      folder_id: String(o.folder_id || ''),
+      photosDirty: false
+    };
+    EX.findOpen = false;
+    EX.msg = '雲端單 ' + EX.claimNo + '（改完撳「更新雲端報銷」；相唔改可唔重傳）';
+    toast('已開 ' + EX.claimNo + (ids.length ? ' · 相 ' + ids.length : ''), 3000);
+  } catch (ex) {
+    toast((ex && ex.message) || '開唔到雲端單', 4000);
+  } finally { EX.findBusy = false; exPaint(); }
+}
 function exFindHtml() {
   if (!exMgr() || !EX.findOpen) return '';
   const list = exFindList();
-  const rows = list.length
+  const localRows = list.length
     ? list.map(d => {
         const t0 = d.updated ? new Date(d.updated).toLocaleString('zh-HK', { hour12: false }) : '';
         const cur = EX.draftId === d.rid ? ' · 編緊' : '';
@@ -10432,12 +10531,37 @@ function exFindHtml() {
           </div>
         </div>`;
       }).join('')
-    : `<div class="mut">${EX.findQ ? '搵唔到「' + esc(String(EX.findQ).trim()) + '」。試下改關鍵字或清篩選。' : '未有手機暫存可改。'}</div>`;
+    : `<div class="mut">${EX.findQ ? '手機暫存冇「' + esc(String(EX.findQ).trim()) + '」。' : '未有手機暫存可改。'}</div>`;
+  const cloud = EX.findCloud || [];
+  const cloudRows = EX.findBusy
+    ? '<div class="mut">雲端搵緊…</div>'
+    : (cloud.length
+      ? cloud.map(c => {
+          const cur = EX.cloudEdit && EX.cloudEdit.claim_no === c.claim_no ? ' · 編緊' : '';
+          const when = c.submitted_hkt || c.date || '';
+          const who = c.technician ? (' · ' + c.technician) : '';
+          return `<div class="exdraft">
+            <div><b>${esc(exCloudLabel(c))}</b>${cur ? `<span class="mut">${esc(cur)}</span>` : ''}</div>
+            <div class="mut">${esc(when)}${esc(who)} · 雲端 Sheet</div>
+            <div class="exdrafta">
+              <button type="button" class="btn pri" data-ex="opencloud" data-cno="${esc(c.claim_no)}">開啟修改</button>
+            </div>
+          </div>`;
+        }).join('')
+      : (EX.findSearched
+        ? `<div class="mut">${EX.findErr ? esc(EX.findErr) : (EX.findQ ? '雲端搵唔到「' + esc(String(EX.findQ).trim()) + '」。' : '雲端未有紀錄。')}</div>`
+        : '<div class="mut">撳「雲端搵」讀試算表「報銷紀錄」（可空白＝最近 50 單）。</div>'));
   return `<div class="card exfind" id="exfind">
     <h3>查找／修改單據</h3>
-    <div class="mut" style="margin-bottom:8px">管理員先見。只搵呢部手機暫存；已上雲嘅要喺試算表睇（暫未有雲端改單）。開咗用返下面表單改，撳「送出報銷」／「暫存」照舊。</div>
-    <label class="exlbl">編號／用途／金額<input class="inp" id="ex_findq" value="${esc(EX.findQ || '')}" placeholder="例：A3K9 或 停車場" maxlength="40" autocomplete="off"></label>
-    <div style="margin-top:8px">${rows}</div>
+    <div class="mut" style="margin-bottom:8px">管理員先見。雲端＝Sheet 歷史；手機＝未上雲暫存。開咗用下面表單改；雲端單撳「更新雲端報銷」（刪舊行再寫，唔另開編號）。</div>
+    <label class="exlbl">編號／用途／金額／師傅<input class="inp" id="ex_findq" value="${esc(EX.findQ || '')}" placeholder="例：A3K9 或 停車場" maxlength="40" autocomplete="off" ${EX.findBusy ? 'disabled' : ''}></label>
+    <div class="exdrafta" style="margin-top:8px">
+      <button type="button" class="btn pri" data-ex="cloudsearch" ${EX.findBusy ? 'disabled' : ''}>${EX.findBusy ? '搵緊…' : '☁ 雲端搵'}</button>
+    </div>
+    <h3 style="margin-top:14px;font-size:15px">雲端</h3>
+    <div>${cloudRows}</div>
+    <h3 style="margin-top:14px;font-size:15px">手機暫存</h3>
+    <div>${localRows}</div>
   </div>`;
 }
 
@@ -10613,8 +10737,9 @@ function viewExpense() {
         <button class="btn pri" type="button" data-ex="cam" ${camDis ? 'disabled' : ''}>📷 影單據相</button>
       </div>
     </div>
+    ${EX.cloudEdit ? `<div class="mut" style="margin:8px 0;text-align:center;color:#0369a1">編緊雲端單 <b>${esc(EX.cloudEdit.claim_no)}</b>${EX.cloudEdit.photosDirty ? ' · 相已改（會重傳）' : ' · 相未改（更新時 keep_photos）'}</div>` : ''}
     ${EX.msg ? `<div class="mut" style="margin:8px 0;text-align:center">${esc(EX.msg)}</div>` : ''}
-    <button class="btn pri" style="width:100%;min-height:56px;font-size:18px;margin-top:8px" data-ex="submit" ${EX.submitting || EX.aiBusy ? 'disabled' : ''}>${EX.submitting ? '送緊…' : EX.aiBusy ? '等 AI…' : '送出報銷'}</button>
+    <button class="btn pri" style="width:100%;min-height:56px;font-size:18px;margin-top:8px" data-ex="submit" ${EX.submitting || EX.aiBusy ? 'disabled' : ''}>${EX.submitting ? '送緊…' : EX.aiBusy ? '等 AI…' : (EX.cloudEdit ? '更新雲端報銷' : '送出報銷')}</button>
     <button type="button" class="btn" style="width:100%;margin-top:8px" data-ex="savedraft" ${EX.submitting ? 'disabled' : ''}>暫存到手機（未上雲）</button>
   </main>`;
 }
@@ -10659,6 +10784,7 @@ async function exOnPhotoFile(file) {
     await PhotoDB.put({ id: id, rec: 'expense', dataUrl: c.dataUrl, w: c.w, h: c.h });
     thumbs.set(id, c.dataUrl);
     EX.photoIds.push(id);
+    if (EX.cloudEdit) EX.cloudEdit.photosDirty = true;
     exPaint();
     try { exSaveDraft(true); } catch (e) {}
     toast('已加單據相 ✓', 1200);
@@ -10669,6 +10795,7 @@ async function exRmPhoto(id) {
   if (!id || !EX.photoIds.includes(id)) return;
   if (!confirm('刪呢張單據相？')) return;
   EX.photoIds = EX.photoIds.filter(x => x !== id);
+  if (EX.cloudEdit) EX.cloudEdit.photosDirty = true;
   await exDelPhotoId(id);
   if (!EX.photoIds.length) {
     EX.aiAmount = null; EX.aiNote = ''; EX.aiReceipts = []; EX.amountFromAi = false;
@@ -10802,28 +10929,65 @@ async function exSubmit() {
   if (EX.submitting || EX.aiBusy) return;
   EX.submitting = true; EX.msg = ''; exPaint();
   try {
-    const p = await exPayloadWithPhotos();
-    if (!p.photos.length) { toast('單據相讀唔到，請再影'); return; }
-    const body = Object.assign({ action: 'expense_claim', app_version: APP_VERSION }, p);
-    const wait = 60000 + Math.min(120000, p.photos.length * 8000);
+    const isUpd = !!(EX.cloudEdit && EX.cloudEdit.claim_no);
+    const keepPh = isUpd && EX.cloudEdit && !EX.cloudEdit.photosDirty;
+    let p;
+    if (keepPh) {
+      p = {
+        claim_no: EX.cloudEdit.claim_no,
+        folder_id: EX.cloudEdit.folder_id || '',
+        amount: Number(EX.amount),
+        purpose: String(EX.purpose || '').trim(),
+        date: EX.date,
+        technician: exTechName(),
+        name: exTechName(),
+        keep_photos: true,
+        photo_count: (EX.photoIds && EX.photoIds.length) || 0
+      };
+      if (EX.aiAmount != null && EX.aiAmount > 0) p.ai_amount = EX.aiAmount;
+      if (EX.aiReceipts && EX.aiReceipts.length) {
+        p.receipts = EX.aiReceipts.map(function (r) {
+          return {
+            amount: Number(r.amount),
+            category: exNormCat(r.category),
+            note: String(r.note || '').slice(0, 80),
+            photo_index: r.photo_index != null ? r.photo_index : null
+          };
+        });
+      }
+    } else {
+      p = await exPayloadWithPhotos();
+      if (!p.photos.length) { toast('單據相讀唔到，請再影'); return; }
+      if (isUpd) {
+        p.claim_no = EX.cloudEdit.claim_no;
+        p.folder_id = EX.cloudEdit.folder_id || '';
+      }
+    }
+    const body = Object.assign({
+      action: isUpd ? 'expense_update' : 'expense_claim',
+      app_version: APP_VERSION
+    }, p);
+    const wait = keepPh ? 60000 : (60000 + Math.min(120000, (p.photos && p.photos.length || 0) * 8000));
     const o = await gasCall(body, wait);
     EX.lastReply = o || { ok: false, error: 'no_reply' };
     if (o && o.ok) {
-      toast('已送報銷 ' + (p.claim_no || '') + (o.folder_id ? ' · Drive 已開夾' : '') + (p.photos.length ? ' · 相 ' + p.photos.length : ''), 3500);
-      /* 送出成功：清手機暫存＋相 */
+      const phN = keepPh ? (p.photo_count || 0) : (p.photos && p.photos.length) || 0;
+      toast((isUpd ? '已更新 ' : '已送報銷 ') + (p.claim_no || '') + (o.folder_id ? ' · Drive' : '') + (phN ? ' · 相 ' + phN : ''), 3500);
       try {
         const all = exDraftsAll();
         if (EX.draftId && all[EX.draftId]) { delete all[EX.draftId]; exDraftsWrite(all); }
       } catch (e) {}
       await exClearPhotos();
       exResetForm();
-      EX.msg = (p.claim_no ? ('編號 ' + p.claim_no + ' · ') : '') + (o.sheet_url ? '已寫入試算表' : '已送出');
+      EX.msg = (p.claim_no ? ('編號 ' + p.claim_no + ' · ') : '') + (isUpd ? '已更新試算表' : (o.sheet_url ? '已寫入試算表' : '已送出'));
     } else {
       const err = (o && o.error) || 'bad_reply';
-      let msg = err === 'bad_action' ? '公司伺服器未更新（要 GAS v1.64+ expense_claim）'
+      let msg = err === 'bad_action' ? ('公司伺服器未更新（要 GAS v1.80+ ' + (isUpd ? 'expense_update' : 'expense_claim') + '）')
         : err === 'ex_no_amount' ? '金額無效'
         : err === 'ex_no_purpose' ? '用途空白'
         : err === 'ex_no_photos' ? '未有單據相'
+        : err === 'ex_not_found' ? '雲端搵唔到呢單（可能已刪）'
+        : err === 'ex_need_claim' ? '編號無效'
         : err === 'ex_dup_receipt' ? ('呢張單據之前用過' + (o.detail ? '：' + o.detail : '（唔可以重複報銷）'))
         : (typeof upErrText === 'function' ? upErrText(err) : err);
       EX.msg = msg;
@@ -10861,9 +11025,11 @@ document.addEventListener('click', e => {
   if (a === 'findtog') {
     if (!exMgr()) return toast('要管理員先用（☰ → 設定 → 管理：批准手機，開過一次）');
     EX.findOpen = !EX.findOpen;
-    if (!EX.findOpen) EX.findQ = '';
+    if (!EX.findOpen) { EX.findQ = ''; EX.findErr = ''; }
     return exPaint();
   }
+  if (a === 'cloudsearch') return exCloudSearch();
+  if (a === 'opencloud') return exOpenCloud(b.dataset.cno);
 });
 (function () {
   if (TILES.some(t => t.act === 'expense')) return;
