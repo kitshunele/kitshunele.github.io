@@ -453,7 +453,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.256';
+const APP_VERSION = '0.6.257';
 /* v0.6.252：尋找相片返下拉（屋邨／大廈）；唔顯示日期（固定近 93 日）；photo_search＋photo_places；GAS 1.79 可繼續但 UI 唔用 browse */
 /* v0.6.251：睇相瀏覽式（已擱置 UI；GAS photo_browse_* 仍在） */
 /* v0.6.248：單據報銷 AI 加總後自動填「金額」；試算表一張單一行＋分類（要 GAS v1.76+） */
@@ -10217,6 +10217,7 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.254：一撳開新單即換編號（唔再 confirm）。
    v0.6.255：修開新單編號唔變（newId 頭 4 字撞車；改由尾抽＋避舊號）。
    v0.6.256：開新單唔再存兩份淨編號空白；暫存要有金額／用途／相（FAN App房 2026-10-24）。
+   v0.6.257：管理員隱藏掣「查找／修改單據」（ACC.mgrOk｜同 PE pecMgr）；只搵手機暫存，開用 exOpenDraft（FAN App房 2026-10-24）。
    主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.69+ 認 20 張；v1.76+ 收據分行）。 */
 const EX_MAX_PHOTOS = 20;
 const EX_DRAFT_LS = 'fsapp20259005.expense.drafts.v1';
@@ -10227,6 +10228,7 @@ const EX = {
   aiReceipts: [], /* [{amount, category, note, photo_index}] 一張單一行 */
   submitting: false, lastReply: null, msg: '',
   draftId: null, /* 而家編緊邊份手機暫存 */
+  findOpen: false, findQ: '', /* v0.6.257 管理員查找面板 */
   _draftTimer: null, _restored: false
 };
 let _exAiTimer = null;
@@ -10399,6 +10401,46 @@ async function exNewDraft() {
   toast('已開新單 · 編號 ' + EX.claimNo + '（寫喺新紙單）', 3000);
   exPaint();
 }
+
+/** v0.6.257：同 PE pecMgr——呢個分頁開過管理（MANAGER_PIN）先算管理員；隱藏掣先顯示。 */
+function exMgr() { return typeof ACC !== 'undefined' && !!(ACC.mgrOk || ACC.mgr); }
+function exFindMatch(d, q) {
+  if (!q) return true;
+  const blob = [d.claimNo, d.amount, d.purpose, d.date, (d.photoIds && d.photoIds.length) || 0]
+    .map(x => String(x == null ? '' : x).toLowerCase()).join(' ');
+  return blob.indexOf(q) >= 0;
+}
+function exFindList() {
+  const all = exDraftsAll();
+  const q = String(EX.findQ || '').trim().toLowerCase();
+  return Object.keys(all).map(k => all[k]).filter(exDraftHasContent)
+    .filter(d => exFindMatch(d, q))
+    .sort((a, b) => (b.updated || 0) - (a.updated || 0));
+}
+function exFindHtml() {
+  if (!exMgr() || !EX.findOpen) return '';
+  const list = exFindList();
+  const rows = list.length
+    ? list.map(d => {
+        const t0 = d.updated ? new Date(d.updated).toLocaleString('zh-HK', { hour12: false }) : '';
+        const cur = EX.draftId === d.rid ? ' · 編緊' : '';
+        return `<div class="exdraft">
+          <div><b>${esc(exDraftLabel(d))}</b>${cur ? `<span class="mut">${esc(cur)}</span>` : ''}</div>
+          <div class="mut">${esc(t0)} · 手機暫存</div>
+          <div class="exdrafta">
+            <button type="button" class="btn pri" data-ex="opendraft" data-rid="${esc(d.rid)}">開啟修改</button>
+          </div>
+        </div>`;
+      }).join('')
+    : `<div class="mut">${EX.findQ ? '搵唔到「' + esc(String(EX.findQ).trim()) + '」。試下改關鍵字或清篩選。' : '未有手機暫存可改。'}</div>`;
+  return `<div class="card exfind" id="exfind">
+    <h3>查找／修改單據</h3>
+    <div class="mut" style="margin-bottom:8px">管理員先見。只搵呢部手機暫存；已上雲嘅要喺試算表睇（暫未有雲端改單）。開咗用返下面表單改，撳「送出報銷」／「暫存」照舊。</div>
+    <label class="exlbl">編號／用途／金額<input class="inp" id="ex_findq" value="${esc(EX.findQ || '')}" placeholder="例：A3K9 或 停車場" maxlength="40" autocomplete="off"></label>
+    <div style="margin-top:8px">${rows}</div>
+  </div>`;
+}
+
 function exDraftsHtml() {
   try { exPruneEmptyDrafts(EX.draftId); } catch (e) {}
   const all = exDraftsAll();
@@ -10422,8 +10464,9 @@ function exDraftsHtml() {
     <div class="mut" style="margin-bottom:8px">未送出可暫存呢部手機；可查閱／繼續，直至送出報銷成功。</div>
     <div class="mut" style="margin-bottom:8px">同一單繼續影相即可，唔使開新單；編號唔會轉。</div>
     <button type="button" class="btn pri" style="width:100%;margin-bottom:8px" data-ex="newdraft">＋ 開新單（會換新編號）</button>
+    ${exMgr() ? `<button type="button" class="btn" style="width:100%;margin-bottom:8px" data-ex="findtog">${EX.findOpen ? '收埋查找' : '🔍 查找／修改單據'}</button>` : ''}
     ${rows}
-  </div>`;
+  </div>${exFindHtml()}`;
 }
 function exTryRestoreOnEnter() {
   /* 入頁：若而家空白且有暫存 → 自動開最近一份；唔覆蓋編緊／已填 */
@@ -10801,6 +10844,7 @@ document.addEventListener('input', e => {
     exScheduleDraftSave();
   }
   if (t.id === 'ex_pur') { EX.purpose = t.value || ''; exScheduleDraftSave(); }
+  if (t.id === 'ex_findq') { EX.findQ = t.value || ''; exPaint(); try { const i = $('#ex_findq'); if (i) { i.focus(); const n = i.value.length; i.setSelectionRange(n, n); } } catch (err) {} }
 });
 document.addEventListener('click', e => {
   const tile = e.target.closest('[data-act="expense"]');
@@ -10814,6 +10858,12 @@ document.addEventListener('click', e => {
   if (a === 'opendraft') return exOpenDraft(b.dataset.rid);
   if (a === 'deldraft') return exDeleteDraft(b.dataset.rid);
   if (a === 'newdraft') return exNewDraft();
+  if (a === 'findtog') {
+    if (!exMgr()) return toast('要管理員先用（☰ → 設定 → 管理：批准手機，開過一次）');
+    EX.findOpen = !EX.findOpen;
+    if (!EX.findOpen) EX.findQ = '';
+    return exPaint();
+  }
 });
 (function () {
   if (TILES.some(t => t.act === 'expense')) return;
@@ -10838,7 +10888,8 @@ document.addEventListener('visibilitychange', () => { try { if (document.visibil
       '.exclaim{text-align:center;padding:14px 12px}.exclaimno{font-size:28px;font-weight:700;letter-spacing:1px;font-family:ui-monospace,Menlo,Consolas,monospace;color:#0b5;margin-top:4px;user-select:all}' +
       '.exthumbs{margin-top:8px}' +
       '.exrecs{margin-top:8px;padding:8px 10px;background:#f8fafc;border-radius:10px;border:1px solid #e5e7eb}.exrec{font-size:14px;margin:4px 0;line-height:1.35}.exrecn{display:inline-block;min-width:1.4em;color:#64748b;font-weight:600}' +
-      '.exdraft{border-top:1px solid #e5e7eb;padding:10px 0 4px;margin-top:8px}.exdrafta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.exdrafta .btn{flex:1;min-width:120px}';
+      '.exdraft{border-top:1px solid #e5e7eb;padding:10px 0 4px;margin-top:8px}.exdrafta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.exdrafta .btn{flex:1;min-width:120px}' +
+      '.exfind{border:1px solid #cbd5e1;background:#f8fafc}';
     document.head.appendChild(s);
   } catch (e) {}
 })();
