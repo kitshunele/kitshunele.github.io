@@ -453,7 +453,7 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.255';
+const APP_VERSION = '0.6.256';
 /* v0.6.252：尋找相片返下拉（屋邨／大廈）；唔顯示日期（固定近 93 日）；photo_search＋photo_places；GAS 1.79 可繼續但 UI 唔用 browse */
 /* v0.6.251：睇相瀏覽式（已擱置 UI；GAS photo_browse_* 仍在） */
 /* v0.6.248：單據報銷 AI 加總後自動填「金額」；試算表一張單一行＋分類（要 GAS v1.76+） */
@@ -10215,7 +10215,8 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    v0.6.248：AI 加總後必填「金額」（修 exSaveDraft→exReadForm 抹走）；試算表一張單＝一行＋分類（停車場／買料…）；要 GAS v1.76+。
    v0.6.253：按鈕「開新單（會換新編號）」＋同一單影多張提示。
    v0.6.254：一撳開新單即換編號（唔再 confirm）。
-   v0.6.255：修開新單編號唔變（newId 頭 4 字撞車；改由尾抽＋避舊號；FAN App房 2026-10-24）。
+   v0.6.255：修開新單編號唔變（newId 頭 4 字撞車；改由尾抽＋避舊號）。
+   v0.6.256：開新單唔再存兩份淨編號空白；暫存要有金額／用途／相（FAN App房 2026-10-24）。
    主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.69+ 認 20 張；v1.76+ 收據分行）。 */
 const EX_MAX_PHOTOS = 20;
 const EX_DRAFT_LS = 'fsapp20259005.expense.drafts.v1';
@@ -10260,11 +10261,26 @@ function exDraftsWrite(a) {
   try { localStorage.setItem(EX_DRAFT_LS, JSON.stringify(a || {})); } catch (e) {}
 }
 function exFormHasContent() {
+  /* 淨編號唔算有內容（唔好因此暫存出多份空白） */
   return !!(String(EX.amount || '').trim()
     || String(EX.purpose || '').trim()
-    || (EX.photoIds && EX.photoIds.length)
-    || (EX.claimNo && EX.amount) /* 有編號＋金額 */
     || (EX.photoIds && EX.photoIds.length));
+}
+function exDraftHasContent(d) {
+  if (!d) return false;
+  return !!(String(d.amount || '').trim()
+    || String(d.purpose || '').trim()
+    || (d.photoIds && d.photoIds.length));
+}
+function exPruneEmptyDrafts(keepRid) {
+  const all = exDraftsAll();
+  let n = 0;
+  Object.keys(all).forEach(function (k) {
+    if (keepRid && k === keepRid) return;
+    if (!exDraftHasContent(all[k])) { delete all[k]; n++; }
+  });
+  if (n) exDraftsWrite(all);
+  return n;
 }
 function exDraftLabel(d) {
   const no = (d && d.claimNo) || '（未有編號）';
@@ -10290,8 +10306,7 @@ function exSnapDraft() {
 }
 function exSaveDraft(silent) {
   exReadForm();
-  const has = !!(String(EX.amount || '').trim() || String(EX.purpose || '').trim() || (EX.photoIds && EX.photoIds.length) || EX.claimNo);
-  if (!has) {
+  if (!exFormHasContent()) {
     if (!silent) toast('未有內容可暫存（至少填金額／用途或影一張相）');
     return null;
   }
@@ -10372,21 +10387,22 @@ async function exDeleteDraft(rid) {
   exPaint();
 }
 async function exNewDraft() {
-  /* FAN 2026-10-24：一撳開新單，編號必須換（舊單先暫存） */
+  /* FAN 2026-10-24：一撳換新編號；有內容先暫存舊單；唔好存兩份淨編號空白 */
   const oldNo = String(EX.claimNo || '');
-  if (exFormHasContent() || EX.claimNo) exSaveDraft(true);
+  if (exFormHasContent()) exSaveDraft(true);
   await exClearPhotos();
   exResetForm();
   EX.claimNo = exNewClaimNo(oldNo);
   EX.draftId = (typeof newId === 'function' ? newId('ex') : ('ex' + Date.now()));
-  try { exSaveDraft(true); } catch (err) {}
+  try { exPruneEmptyDrafts(EX.draftId); } catch (err) {}
   EX._restored = true;
   toast('已開新單 · 編號 ' + EX.claimNo + '（寫喺新紙單）', 3000);
   exPaint();
 }
 function exDraftsHtml() {
+  try { exPruneEmptyDrafts(EX.draftId); } catch (e) {}
   const all = exDraftsAll();
-  const list = Object.keys(all).map(k => all[k]).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const list = Object.keys(all).map(k => all[k]).filter(exDraftHasContent).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const rows = list.length
     ? list.map(d => {
         const t0 = d.updated ? new Date(d.updated).toLocaleString('zh-HK', { hour12: false }) : '';
