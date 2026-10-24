@@ -453,8 +453,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.251';
-/* v0.6.251：睇相瀏覽式（GAS v1.79 photo_browse_*）；日期→屋邨→大廈只開一夾；旧 photo_search 唔再由 UI 叫 */
+const APP_VERSION = '0.6.253';
+/* v0.6.252：尋找相片返下拉（屋邨／大廈）；唔顯示日期（固定近 93 日）；photo_search＋photo_places；GAS 1.79 可繼續但 UI 唔用 browse */
+/* v0.6.251：睇相瀏覽式（已擱置 UI；GAS photo_browse_* 仍在） */
 /* v0.6.248：單據報銷 AI 加總後自動填「金額」；試算表一張單一行＋分類（要 GAS v1.76+） */
 /* v0.6.245：CL-J k（後備花灑頭數目）預設 24（ndef；可改） */
 /* v0.6.244：AA30＞0 → CL-J e2／f ✓；＝0 → NA；AA25＝有 → CL-J g ✓；冇 → NA；CL-J e1／CL-E e1 預設剔（範本 √） */
@@ -6704,144 +6705,154 @@ ehAuto = function () { ehAutoRaw_ecr(); if (cur.view === 'echist' && !ER.busy &&
   '.ecrdet .ecphs{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.ecrfile{text-decoration:none;display:inline-block}.ecrempty{margin:6px 2px;font-size:13px}#ecrq{width:100%;margin-bottom:6px}#ecrdmo{width:100%}';
   document.head.appendChild(st); } catch (e) { } })();
 
-/* ---------- v0.6.251 📷 睇相（瀏覽式；FAN App房 2026-10-23）----------
-   主頁格「📷 睇相」（#/phsearch）：先揀日期 → 屋邨 → 大廈／專題 → 只載入嗰個資料夾檔案。
-   伺服器 v1.79+：photo_browse_days／photo_browse_places／photo_browse_files／photo_index_day；
-   縮圖／大圖仍用 photo_thumbs／photo_full。旧 photo_search 唔再由 App UI 叫。
-   目標：開掣 <3–5s 見到日期／屋邨；唔再一次掃晒樹。 */
-const PS_THB = 12, PS_THB0 = 6, PS_KEEP = 6, PS_DAY_LIM = 30;
-const PS = {
-  step: 'days', /* days | places | files */
-  date: '', days: [], estates: [], dayLoose: [],
-  estate: null, /* {estate, estate_folder_id, blocks} */
-  folder: null, /* {id, path, estate, block, label} */
-  crumb: [], items: [], subs: [],
-  q: '', src: 'all',
-  busy: false, err: '', errCode: '', old: false, done: false,
-  thumbs: {}, full: new Map(), urls: [], tok: 0, idx: -1,
-  waitAt: 0, ver: '', built: false, truncated: false, places: 0, dayFilter7: false
-};
+/* ---------- v0.6.252 🔍 尋找相片（FAN App房 2026-10-23：下拉、唔要日期）----------
+   主頁格「🔍 尋找相片」（#/phsearch）：屋邨 → 大廈下拉（photo_places 只列有相嘅地方）→ 搵相。
+   唔顯示日期：後端固定掃最近 PS_MAXD（93）日；來源／師傅／關鍵字可選。
+   伺服器：photo_search／photo_thumbs／photo_full／photo_places（GAS v1.77+ 預算；v1.79 browse 唔再由 UI 用）。
+   結果按 日期 → 屋邨 → 大廈 分組；撳相睇大圖；相只放記憶體。 */
+const PS_PAGE = 60, PS_FIRST = 24, PS_THB = 12, PS_THB0 = 6, PS_KEEP = 6, PS_MAXD = 93; /* PS_FIRST：第一頁細啲快出；再載入用 PS_PAGE */
+const PS = { f: null, items: [], next: null, busy: false, err: '', errCode: '', old: false, done: false, thumbs: {}, full: new Map(), urls: [], tok: 0, from: '', to: '', idx: -1, hist: false, more: false, places: null, placesBusy: false, placesOld: false, placesErr: '', placesStale: false, fb: null, waitAt: 0, pref: false, ver: '', pageN: PS_FIRST }; /* v0.6.21-test7：places 有結果就唔退回合約全表；fb＝成邨後備 */
 const PS_MSG = {
-  bad_action: '公司伺服器未更新到 v1.79（睇相瀏覽）。請通知 Work Order 部署 Apps Script 1.79。',
+  bad_action: '公司伺服器（Apps Script）未更新到 v1.19，未有「尋找相片」。Work Order 部署 v1.19 之後就用得，唔使改任何設定。（當日相仍然可以喺 TR-G2／TR-H2「📷 查看當日照片」睇。）',
   wa_no_access: 'Apps Script 讀唔到「杰信工程部 WhatsApp 相片」資料夾，請通知公司。',
-  need_folder_id: '未揀資料夾。', bad_folder: '資料夾讀唔到。', outside_root: '呢個資料夾唔喺相片根入面。',
-  offline: '冇網：請連線再開睇相。', not_found: '搵唔到呢張相。',
+  phs_range_too_long: `日期範圍太長（最多 ${PS_MAXD} 日），請收窄啲。`,
+  offline: '冇網：呢個搜尋手機未存過（之前搵過嘅搜尋同睇過嘅相冇網都睇得）。', not_found: '搵唔到呢張相（可能已經刪除或者搬走）。',
   target_missing: '呢個 App 相捷徑嘅原相已經唔見咗。', too_big: '張相太大（超過 8 MB），請撳「開 Drive」睇。', is_video: '影片要喺 Google Drive 播：撳「↗ 開 Drive」。'
 };
 const psErr = e => PS_MSG[e && e.code] || upErrText(e && e.code) || (e && e.message) || '出錯';
-async function psCall(body, ms) { const o = await gasCall(body, ms || 60000); if (!o || !o.ok) { const e = upErr(o && o.error || 'bad_reply'); e.o = o; throw e; } return o; }
+async function psCall(body, ms) { const o = await gasCall(body, ms || 90000); if (!o || !o.ok) { const e = upErr(o && o.error || 'bad_reply'); e.o = o; throw e; } return o; }
+function psDef() { const t = hkDate(); return { from: phAddDay(t, -(PS_MAXD - 1)), to: t, est: '', estT: false, blk: '', blkT: false, tech: '', src: 'all', q: '', estLooseOk: true }; } /* v0.6.252：唔顯示日期；固定最近 PS_MAXD 日 */
 function psClearMem() { PS.tok++; PS.urls.forEach(u => URL.revokeObjectURL(u)); PS.urls = []; PS.thumbs = {}; PS.full = new Map(); }
-function psWipe() { psClearMem(); PS.items = []; PS.subs = []; PS.done = false; PS.err = ''; PS.errCode = ''; PS.folder = null; PS.crumb = []; psBigClose(true); }
+function psWipe() { psClearMem(); PS.items = []; PS.next = null; PS.done = false; PS.err = ''; PS.errCode = ''; PS.fb = null; psBigClose(true); }
 const appDataWipeRaw_ps = appDataWipe;
-appDataWipe = function () { appDataWipeRaw_ps(); psWipe(); PS.days = []; PS.estates = []; PS.date = ''; PS.step = 'days'; };
+appDataWipe = function () { appDataWipeRaw_ps(); psWipe(); }; /* 未批准／被移除 → 清走 */
 function psUrl(b64, mime) { const bin = atob(b64), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
   const u = URL.createObjectURL(new Blob([a], { type: mime || 'image/jpeg' })); PS.urls.push(u); return u; }
-
-const PS_WD = '日一二三四五六';
-const psDay = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); if (!m) return d || ''; const w = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay(); return `${+m[2]}月${+m[3]}號（${PS_WD[w]}）`; };
-function psGate() {
-  if (typeof accLocked === 'function' && accLocked()) { PS.err = '呢部手機未獲批准（或已停用），暫時唔可以睇相。'; PS.errCode = 'acc'; return false; }
-  const c = upCfg(); if (!c.url || !c.pin) { PS.err = '要先喺 ☰ →「⚙️ 上傳設定」填好公司網址同 PIN。'; PS.errCode = 'cfg'; return false; }
+/* v0.6.21-test6（v0.6.24 搬返入 src）：屋邨下拉只列資料夾入面有相嘅地方（伺服器 photo_places；房署外都有）；手機記住上次清單，10 分鐘後再問 */
+function psPlaceEst(name) { const n = pkN(name); return (PS.places || []).find(e => pkN(e.name) === n) || null; }
+function psPlaceLabel(name) { /* 顯示：中文　英文（合約有就加英；否則淨中文／原名） */
+  const d = pkEstDef(name); if (d && d.zh) return d.zh + (d.en ? '　' + d.en.replace(/ Estate$/, '') : '');
+  return name;
+}
+function psEstItems() {
+  if (PS.places) { /* 有 photo_places 結果（包括空陣列）就只用佢，唔再退回合約全表；按 TNS 次序，合約外地方排後 */
+    const names = pkSort(PS.places.map(e => e.name), 'estate');
+    return names.map(n => ({ v: n, t: psPlaceLabel(n) }));
+  }
+  if (PS.placesOld) return pkEstItems(); /* 伺服器未支援先用合約 */
+  return []; /* 未載入完：暫時空，等 note */
+}
+function psBlkItems(estName) {
+  const p = psPlaceEst(estName); if (p) return pkSort((p.blocks || []).slice(), 'block', estName).map(b => ({ v: b, t: b }));
+  if (PS.placesOld) { const ed = pkEstDef(estName); return ed ? pkBldItems(ed) : []; }
+  return [];
+}
+const PS_PLACES_LS = 'fsapp20259005.psplaces.v1', PS_PLACES_FRESH = 10 * 60e3;
+(function () { try { const c = JSON.parse(localStorage.getItem(PS_PLACES_LS) || 'null'); if (c && Array.isArray(c.estates)) { PS.places = c.estates; PS.placesAt = +c.at || 0; PS.placesStale = true; } } catch (e) { } })(); /* v0.6.22：上次清單即刻顯示 */
+const psPlacesDue = () => !PS.placesOld && (PS.places === null || (PS.placesStale && Date.now() - (PS.placesAt || 0) > 30e3) || Date.now() - (PS.placesAt || 0) > PS_PLACES_FRESH);
+async function psLoadPlaces(force) {
+  if (PS.placesBusy) return; if (!force && !psPlacesDue()) return;
+  const c = upCfg(); if (!c.url || !c.pin) return;
+  if (typeof accLocked === 'function' && accLocked()) return; /* 唔再等 APPD.ready（之前會令清單永遠退回合約） */
+  PS.placesBusy = true; if (cur.view === 'phsearch') psPaint('form');
+  try {
+    const o = await psCall({ action: 'photo_places', from: phAddDay(hkDate(), -(PS_MAXD - 1)), to: hkDate(), refresh: !!force }, 90000);
+    PS.places = Array.isArray(o.estates) ? o.estates : []; PS.placesOld = false; PS.placesErr = ''; PS.placesStale = false; PS.placesAt = Date.now();
+    try { localStorage.setItem(PS_PLACES_LS, JSON.stringify({ estates: PS.places, at: PS.placesAt })); } catch (e) { }
+    if (PS.f && PS.f.est && !PS.f.estT && !psPlaceEst(PS.f.est)) { PS.f.estT = true; }
+  } catch (e) {
+    if (e.code === 'bad_action') { PS.placesOld = true; PS.places = null; PS.placesErr = ''; }
+    else { PS.placesErr = psErr(e); PS.placesAt = Date.now() - PS_PLACES_FRESH + 60e3; /* 保留舊 places（如果有）；1 分鐘後再試 */ }
+  } finally { PS.placesBusy = false; }
+  if (cur.view === 'phsearch') psPaint('form');
+}
+/* ----- 篩選 → 伺服器請求 ----- */
+function psBody(f, lim) {
+  const b = { action: 'photo_search', from: f.from, to: f.to, src: f.src, limit: lim || PS.pageN || PS_FIRST };
+  if (f.est) { b.estate = f.est; if (f.estT) b.estate_typed = true; else { const d = pkEstDef(f.est); if (d) b.estate_alt = [d.zh, d.en, d.en_official].filter(x => x && x !== f.est); } }
+  if (f.blk) { b.block = f.blk; if (f.blkT) b.block_typed = true; else { const d = f.est && !f.estT ? pkEstDef(f.est) : null, n = pkN(f.blk), bb = d && d.blocks.find(x => [x.zh, x.en].some(y => y && pkN(y) === n)); if (bb) b.block_alt = [bb.zh, bb.en].filter(x => x && x !== f.blk); } }
+  if (f.blk && f.estLooseOk !== false) b.include_estate = true; /* v0.6.32／GAS v1.30：連未分座；舊伺服器會忽略 */
+  if (f.tech.trim()) b.tech = f.tech.trim(); if (f.q.trim()) b.q = f.q.trim();
+  return b;
+}
+/* v0.6.32：而家用緊嘅篩選（空結果／計數用） */
+function psFiltBits(f) {
+  if (!f) return [];
+  const today = hkDate(), bits = [];
+  if (f.from === today && f.to === today) bits.push('今日');
+  else if (f.to === today && f.from === phAddDay(today, -6)) bits.push('近 7 日');
+  else if (f.to === today && f.from === phAddDay(today, -29)) bits.push('近 30 日');
+  else if (f.to === today && f.from === phAddDay(today, -(PS_MAXD - 1))) bits.push('全部（' + PS_MAXD + ' 日）');
+  else bits.push((f.from === f.to ? f.from : f.from + '～' + f.to));
+  if (f.est) bits.push(f.estT ? ('地方「' + f.est + '」') : (psPlaceLabel(f.est) || f.est));
+  if (f.blk) bits.push(f.blkT ? ('大廈「' + f.blk + '」') : f.blk);
+  if ((f.tech || '').trim()) bits.push('師傅 ' + f.tech.trim());
+  if ((f.q || '').trim()) bits.push('關鍵字「' + f.q.trim() + '」');
+  if (f.src === 'wa') bits.push('只 WhatsApp');
+  if (f.src === 'app') bits.push('只 App 相');
+  return bits;
+}
+function psClearFilt() { PS.f = psDef(); psWipe(); psPaint(); return psSearch(); }
+function psWidenAll() { const t = hkDate(); PS.f.to = t; PS.f.from = phAddDay(t, -(PS_MAXD - 1)); return psPaint('form'), psSearch(); }
+function psSyncRange(f) { const t = hkDate(); f.to = t; f.from = phAddDay(t, -(PS_MAXD - 1)); return f; }
+function psCheck(f) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.from) || !/^\d{4}-\d{2}-\d{2}$/.test(f.to)) { const t = hkDate(); f.from = phAddDay(t, -(PS_MAXD - 1)); f.to = t; }
+  if (f.from > f.to) { const sw = f.from; f.from = f.to; f.to = sw; }
+  if (phAddDay(f.from, PS_MAXD - 1) < f.to) f.from = phAddDay(f.to, -(PS_MAXD - 1));
+  return '';
+}
+function psVerOk(v, want) { /* 「1.30」≥「1.30」；逐段比 */
+  const a = String(v || '').split('.').map(n => parseInt(n, 10) || 0), b = String(want || '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) { const x = a[i] || 0, y = b[i] || 0; if (x !== y) return x > y; }
   return true;
 }
-
-/* ----- 載入：日子／地方／檔案 ----- */
-async function psLoadDays(force) {
-  if (PS.busy) return;
-  if (!psGate()) return psPaint();
-  PS.busy = true; PS.err = ''; PS.errCode = ''; PS.waitAt = Date.now(); PS.step = 'days'; psPaint();
-  const tok = PS.tok;
-  try {
-    const o = await psCall({ action: 'photo_browse_days', limit: PS_DAY_LIM, refresh: !!force }, 30000);
-    if (tok !== PS.tok) return;
-    if (o.version) PS.ver = String(o.version);
-    PS.old = false;
-    PS.days = Array.isArray(o.days) ? o.days : [];
-    const today = o.today || hkDate();
-    if (!PS.date || !PS.days.some(d => d.date === PS.date)) PS.date = today;
-    PS.done = true;
-  } catch (e) {
-    if (tok !== PS.tok) return;
-    if (e.code === 'bad_action') { PS.old = true; PS.err = psErr(e); }
-    else { PS.err = psErr(e); PS.errCode = e.code || ''; }
-  } finally { if (tok === PS.tok) PS.busy = false; }
-  psPaint();
-  if (tok === PS.tok && !PS.err && !PS.old && PS.date) setTimeout(() => { if (PS.tok === tok) psLoadPlaces(); }, 0);
+function psPrefetch(tok) { /* 第一頁出咗、仲有 next → 閒時背景攞下一頁（唔阻 UI） */
+  if (tok !== PS.tok || !PS.next || PS.busy || PS.pref || cur.view !== 'phsearch') return;
+  PS.pref = true;
+  const b = Object.assign(JSON.parse(PS.qbody), { cursor: PS.next, limit: PS_PAGE });
+  psCall(b).then(o => {
+    if (tok !== PS.tok || !o || !o.ok) return;
+    PS._pref = { items: o.items || [], next: o.next || null };
+  }).catch(() => {}).finally(() => { if (tok === PS.tok) PS.pref = false; });
 }
-async function psLoadPlaces(force) {
-  if (PS.busy) return;
-  if (!psGate()) return psPaint();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(PS.date)) { PS.err = '請先揀日期。'; PS.errCode = 'form'; return psPaint(); }
-  PS.busy = true; PS.err = ''; PS.errCode = ''; PS.waitAt = Date.now();
-  PS.step = 'places'; PS.estate = null; PS.folder = null; PS.items = []; PS.subs = []; PS.crumb = [];
-  psPaint();
-  const tok = PS.tok;
-  try {
-    const b = { action: 'photo_browse_places', date: PS.date };
-    if (force) b.refresh = true;
-    if ((PS.q || '').trim()) b.q = PS.q.trim();
-    const o = await psCall(b, 45000);
-    if (tok !== PS.tok) return;
-    if (o.version) PS.ver = String(o.version);
-    PS.estates = Array.isArray(o.estates) ? o.estates : [];
-    PS.dayLoose = Array.isArray(o.day_loose) ? o.day_loose : [];
-    PS.built = !!o.built; PS.truncated = !!o.truncated; PS.places = o.places || 0;
-    PS.done = true; PS.old = false;
-  } catch (e) {
-    if (tok !== PS.tok) return;
-    if (e.code === 'bad_action') { PS.old = true; PS.err = psErr(e); }
-    else { PS.err = psErr(e); PS.errCode = e.code || ''; }
-  } finally { if (tok === PS.tok) PS.busy = false; }
-  psPaint();
-}
-async function psOpenFolder(meta) {
-  if (PS.busy || !meta || !meta.id) return;
-  if (!psGate()) return psPaint();
-  PS.busy = true; PS.err = ''; PS.errCode = ''; PS.waitAt = Date.now();
-  PS.step = 'files'; PS.folder = meta;
-  /* crumb：保留上層；若由 places 入就重置 */
-  if (!PS.crumb.length || PS.crumb[PS.crumb.length - 1].id !== meta.id) {
-    if (meta.resetCrumb) PS.crumb = [{ id: meta.id, path: meta.path, estate: meta.estate, block: meta.block, label: meta.label }];
-    else {
-      const ix = PS.crumb.findIndex(c => c.id === meta.id);
-      if (ix >= 0) PS.crumb = PS.crumb.slice(0, ix + 1);
-      else PS.crumb.push({ id: meta.id, path: meta.path, estate: meta.estate, block: meta.block, label: meta.label });
-    }
+async function psSearch(more) {
+  if (PS.busy) return; if ((typeof accLocked === 'function' && accLocked()) || (typeof APPD !== 'undefined' && !APPD.ready)) return;
+  const c = upCfg(); if (!c.url || !c.pin) { PS.err = '要先喺 ☰ →「⚙️ 上傳設定」填好公司網址同 PIN。'; PS.errCode = 'cfg'; return psPaint(); }
+  psSyncRange(PS.f); const bad = psCheck(PS.f); if (bad) { PS.err = bad; PS.errCode = 'form'; return psPaint(); }
+  if (!more) { psClearMem(); PS.items = []; PS.next = null; PS.done = false; PS.fb = null; PS._pref = null; PS.pref = false; PS.pageN = PS_FIRST; PS.q = JSON.stringify(PS.f); }
+  /* 有預取好嘅下一頁 → 即刻用，唔使再等 */
+  if (more && PS._pref) {
+    const pre = PS._pref; PS._pref = null;
+    PS.items = PS.items.concat(pre.items || []); PS.next = pre.next; PS.done = true; PS.busy = false; PS.more = false;
+    psPaint(); psThumbs(PS.tok); if (PS.next) setTimeout(() => psPrefetch(PS.tok), 400);
+    return;
   }
-  psClearMem(); PS.items = []; PS.subs = []; psPaint();
-  const tok = PS.tok;
+  PS.busy = true; PS.more = !!more; PS.err = ''; PS.errCode = ''; PS.waitAt = Date.now(); psPaint(); const tok = PS.tok;
+  const tick = setInterval(() => { if (tok === PS.tok && PS.busy && cur.view === 'phsearch') { const el = document.getElementById('psload'); if (el) el.textContent = '搵緊相… ' + Math.round((Date.now() - PS.waitAt) / 1000) + ' 秒'; } }, 500);
   try {
-    const b = { action: 'photo_browse_files', folder_id: meta.id, date: PS.date, estate: meta.estate || '', block: meta.block || '', path: meta.path || '', src: PS.src || 'all', limit: 120 };
-    if ((PS.q || '').trim()) b.q = PS.q.trim();
-    const o = await psCall(b, 45000);
-    if (tok !== PS.tok) return;
+    const f = PS.f;
+    let b = more ? Object.assign(JSON.parse(PS.qbody), { cursor: PS.next, limit: PS_PAGE }) : psBody(f, PS_FIRST);
+    if (!more) PS.qbody = JSON.stringify(b);
+    let o = await psCall(b); if (tok !== PS.tok) return;
     if (o.version) PS.ver = String(o.version);
-    PS.items = Array.isArray(o.items) ? o.items : [];
-    PS.subs = Array.isArray(o.subs) ? o.subs : [];
-    PS.done = true; PS.old = false;
-  } catch (e) {
-    if (tok !== PS.tok) return;
-    if (e.code === 'bad_action') { PS.old = true; PS.err = psErr(e); }
-    else { PS.err = psErr(e); PS.errCode = e.code || ''; }
-  } finally { if (tok === PS.tok) PS.busy = false; }
+    /* v0.6.32：揀咗大廈但 0 張 → 後備成邨。伺服器 ≥1.30 已 include_estate／主題夾 → 唔使再打多一次（慳 1 程慢請求） */
+    const canSkipFb = b.include_estate && psVerOk(o.version || PS.ver, '1.30');
+    if (!more && !(o.items || []).length && f.blk && f.est && f.estLooseOk !== false && !canSkipFb) {
+      const b2 = Object.assign({}, b); delete b2.block; delete b2.block_alt; delete b2.block_typed; delete b2.include_estate; delete b2.cursor;
+      try {
+        const o2 = await psCall(b2); if (tok !== PS.tok) return;
+        if ((o2.items || []).length) {
+          PS.fb = { kind: 'estate', blk: f.blk, est: f.est, n: (o2.items || []).length };
+          o = o2; PS.qbody = JSON.stringify(b2); if (o2.version) PS.ver = String(o2.version);
+        }
+      } catch (e2) { /* 後備失敗就沿用原 0 結果 */ }
+    }
+    PS.old = false; PS.items = PS.items.concat(o.items || []); PS.next = o.next || null; PS.done = true; PS.from = o.from || PS.f.from; PS.to = o.to || PS.f.to; PS.moreTime = !!o.more_time; PS.elapsed = o.elapsed_ms;
+  } catch (e) { if (tok !== PS.tok) return; if (e.code === 'bad_action') PS.old = true; PS.err = psErr(e); PS.errCode = e.code || ''; }
+  finally { clearInterval(tick); if (tok === PS.tok) PS.busy = false; }
   psPaint(); psThumbs(tok);
+  if (tok === PS.tok && PS.next && !PS.err) setTimeout(() => psPrefetch(tok), 300);
 }
-async function psRefreshDay() {
-  if (PS.busy || !PS.date) return;
-  if (!psGate()) return psPaint();
-  PS.busy = true; PS.err = ''; PS.waitAt = Date.now(); psPaint();
-  const tok = PS.tok;
-  try {
-    await psCall({ action: 'photo_index_day', date: PS.date }, 45000);
-    if (tok !== PS.tok) return;
-  } catch (e) {
-    if (tok !== PS.tok) return;
-    PS.err = psErr(e); PS.errCode = e.code || '';
-  } finally { if (tok === PS.tok) PS.busy = false; }
-  if (tok === PS.tok && !PS.err) return psLoadPlaces(true);
-  psPaint();
-}
-
 async function psThumbs(tok) {
   const need = PS.items.map(x => x.id).filter(id => PS.thumbs[id] === undefined);
   let i = 0, first = true;
@@ -6860,202 +6871,115 @@ function psSetThumb(id) {
   const u = PS.thumbs[id]; document.querySelectorAll(`img[data-psid="${CSS.escape(id)}"]`).forEach(im => { const t = im.parentNode;
     if (u) { im.src = u; t.classList.add('ok'); } else if (u === '') { im.removeAttribute('src'); t.classList.add('none'); } });
 }
-
 /* ----- 畫面 ----- */
-function psBusyNote() {
-  if (!PS.busy) return '';
-  const sec = PS.waitAt ? Math.max(0, Math.round((Date.now() - PS.waitAt) / 1000)) : 0;
-  return `<div class="card mut" id="psload">載入緊…${sec ? (' ' + sec + ' 秒') : ''}</div>`;
-}
-function psDateBar() {
-  const today = hkDate(), d7 = phAddDay(today, -6);
-  const chip = (d, t) => `<button type="button" class="chip${PS.date === d ? ' on' : ''}" data-ps="day" data-d="${esc(d)}">${t}</button>`;
-  const daysAll = PS.days.length ? PS.days : [{ date: today, indexed: false, places: 0 }];
-  const days = PS.dayFilter7 ? daysAll.filter(d => d.date >= d7) : daysAll;
-  const list = days.slice(0, 14).map(d => {
-    const mark = d.indexed ? (d.places ? ' · ' + d.places + ' 位' : ' · 已索引') : '';
-    return `<button type="button" class="psday${PS.date === d.date ? ' on' : ''}" data-ps="day" data-d="${esc(d.date)}"><b>${esc(psDay(d.date))}</b><span class="mut">${esc(d.date)}${esc(mark)}</span></button>`;
-  }).join('');
+const PS_WD = '日一二三四五六';
+const psDay = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); if (!m) return d || ''; const w = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay(); return `${+m[2]}月${+m[3]}號（${PS_WD[w]}）`; };
+function psGoBtn() { return `<button class="btn pri" style="width:100%" data-ps="go" id="psgo" ${PS.busy && !PS.more ? 'disabled' : ''}>${PS.busy && !PS.more ? '搵緊…' : '🔍 搵相'}</button>`; }
+function psForm() {
+  const f = PS.f, today = hkDate();
+  const place = f.est && !f.estT ? psPlaceEst(f.est) : null;
+  const ed = PS.placesOld && f.est && !f.estT ? pkEstDef(f.est) : null;
+  const blkItems = PS.places ? (place ? psBlkItems(f.est) : []) : (ed ? pkBldItems(ed) : []);
+  const nPl = PS.places ? PS.places.length : 0;
+  const estNote = PS.placesBusy && !PS.places ? '<div class="mut psnote">載入緊有相嘅屋邨／地方…</div>'
+    : (PS.places ? '<div class="mut psnote">屋邨／地方只列近 ' + PS_MAXD + ' 日有相嘅（房署外都有' + (nPl ? '，共 ' + nPl + ' 個' : '；呢段日子暫時冇') + '）。<a class="jump" href="#" data-ps="places">重新整理</a>' + (PS.placesStale ? ' · 清單可能舊咗' : '') + '</div>'
+    : (PS.placesOld ? '<div class="mut psnote">伺服器未更新 photo_places：暫時用合約屋邨清單。</div>'
+    : (PS.placesErr ? `<div class="mut psnote">載入地方清單失敗：${esc(PS.placesErr)} <a class="jump" href="#" data-ps="places">再試</a></div>` : '<div class="mut psnote">載入地方清單中…</div>')));
+  const est = pkSel('ps_est', psEstItems(), f.est, { all: '全部屋邨／地方', label: '屋邨／地方', id: 'psest', oph: '自己打地方名' });
+  const blk = pkSel('ps_blk', blkItems, f.blk, { all: f.est ? '全部大廈' : '全部大廈（可以先揀屋邨）', label: '大廈', id: 'psblk', oph: '自己打大廈名' });
+  const chip = (v, t) => `<button class="chip${f.src === v ? ' on' : ''}" data-ps="src" data-v="${v}">${t}</button>`;
+  const bits = psFiltBits(f);
+  const filtBar = bits.length ? `<div class="psfilt" id="psfilt"><span class="mut">而家：</span><span class="psfiltbits">${bits.map(x => `<span class="psftag">${esc(x)}</span>`).join('')}</span><button type="button" class="chip" data-ps="clear" id="psclear">🧹 清除篩選</button></div>` : '';
   return `<div class="card psform" id="psform">
-    <div class="pschips" id="psrng">${chip(today, '今日')}<button type="button" class="chip${PS.dayFilter7 ? ' on' : ''}" data-ps="filter7">近 7 日</button><label class="psdatepick">日曆<input type="date" data-psf="date" id="psdate" value="${esc(PS.date || today)}" max="${today}"></label></div>
-    <div class="psdaylist" id="psdays">${list || '<div class="mut">未有日子清單</div>'}</div>
-    <div class="psrow"><label>關鍵字（可選）<input type="text" data-psf="q" id="psq" value="${esc(PS.q)}" placeholder="屋邨／大廈／檔名" maxlength="60" autocomplete="off" enterkeyhint="search"></label>
-      <label>來源<select data-psf="src" id="pssrc"><option value="all"${PS.src === 'all' ? ' selected' : ''}>全部</option><option value="wa"${PS.src === 'wa' ? ' selected' : ''}>WhatsApp</option><option value="app"${PS.src === 'app' ? ' selected' : ''}>App 相</option></select></label></div>
-    <div class="mut psnote">揀日期後入屋邨／大廈睇相；唔會一次掃晒所有大廈。</div>
-  </div>`;
-}
-function psCrumb() {
-  if (!PS.crumb.length) return '';
-  const bits = [`<button type="button" class="chip" data-ps="back-places">← 屋邨</button>`]
-    .concat(PS.crumb.map((c, i) => `<button type="button" class="chip${i === PS.crumb.length - 1 ? ' on' : ''}" data-ps="crumb" data-i="${i}">${esc(c.label || c.block || c.estate || c.path || '夾')}</button>`));
-  return `<div class="pschips pscrumb">${bits.join('')}</div>`;
-}
-function psPlacesView() {
-  let h = '';
-  if (PS.built) h += `<div class="mut psnote">已為呢日建索引${PS.truncated ? '（未掃晒，可撳重新整理）' : ''} · ${PS.places || 0} 個位置</div>`;
-  if (PS.dayLoose.length) {
-    h += `<div class="pssec"><h3>📅 當日資料夾</h3>`;
-    PS.dayLoose.forEach((d, i) => {
-      h += `<button type="button" class="psplace" data-ps="open" data-kind="loose" data-i="${i}"><span>📁 ${esc(d.path || PS.date)}</span><span class="mut">日夾直出</span></button>`;
-    });
-    h += `</div>`;
-  }
-  if (!PS.estates.length && !PS.dayLoose.length) {
-    return h + `<div class="card psnone"><b>呢日未有索引／未有相</b>
-      <div class="mut" style="margin-top:6px">${esc(psDay(PS.date))} · 可能未上傳，或者索引未建。</div>
-      <button type="button" class="btn pri" style="width:100%;margin-top:8px" data-ps="refresh-day">🔄 重新整理呢日</button></div>`;
-  }
-  const q = (PS.q || '').trim().toLowerCase();
-  let estates = PS.estates;
-  if (q) estates = estates.filter(e => String(e.estate).toLowerCase().includes(q) || (e.blocks || []).some(b => String(b.block).toLowerCase().includes(q)));
-  h += `<div class="pssec"><h3>🏘 屋邨（${estates.length}）</h3>`;
-  estates.forEach((e, i) => {
-    const n = (e.blocks || []).length;
-    h += `<button type="button" class="psplace" data-ps="estate" data-i="${PS.estates.indexOf(e)}"><span>${esc(e.estate)}</span><span class="mut">${n ? n + ' 座／夾' : '邨層'}</span></button>`;
-  });
-  h += `</div>`;
-  h += `<button type="button" class="btn" style="width:100%;margin-top:8px" data-ps="refresh-day">🔄 重新整理呢日</button>`;
-  return h;
-}
-function psEstateBlocks() {
-  const e = PS.estate; if (!e) return '';
-  let h = `<div class="pschips"><button type="button" class="chip" data-ps="back-estates">← 全部屋邨</button><span class="mut">${esc(e.estate)} · ${esc(psDay(PS.date))}</span></div>`;
-  h += `<div class="pssec"><h3>🏢 大廈／專題</h3>`;
-  if (e.estate_folder_id) {
-    h += `<button type="button" class="psplace" data-ps="open" data-kind="estate-loose"><span>📂 屋邨層／未分座</span><span class="mut">只開呢個夾</span></button>`;
-  }
-  (e.blocks || []).forEach((b, i) => {
-    h += `<button type="button" class="psplace" data-ps="open" data-kind="block" data-i="${i}"><span>🏢 ${esc(b.block)}</span><span class="mut">入去睇相</span></button>`;
-  });
-  if (!(e.blocks || []).length && !e.estate_folder_id) h += `<div class="mut">呢邨未有大廈夾。</div>`;
-  h += `</div>`;
-  return h;
+    <div class="mut psnote">唔使揀日期——自動睇最近 ${PS_MAXD} 日有相嘅屋邨／大廈。</div>
+    <div class="pkrow"><label>屋邨／地方${est}</label><label>大廈${blk}</label></div>
+    ${estNote}
+    <label class="pschk"><input type="checkbox" data-psf="estLooseOk" id="psestloose" ${f.estLooseOk !== false ? 'checked' : ''}> 揀咗大廈都顯示成邨／未分座相</label>
+    <div class="psrow"><label>師傅（可留空）<input type="text" data-psf="tech" id="pstech" value="${esc(f.tech)}" placeholder="例如 範俊傑" maxlength="40" autocomplete="off"></label><label>關鍵字（檔名／資料夾）<input type="text" data-psf="q" id="psq" value="${esc(f.q)}" placeholder="例如 泵、警鐘、K2026" maxlength="60" autocomplete="off" enterkeyhint="search"></label></div>
+    <div class="pschips" id="pssrc"><span class="mut">來源</span>${chip('all', '全部')}${chip('wa', '💬 WhatsApp')}${chip('app', '📱 App')}</div>
+    ${filtBar}
+    ${psGoBtn()}
+    <div class="mut psnote">師傅名對檔名：App 相（App_師傅_…）同 WhatsApp「冇說明」相。關鍵字對檔名；v1.30+ 兼對資料夾（例如「天台垃圾槽」）。大廈清單入面可能有主題夾（天台／商場／泵房）— 唔係座都可以揀，或者開住「連成邨／未分座」。</div></div>`;
 }
 function psTile(x, i) {
-  const cap = x.src === 'app' ? String(x.name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/^App_/, '') : (typeof phCap === 'function' ? phCap(x.name) : x.name);
-  const th = PS.thumbs[x.id];
+  const cap = x.src === 'app' ? String(x.name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/^App_/, '') : phCap(x.name), th = PS.thumbs[x.id];
   return `<button class="pstile${th ? ' ok' : th === '' ? ' none' : ''}${x.kind === 'video' ? ' vid' : ''}" data-ps="big" data-i="${i}" data-kind="${x.kind}" aria-label="${esc((cap || '相') + ' ' + (x.hkt || ''))}"><img data-psid="${esc(x.id)}" alt="" ${th ? `src="${th}"` : ''}>
     ${x.kind === 'video' ? '<span class="psplay">▶</span>' : ''}${x.src === 'app' ? '<span class="psapp">App</span>' : ''}<span class="pscap">${esc(cap || '（冇說明）')}${x.hkt ? `<i>${esc(x.hkt)}</i>` : ''}</span></button>`;
 }
-function psFilesView() {
-  let h = psCrumb();
-  const f = PS.folder || {};
-  h += `<div class="pscount">${esc(f.label || f.path || '相片')} · ${PS.items.length} 張${PS.subs.length ? ' · ' + PS.subs.length + ' 子夾' : ''}</div>`;
-  if (PS.subs.length) {
-    h += `<div class="pssec"><h3>📁 子資料夾</h3>`;
-    PS.subs.forEach((s, i) => {
-      h += `<button type="button" class="psplace" data-ps="open" data-kind="sub" data-i="${i}"><span>📁 ${esc(s.name)}</span><span class="mut">再入一層</span></button>`;
-    });
-    h += `</div>`;
+function psResults() {
+  if (PS.old) return `<div class="warnbox" id="psold">${esc(PS.err)}</div>`;
+  let h = PS.err && PS.errCode !== 'form' ? `<div class="${['offline', 'network', 'timeout', 'cfg'].includes(PS.errCode) ? 'warnbox' : 'errbox'}" id="pserr">${esc(PS.err)}</div>${PS.errCode !== 'cfg' ? '<button class="btn" style="width:100%" data-ps="retry">🔄 再試</button>' : ''}` : '';
+  if (!PS.done) return h + (PS.busy ? '<div class="card mut" id="psload">搵緊相…' + (PS.waitAt ? (' ' + Math.max(0, Math.round((Date.now() - PS.waitAt) / 1000)) + ' 秒') : '') + '</div>' : '');
+  const n = PS.items.length, nv = PS.items.filter(x => x.kind === 'video').length;
+  const bits = psFiltBits(PS.f);
+  const filtTxt = bits.length ? ' · ' + bits.join(' · ') : '';
+  h += `<div class="pscount" id="pscount">${n ? `搵到 ${n} 個${nv ? `（${n - nv} 張相、${nv} 段影片）` : ''}${PS.next ? '，仲有' : ''}` : '搵唔到相'} · ${esc(psDay(PS.from))}${PS.from !== PS.to ? ' 至 ' + esc(psDay(PS.to)) : ''}${esc(filtTxt)}${PS.elapsed != null && !PS.more ? ` · ${PS.elapsed < 1000 ? '<1' : Math.round(PS.elapsed / 1000)} 秒` : ''}</div>`;
+  if (PS.fb && PS.fb.kind === 'estate' && n) {
+    h += `<div class="warnbox psfb" id="psfb">呢座「${esc(PS.fb.blk)}」冇專屬相；以下係成邨／其他座／未分座（共 ${PS.fb.n} 個）。想淨睇呢座可取消「連成邨／未分座」。</div>`;
   }
-  if (!PS.items.length) {
-    h += `<div class="card psnone"><b>呢個夾未有相</b><div class="mut" style="margin-top:6px">可以入子資料夾，或者返上層另揀。</div></div>`;
-    return h;
+  if (!n) {
+    const sug = [];
+    if (PS.f && PS.f.from !== phAddDay(hkDate(), -(PS_MAXD - 1))) sug.push('<button type="button" class="btn" style="width:100%;margin-top:8px" data-ps="widen">📅 放寬至全部 ' + PS_MAXD + ' 日</button>');
+    if (PS.f && (PS.f.est || PS.f.blk || PS.f.q || PS.f.tech || PS.f.src !== 'all')) sug.push('<button type="button" class="btn pri" style="width:100%;margin-top:8px" data-ps="clear">🧹 清除篩選（近 30 日）</button>');
+    return h + `<div class="card psnone" id="psnone"><b>呢個範圍冇合條件嘅相</b>
+      <div class="mut" style="margin-top:6px">而家篩選：${bits.length ? bits.map(x => esc(x)).join(' · ') : '（無額外篩選）'}</div>
+      <ul class="pshint"><li>試下屋邨／大廈改「全部」，或者用「自己打」</li><li>關鍵字改短啲（例如「垃圾槽」）；房署外用「其他（自己打）」</li><li>相可能喺成邨／主題夾（天台垃圾槽）：開住「連成邨／未分座」，或者大廈揀個主題夾名</li></ul>
+      ${sug.join('')}</div>`;
   }
-  h += `<div class="psgrid">`;
-  PS.items.forEach((x, i) => { h += psTile(x, i); });
-  h += `</div>`;
-  h += '<div class="mut phnote">相由公司 Google Drive 讀取；只開你揀嘅資料夾，唔會掃晒全樹。</div>';
-  return h;
+  let d = null, e = null, g = null, open = false;
+  PS.items.forEach((x, i) => {
+    const gk = x.date + '|' + x.estate + '|' + x.path;
+    if (x.date !== d) { if (open) h += '</div></div>'; open = false; h += `<h2 class="psd" data-d="${esc(x.date)}">📅 ${esc(psDay(x.date))}</h2>`; d = x.date; e = null; g = null; }
+    if (x.estate !== e) { if (open) h += '</div></div>'; open = false; h += `<h3 class="pse">${esc(x.estate || '（當日資料夾）')}</h3>`; e = x.estate; g = null; }
+    if (gk !== g) { if (open) h += '</div></div>'; const sub = x.path && x.path.split(' / ').length > 2 ? x.path.split(' / ').slice(2).join(' / ') : '';
+      h += `<div class="psg" data-g="${esc(gk)}"><h4>${esc(x.block ? '🏢 ' + x.block : x.estate ? '（未分座）' : '')}${sub ? ` <span class="mut">📁 ${esc(sub)}</span>` : ''}</h4><div class="psgrid">`; open = true; g = gk; }
+    h += psTile(x, i);
+  });
+  if (open) h += '</div></div>';
+  if (PS.next) h += `<button class="btn" style="width:100%;margin-top:10px" data-ps="more" id="psmore" ${PS.busy ? 'disabled' : ''}>${PS.busy ? '載入緊…' : `⬇️ 再載入（每次 ${PS_PAGE} 個）`}</button>`;
+  return h + '<div class="mut phnote">相由公司 Google Drive「杰信工程部 WhatsApp 相片」讀取，睇過嘅相會暫存喺呢部手機（下次快啲；30 日自動清）。</div>';
 }
-function psBody() {
-  if (PS.old) return `<div class="warnbox" id="psold">${esc(PS.err || PS_MSG.bad_action)}</div>`;
-  let h = '';
-  if (PS.err && PS.errCode !== 'form') h += `<div class="${['offline', 'network', 'timeout', 'cfg', 'acc'].includes(PS.errCode) ? 'warnbox' : 'errbox'}" id="pserr">${esc(PS.err)}</div>`;
-  h += psDateBar();
-  if (PS.busy && PS.step !== 'files') h += psBusyNote();
-  if (PS.step === 'files') {
-    if (PS.busy) h += psBusyNote();
-    else h += `<div id="psres">${psFilesView()}</div>`;
-  } else if (PS.step === 'places' || PS.estate) {
-    if (PS.estate) h += `<div id="psres">${psEstateBlocks()}</div>`;
-    else if (!PS.busy) h += `<div id="psres">${psPlacesView()}</div>`;
-  } else if (!PS.busy && PS.days.length) {
-    h += `<div class="mut psnote" style="padding:0 4px">撳上面日子就載入屋邨清單。</div>`;
-  }
-  return h;
-}
-function psMain() { return `${PS.err && PS.errCode === 'form' ? `<div class="errbox" id="pserr">${esc(PS.err)}</div>` : ''}<div id="pswrap">${psBody()}</div>`; }
+function psMain() { return `${PS.err && PS.errCode === 'form' ? `<div class="errbox" id="pserr">${esc(PS.err)}</div>` : ''}${psForm()}<div id="psres">${psResults()}</div>`; }
 function viewPhs() {
-  if (!PS.date) PS.date = hkDate();
-  if (!PS.days.length && !PS.busy && !PS.err && upCfg().url && upCfg().pin) setTimeout(() => { if (cur.view === 'phsearch' && !PS.days.length && !PS.busy) psLoadDays(); }, 0);
-  return `<div class="top"><div class="bar"><button data-act="home" aria-label="返主頁">‹ 主頁</button><div class="ttl">📷 睇相<small>日期 → 屋邨 → 大廈 · 只開一個夾</small></div></div></div><main id="psmain">${psMain()}</main>`;
+  if (!PS.f) PS.f = psDef();
+  if (upCfg().url && upCfg().pin && !PS.placesBusy && psPlacesDue()) setTimeout(() => { if (cur.view === 'phsearch') psLoadPlaces(); }, 0);
+  if (!PS.done && !PS.busy && !PS.err && upCfg().url && upCfg().pin) setTimeout(() => { if (cur.view === 'phsearch' && !PS.done && !PS.busy) psSearch(); }, 0); /* 第一次入：用預設（近 30 日）即刻搵 */
+  return `<div class="top"><div class="bar"><button data-act="home" aria-label="返主頁">‹ 主頁</button><div class="ttl">🔍 尋找相片<small>WhatsApp 相 ＋ App 相 · 只讀 · 經公司 Apps Script</small></div></div></div><main id="psmain">${psMain()}</main>`;
 }
-function psPaint() {
-  if (cur.view !== 'phsearch') return;
-  const y = window.scrollY, m = $('#psmain');
-  if (!m) return;
-  m.innerHTML = psMain();
+function psPaint(formToo) {
+  if (cur.view !== 'phsearch') return; const y = window.scrollY;
+  if (formToo === 'form') { const f = $('#psform'); if (f) f.outerHTML = psForm(); }
+  else { const m = $('#psmain'); if (!m) return; const a = document.activeElement, keep = a && a.dataset && a.dataset.psf; if (keep) { const r = $('#psres'); if (r) r.innerHTML = psResults(); const ge = $('#psgo'); if (ge) ge.outerHTML = psGoBtn(); } else m.innerHTML = psMain(); }
   window.scrollTo(0, y);
 }
-
-document.addEventListener('input', e => {
-  const el = e.target; if (!el || !el.dataset || !el.dataset.psf || cur.view !== 'phsearch') return;
-  if (el.dataset.psf === 'q') PS.q = el.value;
-  if (el.dataset.psf === 'src') PS.src = el.value;
-  if (el.dataset.psf === 'date') PS.date = el.value;
-});
-document.addEventListener('change', e => {
-  const el = e.target; if (!el || !el.dataset || !el.dataset.psf || cur.view !== 'phsearch') return;
-  if (el.dataset.psf === 'date' && el.value) {
-    PS.date = el.value; PS.estate = null; PS.folder = null; PS.crumb = []; PS.step = 'places';
-    return psLoadPlaces();
-  }
-  if (el.dataset.psf === 'src') { PS.src = el.value; if (PS.folder) return psOpenFolder(Object.assign({}, PS.folder, { resetCrumb: false })); }
-});
-document.addEventListener('keydown', e => {
-  const el = e.target;
-  if (e.key === 'Enter' && el && el.dataset && el.dataset.psf === 'q' && cur.view === 'phsearch') {
-    e.preventDefault(); el.blur();
-    if (PS.step === 'files' && PS.folder) return psOpenFolder(Object.assign({}, PS.folder));
-    return psLoadPlaces();
-  }
-});
+PKH.ps_est = (v, how) => { const f = PS.f; if (!f) return;
+  if (how === 'type') { f.est = v; f.estT = true; return; }
+  if (how === 'other') { f.est = ''; f.estT = true; f.blk = ''; f.blkT = false; return psPaint('form'); }
+  if (how === 'done') { f.est = v; f.estT = true; return; }
+  f.est = v; f.estT = false; f.blk = ''; f.blkT = false; psPaint('form'); };
+PKH.ps_blk = (v, how) => { const f = PS.f; if (!f) return;
+  if (how === 'type' || how === 'done') { f.blk = v; f.blkT = true; return; }
+  if (how === 'other') { f.blk = ''; f.blkT = true; return psPaint('form'); }
+  f.blk = v; f.blkT = false; };
+document.addEventListener('input', e => { const el = e.target; if (!el || !el.dataset || !el.dataset.psf || !PS.f) return;
+  if (el.type === 'checkbox') { PS.f[el.dataset.psf] = !!el.checked; return; }
+  PS.f[el.dataset.psf] = el.value; });
+document.addEventListener('change', e => { const el = e.target; if (!el || !el.dataset || !el.dataset.psf || !PS.f) return;
+  if (el.type === 'checkbox') { PS.f[el.dataset.psf] = !!el.checked; return psPaint('form'); }
+  if (PS.f[el.dataset.psf] === el.value) return; PS.f[el.dataset.psf] = el.value; if (el.type === 'date') psPaint('form'); });
+document.addEventListener('keydown', e => { const el = e.target; if (e.key === 'Enter' && el && el.dataset && (el.dataset.psf === 'q' || el.dataset.psf === 'tech')) { e.preventDefault(); el.blur(); psSearch(); } });
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-act="phsearch"]'); if (t && !t.disabled) { const m = $('#modal'); if (m) m.classList.remove('show'); return go('#/phsearch'); }
-  const b = e.target.closest('[data-ps]'); if (!b || cur.view !== 'phsearch' || b.closest('#psv')) return;
-  const a = b.dataset.ps;
-  if (a === 'filter7') { PS.dayFilter7 = !PS.dayFilter7; return psPaint(); }
-  if (a === 'day') {
-    PS.date = b.dataset.d; PS.estate = null; PS.folder = null; PS.crumb = []; PS.step = 'places';
-    return psLoadPlaces();
-  }
-  if (a === 'refresh-day') return psRefreshDay();
-  if (a === 'back-places' || a === 'back-estates') {
-    PS.estate = null; PS.folder = null; PS.crumb = []; PS.step = 'places'; PS.items = []; PS.subs = [];
-    return psPaint();
-  }
-  if (a === 'estate') {
-    const e0 = PS.estates[+b.dataset.i]; if (!e0) return;
-    PS.estate = e0; PS.folder = null; PS.crumb = []; PS.items = []; PS.subs = [];
-    return psPaint();
-  }
-  if (a === 'crumb') {
-    const c = PS.crumb[+b.dataset.i]; if (!c) return;
-    return psOpenFolder({ id: c.id, path: c.path, estate: c.estate, block: c.block, label: c.label, resetCrumb: false });
-  }
-  if (a === 'open') {
-    const kind = b.dataset.kind;
-    if (kind === 'loose') {
-      const d = PS.dayLoose[+b.dataset.i]; if (!d) return;
-      return psOpenFolder({ id: d.folder_id, path: d.path || PS.date, estate: '', block: '', label: '當日資料夾', resetCrumb: true });
-    }
-    if (kind === 'estate-loose' && PS.estate) {
-      return psOpenFolder({ id: PS.estate.estate_folder_id, path: PS.date + '/' + PS.estate.estate, estate: PS.estate.estate, block: '', label: PS.estate.estate + '（未分座）', resetCrumb: true });
-    }
-    if (kind === 'block' && PS.estate) {
-      const blk = (PS.estate.blocks || [])[+b.dataset.i]; if (!blk) return;
-      return psOpenFolder({ id: blk.folder_id, path: blk.path || (PS.date + '/' + PS.estate.estate + '/' + blk.block), estate: PS.estate.estate, block: blk.block, label: blk.block, resetCrumb: true });
-    }
-    if (kind === 'sub') {
-      const s = PS.subs[+b.dataset.i]; if (!s) return;
-      return psOpenFolder({ id: s.folder_id, path: s.path, estate: (PS.folder && PS.folder.estate) || '', block: (PS.folder && PS.folder.block) || s.name, label: s.name, resetCrumb: false });
-    }
-  }
+  const b = e.target.closest('[data-ps]'); if (!b || cur.view !== 'phsearch' || b.closest('#psv')) return; const a = b.dataset.ps;
+  if (a === 'go' || a === 'retry') return psSearch();
+  if (a === 'more') return psSearch(true);
+  if (a === 'places') { e.preventDefault(); return psLoadPlaces(true); }
+  if (a === 'clear') { e.preventDefault(); return psClearFilt(); }
+  if (a === 'widen') { e.preventDefault(); return psWidenAll(); }
+  if (a === 'src') { PS.f.src = b.dataset.v; return psPaint('form'); }
   if (a === 'big') return psBig(+b.dataset.i);
 });
-
-/* ----- 大圖（沿用） ----- */
+/* ----- 大圖 ----- */
 let PSV = null;
 window.addEventListener('popstate', () => { if (PSV) { PSV.hist = false; psBigClose(true); } });
 function psBigClose(fromPop) {
@@ -7073,12 +6997,11 @@ async function psBig(i) {
     el.addEventListener('touchend', e => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 60) psBig(PS.idx + (dx < 0 ? 1 : -1)); });
   }
   const th = PS.thumbs[x.id], vid = x.kind === 'video', full = PS.full.get(x.id), n = PS.items.length;
-  const where = [psDay(x.date || PS.date), x.estate, x.block, x.hkt].filter(Boolean).join(' · ');
-  const drive = x.url || ('https://drive.google.com/file/d/' + (x.tid || x.id) + '/view');
-  PSV.el.innerHTML = `<div class="psvbar"><button class="btn sm" data-psv="x" id="psvx">✕ 閂</button><span class="psvn">${i + 1} / ${n}</span><button class="btn sm" data-psv="share" id="psvshare">分享</button><a class="btn sm pri" id="psvdrive" href="${esc(drive)}" target="_blank" rel="noopener noreferrer">↗ 開 Drive</a></div>
+  const where = [psDay(x.date), x.estate, x.block, x.hkt].filter(Boolean).join(' · ');
+  PSV.el.innerHTML = `<div class="psvbar"><button class="btn sm" data-psv="x" id="psvx">✕ 閂</button><span class="psvn">${i + 1} / ${n}</span><button class="btn sm" data-psv="share" id="psvshare">分享</button><a class="btn sm pri" id="psvdrive" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">↗ 開 Drive</a></div>
     <div class="psvw">${vid ? `<div class="psvvid">${th ? `<img id="psvimg" alt="" src="${th}">` : '<div class="psvnoth">🎞️</div>'}<span class="psplay big">▶</span></div><div class="psvmsg" id="psvmsg">🎞️ 影片：App 入面播唔到，撳「↗ 開 Drive」播。</div>`
       : `<img id="psvimg" alt="${esc(x.name)}" ${full || th ? `src="${full || th}"` : ''} class="${full ? '' : 'lo'}"><div class="psvmsg" id="psvmsg">${full ? '' : '載入緊原相…'}</div>`}</div>
-    <div class="psvcap"><b>${esc(x.name)}</b><span>${esc(where)}${x.src === 'app' ? ' · 📱 App 相' : ' · 💬 WhatsApp'}</span>${x.path ? `<span class="mut">📁 ${esc(x.path)}</span>` : ''}</div>
+    <div class="psvcap"><b>${esc(x.name)}</b><span>${esc(where)}${x.src === 'app' ? ' · 📱 App 相' : ' · 💬 WhatsApp'}</span>${x.path && x.path.split(' / ').length > 2 ? `<span class="mut">📁 ${esc(x.path)}</span>` : ''}</div>
     <button class="phnav l" data-psv="prev" aria-label="上一張" ${i ? '' : 'disabled'}>‹</button><button class="phnav r" data-psv="next" aria-label="下一張" ${i < n - 1 ? '' : 'disabled'}>›</button>`;
   if (vid || full) return;
   const tok = PS.tok;
@@ -7093,11 +7016,10 @@ async function psShare() {
   const x = PS.items[PS.idx]; if (!x || !PSV) return;
   const btn = $('#psvshare'); if (btn) btn.disabled = true;
   const done = () => { const b = $('#psvshare'); if (b) b.disabled = false; };
-  const drive = x.url || ('https://drive.google.com/file/d/' + (x.tid || x.id) + '/view');
   try {
     if (x.kind === 'video') {
-      if (navigator.share) { await navigator.share({ title: x.name || '影片', url: drive }); return; }
-      try { await navigator.clipboard.writeText(drive); toast('已複製 Drive 連結'); } catch (e) { toast('呢部機冇分享功能，請用「開 Drive」'); }
+      if (navigator.share) { await navigator.share({ title: x.name || '影片', url: x.url }); return; }
+      try { await navigator.clipboard.writeText(x.url); toast('已複製 Drive 連結'); } catch (e) { toast('呢部機冇分享功能，請用「開 Drive」'); }
       return;
     }
     let url = PS.full.get(x.id);
@@ -7110,29 +7032,18 @@ async function psShare() {
   } catch (e) { if (e && e.name === 'AbortError') return; toast((e && e.message) || '分享唔到'); }
   finally { done(); }
 }
-
-/* ----- 掛入主頁／路由 ----- */
-(function () {
-  const k = TILES.findIndex(t => t.act === 'phsearch');
-  const tile = { act: 'phsearch', icon: '📷', name: '睇相', sub: '日期→屋邨→大廈，快捷瀏覽' };
-  if (k >= 0) TILES[k] = tile;
-  else {
-    const b = TILES.findIndex(t => t.act === 'bldg');
-    TILES.splice(b >= 0 ? b + 1 : TILES.length - 2, 0, tile);
-  }
-})();
+/* ----- 掛入主頁／路由（唔改其他檔） ----- */
+(function () { const k = TILES.findIndex(t => t.act === 'bldg'); TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'phsearch', icon: '🔍', name: '尋找相片', sub: '屋邨／大廈下拉 · 唔使揀日期' }); })();
 const parseHashRaw_ps = parseHash;
 parseHash = function () { if (/^#\/phsearch\b/.test(location.hash)) { cur = { view: 'phsearch', id: null, step: null }; lkReset(); return; } parseHashRaw_ps(); };
 const viewGridRaw_ps = viewGrid;
 viewGrid = function () { return cur.view === 'phsearch' ? viewPhs() : viewGridRaw_ps(); };
-window.addEventListener('hashchange', () => { if (cur.view !== 'phsearch') { psBigClose(true); if (PS.urls.length) { PS.items = []; PS.done = false; psClearMem(); } } });
+window.addEventListener('hashchange', () => { if (cur.view !== 'phsearch') { psBigClose(true); if (PS.urls.length) { PS.items = []; PS.done = false; PS.next = null; psClearMem(); } } });
 if (/^#\/phsearch\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
 (function () { try { const s = document.createElement('style'); s.textContent =
-  '.psform label{display:block;font-size:13px;color:#555}.psrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}.psrow input,.psrow select{width:100%;box-sizing:border-box;font-size:16px;min-height:44px;margin-top:2px;border:1px solid #d1d5db;border-radius:8px;padding:0 8px}' +
+  '.psform label{display:block;font-size:13px;color:#555}.psrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}.psrow input{width:100%;box-sizing:border-box;font-size:16px;min-height:44px;margin-top:2px;border:1px solid #d1d5db;border-radius:8px;padding:0 8px}' +
   '.pschips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}.pschips .chip.on{background:#1d4ed8;color:#fff;border-color:#1d4ed8}.psnote{font-size:12px;margin-top:6px}.pscount{margin:12px 2px 4px;font-weight:700}' +
-  '.psdatepick{display:inline-flex;align-items:center;gap:6px;font-size:13px}.psdatepick input{min-height:36px;font-size:14px;border:1px solid #d1d5db;border-radius:8px;padding:0 6px}' +
-  '.psdaylist{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow:auto;margin:6px 0}.psday{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;border:1px solid #e5e7eb;background:#fff;border-radius:10px;padding:10px 12px;font:inherit;min-height:44px}.psday.on{border-color:#1d4ed8;background:#eff6ff}.psday b{font-size:14px}' +
-  '.psplace{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;border:1px solid #e5e7eb;background:#fff;border-radius:10px;padding:12px;font:inherit;min-height:48px;margin:4px 0}.psplace:active{background:#f8fafc}.pssec{margin:10px 0}.pssec h3{font-size:15px;margin:8px 2px;color:#1e3a8a}' +
+  '.psd{font-size:17px;margin:16px 2px 4px;border-bottom:2px solid #e5e7eb;padding-bottom:4px}.pse{font-size:15px;margin:10px 2px 2px;color:#1e3a8a}.psg h4{font-size:14px;margin:6px 2px;font-weight:700}' +
   '.psgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.pstile{position:relative;aspect-ratio:1;border:0;padding:0;border-radius:8px;overflow:hidden;background:#e5e7eb;font:inherit}' +
   '.pstile img{width:100%;height:100%;object-fit:cover;display:block}.pstile:not(.ok) img{visibility:hidden}.pstile.none::before{content:"🖼";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px}.pstile.vid.none::before{content:"🎞️"}' +
   '.pscap{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.75));color:#fff;font-size:11px;line-height:1.25;padding:10px 4px 3px;text-align:left;max-height:3.9em;overflow:hidden}.pscap i{font-style:normal;opacity:.85;margin-left:4px}' +
@@ -7142,8 +7053,11 @@ if (/^#\/phsearch\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
   '.psvw{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;position:relative}.psvw img{max-width:100%;max-height:100%;object-fit:contain}.psvw img.lo{filter:blur(1px)}.psvvid{position:relative;max-width:100%;max-height:80%}.psvnoth{font-size:80px}' +
   '.psvmsg{color:#ddd;padding:8px;text-align:center}.psvcap{padding:8px 12px 14px;background:#000;font-size:13px}.psvcap b{display:block;word-break:break-all;font-size:14px}.psvcap span{display:block;color:#ccc;margin-top:2px}' +
   '#psv .phnav{position:absolute;top:50%;width:44px;height:64px;border:0;background:rgba(0,0,0,.4);color:#fff;font-size:30px}#psv .phnav.l{left:0}#psv .phnav.r{right:0}#psv .phnav:disabled{opacity:.2}' +
-  '.psnone b{display:block;font-size:15px}.pscrumb{margin:8px 0}';
+  '.psfilt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0;padding:8px;background:#f8fafc;border-radius:10px;border:1px solid #e5e7eb}.psfiltbits{display:flex;flex-wrap:wrap;gap:4px;flex:1}.psftag{display:inline-block;background:#e0e7ff;color:#1e3a8a;font-size:12px;padding:2px 8px;border-radius:999px}' +
+  '.pschk{display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;margin:8px 0;min-height:44px}.pschk input{width:18px;height:18px}' +
+  '.psnone b{display:block;font-size:15px}.pshint{margin:8px 0 0;padding-left:18px;color:#555;font-size:13px;line-height:1.45}.psfb{margin:8px 0}';
   document.head.appendChild(s); } catch (e) {} })();
+
 
 /* ---------- v0.6.25 📦 手機緩存（FAN 2026-10-08 13:05「將啲緩衝儲存落手機度，唔使等太耐」／13:06「Apps入面全部都要」）----------
    包住 gasCall（最外層，喺 app_18acc 批准閘之外）：
@@ -10299,6 +10213,7 @@ if (/^#\/dosu\b/.test(location.hash)) { try { parseHash(); } catch (e) {} }
    FAN（2026-10-18）：影相上限 20；手機暫存（跟度數：localStorage＋PhotoDB；autosave；送出成功先清；可繼續）。
    FAN 0.6.100：reload／AI 撈緊保相——影相即存 draft；pagehide／visibilitychange flush；AI 前後存；還原時剔冇 blob 嘅 id。
    v0.6.248：AI 加總後必填「金額」（修 exSaveDraft→exReadForm 抹走）；試算表一張單＝一行＋分類（停車場／買料…）；要 GAS v1.76+。
+   v0.6.253：開新單先 confirm＋按鈕改「開新單（會換新編號）」；同一單影多張唔使開新單（FAN App房 2026-10-24）。
    主頁格 → #/expense；影相淨相機；gasCall `expense_ai_sum`／`expense_claim`（GAS v1.69+ 認 20 張；v1.76+ 收據分行）。 */
 const EX_MAX_PHOTOS = 20;
 const EX_DRAFT_LS = 'fsapp20259005.expense.drafts.v1';
@@ -10455,11 +10370,16 @@ async function exDeleteDraft(rid) {
   exPaint();
 }
 async function exNewDraft() {
+  const oldNo = EX.claimNo || '';
+  const msg = oldNo
+    ? ('開新單會換新 4 字編號。\n而家呢單（' + oldNo + '）會暫存喺手機，可稍後「查閱／繼續」。\n確定開新單？')
+    : '開新單會出新 4 字編號。確定？';
+  if (!confirm(msg)) return;
   if (exFormHasContent() || EX.claimNo) exSaveDraft(true);
   await exClearPhotos();
   exResetForm();
   EX.draftId = (typeof newId === 'function' ? newId('ex') : ('ex' + Date.now()));
-  toast('已開新一份報銷（空白）', 2500);
+  toast('已開新單 · 編號 ' + (EX.claimNo || '') + '（寫喺新紙單）', 3000);
   exPaint();
 }
 function exDraftsHtml() {
@@ -10482,7 +10402,8 @@ function exDraftsHtml() {
   return `<div class="card">
     <h3>手機暫存</h3>
     <div class="mut" style="margin-bottom:8px">未送出可暫存呢部手機；可查閱／繼續，直至送出報銷成功。</div>
-    <button type="button" class="btn pri" style="width:100%;margin-bottom:8px" data-ex="newdraft">＋ 新增報銷</button>
+    <div class="mut" style="margin-bottom:8px">同一單繼續影相即可，唔使開新單；編號唔會轉。</div>
+    <button type="button" class="btn pri" style="width:100%;margin-bottom:8px" data-ex="newdraft">＋ 開新單（會換新編號）</button>
     ${rows}
   </div>`;
 }
