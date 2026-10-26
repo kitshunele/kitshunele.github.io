@@ -453,8 +453,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.322';
-/* v0.6.322：表一‧1／2／4 跟 F9 下 FD_FACP_QTY／FD_REP_QTY／FD_BATT_QTY 開 N 行；拆 321 表一‧5／6；FD_SMOKE／FD_HEAT yn 留 */
+const APP_VERSION = '0.6.323';
+/* v0.6.323：問卷 FD_FACP／REP／BATT_QTY 下即時開 N 填位（同表一）；inc 同步 fdsT1Sync */
+/* v0.6.322：表一‧1／2／4 跟數量開 N 行；拆 321 表一‧5／6；FD_SMOKE／FD_HEAT yn 留 */
 /* v0.6.321：（已廢）表一‧5／6 煙霧／熱力數量 — FAN t868u／t869u 不用 */
 /* v0.6.320：fds 表一 cover←屋邨＋樓名；表一‧3 模擬面板預設不適用 */
 /* v0.6.319：F9 下 FD_HYDRO_ELEC 是否用水電；否 → fds 附錄 III‧j／k／l NA */
@@ -1629,7 +1630,7 @@ function stepQ(r) {
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
     return `<div class="card" id="sec-${s.key}"><h3>${esc(s.title)} <span class="mut">${p}/${need}</span></h3>
-      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
+      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
 }
@@ -2206,7 +2207,7 @@ function fsdTablesOut(r, c, d) { // 提交用：隱藏咗嘅來源記 NA（App �
   }
   return t;
 }
-/* v0.6.322 Fan：表一‧1／2／4 跟問卷數量開 N 行（字母 a…）；3 仍 def_skip
+/* v0.6.322／323 Fan：表一‧1／2／4 跟問卷數量開 N 行（字母 a…）；問卷下即時填位；3 仍 def_skip
    元組：[組號, 名, qtyCell|null, ynGate|null, 有主板欄]
    ynGate＝冇 → 0 行（不適用）；qty 未答／0 → 1（有 gate 且＝有 或無 gate） */
 const FDS_T1_LETTERS = 'abcdefghij';
@@ -2246,6 +2247,32 @@ function fdsT1Sync(r) {
     });
   }
   if (ch) Store.touch(r);
+}
+/* v0.6.323 Fan：問卷數量題下面即時開 N 個填位（同表一欄；空先填 cover）
+   未答／0 → 唔顯示（同 SPR_MULTI_SYS）；加 N 補空行；減 N 只隱藏多出嘅（資料仍留 fsd.t.fds） */
+function fdsPanelQtyHtml(r, qtyCell) {
+  if (!r || !qtyCell) return '';
+  const row = FDS_T1.find(x => x[2] === qtyCell);
+  if (!row) return '';
+  const [g, lab, , ynGate, main] = row;
+  if (ynGate && (r.q || {})[ynGate] !== '有') return '';
+  const raw = (r.q || {})[qtyCell];
+  if (!has(raw)) return '';
+  const n0 = Number(raw);
+  if (Number.isNaN(n0) || n0 < 1) return '';
+  const n = Math.min(FDS_T1_MAX, Math.floor(n0));
+  fdsT1Sync(r);
+  const f = ((fsdRec(r, 'fds').t || {}).fds) || {};
+  const seg = (bind, val, opts, id) => `<div class="seg fseg" ${id ? `id="${id}"` : ''}>${opts.map(([x, l, cl]) => `<button class="v-${cl || 'opt'} ${val === x ? 'on' : ''}" data-act="ans" data-bind="${bind}" data-v="${esc(x)}">${esc(l || x)}</button>`).join('')}</div>`;
+  return `<div class="sub" style="margin-top:8px"><div class="mut" style="margin-bottom:4px">表一‧${esc(g)} ${esc(lab)}（共 ${n} 行；改數量即加／減填位；同消防處·偵測表一）</div>${Array.from({ length: n }, (_, j) => {
+    const lettr = FDS_T1_LETTERS[j], id = g + '.' + lettr, x = f[id] || {}, rb = `fsd.fds.t.fds.${g}~${lettr}`;
+    return `<div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0"><div class="mut" style="font-weight:600;margin-bottom:4px">${esc(lettr)}. ${esc(lab)}</div>
+      ${txtField(rb + '.loc', x.loc, '位置', '例：G/F 泵房／控制室')}
+      ${txtField(rb + '.cover', x.cover, '消防裝置及設備覆蓋的建築物／處所', '')}
+      ${txtField(rb + '.note', x.note, '備註', '')}
+      ${main ? `<div class="fld"><label>用作主板</label>${seg(rb + '.main', x.main, [['是', '是', 'yes'], ['否', '否', 'no']], `q-fds-${g}-${lettr}-main`)}</div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
 }
 function fsdTableMissing(r, c, s) {
   const d = fsdGet(r, c.key), t = d.t || {}, out = [], b = `fsd.${c.key}.t`;
@@ -2464,7 +2491,7 @@ function fsdTableHtml(r, c, s) {
         ${main ? `<div class="fld"><label>用作主板</label>${seg(rb + '.main', x.main, [['是', '是', 'yes'], ['否', '否', 'no']], `ft-${c.key}-${g}-${lettr}-main`)}</div>` : ''}</div>`;
         }).join('')}</div>`;
     }).join('');
-    return `<div id="ft-${c.key}">${panels}<div class="mut" style="margin-top:6px">「消防裝置及設備覆蓋的建築物／處所」空先填基本 1 屋邨＋樓名；師傅改過唔蓋。表一‧1／2／4 行數跟問卷 FD_FACP_QTY／FD_REP_QTY／FD_BATT_QTY（FD_REP＝冇 → ‧2 不適用）。上限 ${FDS_T1_MAX}。</div></div>`;
+    return `<div id="ft-${c.key}">${panels}<div class="mut" style="margin-top:6px">「消防裝置及設備覆蓋的建築物／處所」空先填基本 1 屋邨＋樓名；師傅改過唔蓋。表一‧1／2／4 行數跟問卷 FD_FACP_QTY／FD_REP_QTY／FD_BATT_QTY（問卷數量題下面亦可填；兩邊同一份資料）。FD_REP＝冇 → ‧2 不適用。上限 ${FDS_T1_MAX}。</div></div>`;
   }
   return '';
 }
@@ -11511,7 +11538,7 @@ document.addEventListener('click', async e => {
       if (el.dataset.bind === 'q.F30') r.q.SPR_WATER_CURTAIN = v;
       else if (el.dataset.bind === 'q.SPR_WATER_CURTAIN') r.q.F30 = v;
       Store.touch(r); return render(); }
-    case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); setP(r, el.dataset.bind, was == null ? Math.max(0, d) : Math.max(0, Number(was) + d)); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); } Store.touch(r); return render(); }
+    case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); setP(r, el.dataset.bind, was == null ? Math.max(0, d) : Math.max(0, Number(was) + d)); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); } if (/^q\.(FD_FACP_QTY|FD_REP_QTY|FD_BATT_QTY)$/.test(el.dataset.bind || '') && typeof fdsT1Sync === 'function') fdsT1Sync(r); Store.touch(r); return render(); }
     case 'tick': { const k = el.dataset.key, a = r.items[k] || {}; if (a.v === el.dataset.v) delete r.items[k]; else { a.v = el.dataset.v; r.items[k] = a; } Store.touch(r); render();
       if (el.dataset.v === 'X' && r.items[k]) setTimeout(() => { const t = $(`#it-${k.replace(/\./g, '-')} textarea`); if (t) t.focus(); }, 50); return; }
     case 'allok': { const k = el.dataset.form; const n = FORMS[k].items.filter(it => itemMode(r, it) === 'ask' && !itemVal(r, k, it).v).length;
@@ -11659,7 +11686,7 @@ document.addEventListener('input', e => {
   if (kind === 'ir') { const v = parseIR(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); el.classList.toggle('gt', isGT(v)); } }
   else if (kind === 'num1') { const v = parse1(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); }
     if (el.dataset.kpa) { const s = el.parentElement.querySelector('.kpa'); if (s) s.textContent = (v != null && !Number.isNaN(v)) ? '= ' + Math.round(v * 100) + ' kPa' : ''; } }
-  else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); } } }
+  else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); } if (/^q\.(FD_FACP_QTY|FD_REP_QTY|FD_BATT_QTY)$/.test(el.dataset.bind || '') && typeof fdsT1Sync === 'function') fdsT1Sync(r); } }
   else { setP(r, el.dataset.bind, el.value); if (el.tagName === 'TEXTAREA' && el.closest('.why')) el.classList.toggle('need', !el.value.trim()); if (el.tagName === 'INPUT') el.classList.toggle('filled', !!el.value); }
   if (el.dataset.floor) floorHint(el);
   if (typeof sprCoverFloorsLink === 'function' && el.dataset.bind) {
@@ -11683,7 +11710,7 @@ document.addEventListener('change', e => {
   if (el.dataset.floor) { const w = normFloor(el.value); if (w !== el.value) { el.value = w; setP(r, el.dataset.bind, w); if (typeof sprCoverFloorsLink === 'function') sprCoverFloorsLink(r, el.dataset.bind, w); Store.touch(r); } floorHint(el); } // 樓層：離開欄位即補 /F
   if (el.classList.contains('miss') && String(el.value).trim()) el.classList.remove('miss'); // 已填 → 即時除紅
   const b = el.dataset.bind;
-  if (b === 'date' || b.startsWith('block.') || b.startsWith('estate.') || /^q\.(T9)$/.test(b) || /\.loc$/.test(b)) { Store.flush(); render(); }
+  if (b === 'date' || b.startsWith('block.') || b.startsWith('estate.') || /^q\.(T9|SPR_MULTI_SYS|FD_FACP_QTY|FD_REP_QTY|FD_BATT_QTY)$/.test(b) || /\.loc$/.test(b)) { Store.flush(); render(); }
 });
 document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.floor) floorHint(e.target); });
 let lastIR = null; // v0.4.3：快速 >N 掣填返啱啱撳過嘅絕緣電阻格
