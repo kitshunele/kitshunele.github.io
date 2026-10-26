@@ -453,8 +453,11 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.286';
-/* v0.6.286：fds §7.5 管道煙霧偵測器（如有）整段預設不適用（def_skip） */
+const APP_VERSION = '0.6.293';
+/* v0.6.291：fds §7.6.1.m ← T6（冇消防龍頭泵 → 水泵／水缸／燃料缸狀態視像指示器 NA；有→是） */
+/* v0.6.289：fds §7.6.1.h 覆示裝置控制板外置電池／充電器視像指示器 預設 NA（def_v） */
+/* v0.6.288：fds §7.6.1.c 模擬面板（如有）警報指示 預設 NA（def_v；同 1.c） */
+/* v0.6.287：fds 7.6.1.b ← FD_REP（panel 冇 repeater → 覆示裝置控制板警報指示不適用） */
 /* v0.6.285：fds §7.2.n／o 偵測器內置指示燈／遠距顯示燈測試 預設 NA（def_v） */
 /* v0.6.284：fds §7.2.l／m 複合式一氧化碳／火焰感應器測試 預設 NA（def_v） */
 /* v0.6.283：FD_MULTI「有冇 multi 頭」＝冇 → fds §7.2.j＋§7.2.k 複合式煙霧／熱力感應器測試＝NA */
@@ -1804,6 +1807,15 @@ function qFsdMapBuild() {
             }
           });
         }
+        /* v0.6.292：q_def_or = ['or', [cell,ans], …, result] → 任一條件齊先預設 */
+        if (it.q_def_or && it.q_def_or[0] === 'or') {
+          it.q_def_or.slice(1, -1).forEach(p => {
+            if (p && p[0]) {
+              const e = ens(p[0]);
+              (e.defs[sh] || (e.defs[sh] = [])).push(it.k + '(或)');
+            }
+          });
+        }
         if (it.q_untick && it.q_untick[0]) {
           const e = ens(it.q_untick[0]);
           (e.defs[sh] || (e.defs[sh] = [])).push(it.k + '(禁剔)');
@@ -1872,7 +1884,8 @@ const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：�
 /* v0.6.129：it.def_v（如 'NA'）靜態預設；s.q_skip／s.def_skip 部分自動不適用 */
 /* v0.6.134：it.q_def_all = [[cell…], {答:Y/NA}] → 全部 cell 同答先預設（例如 M7+M8 同時冇→2.8.k／2.8.l NA）；優先於單格 q_def */
 /* v0.6.135：a.by=technician|bulk；全部揀是→bulk；舊 a.v 無 by＝legacy。bulk／legacy 同 def_v／q_def（尤其 NA）衝突時跟預設，唔再俾「是」蓋過不適用 */
-/* v0.6.211：it.q_def_and = ['and', [cell,ans], …, result] → 全部條件齊先預設（優先於 q_def_all／q_def；例：數碼是＋isolator冇→N） */
+/* v0.6.211：it.q_def_and = ['and', [cell,ans], …, result] → 全部條件齊先預設（優先於 q_def_or／q_def_all／q_def；例：數碼是＋isolator冇→N） */
+/* v0.6.292：it.q_def_or = ['or', [cell,ans], …, result] → 任一條件齊先預設（喺 q_def_and 之後；例：T6冇或FD_REP冇→NA） */
 /* v0.6.221：it.q_untick = [cell, ans] → 問卷答齊時強制空（by=lock，蓋過 technician；mode y 禁剔） */
 const fsdDefault = (r, c, s, it, M) => {
   if (it.q_untick && r.q[it.q_untick[0]] === it.q_untick[1])
@@ -1881,7 +1894,13 @@ const fsdDefault = (r, c, s, it, M) => {
     const parts = it.q_def_and.slice(1, -1), result = it.q_def_and[it.q_def_and.length - 1];
     if (parts.every(p => p && r.q[p[0]] === p[1]) && result)
       return { v: result, by: 'default' };
-    /* 未齊 → 跌落 q_def_all／q_def */
+    /* 未齊 → 跌落 q_def_or／q_def_all／q_def */
+  }
+  if (it.q_def_or && it.q_def_or[0] === 'or' && it.q_def_or.length >= 3) {
+    const parts = it.q_def_or.slice(1, -1), result = it.q_def_or[it.q_def_or.length - 1];
+    if (parts.some(p => p && r.q[p[0]] === p[1]) && result)
+      return { v: result, by: 'default' };
+    /* 未中 → 跌落 q_def_all／q_def */
   }
   if (it.q_def_all && Array.isArray(it.q_def_all[0])) {
     const cells = it.q_def_all[0], map = it.q_def_all[1] || {};
