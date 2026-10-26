@@ -453,8 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.263';
-/* v0.6.263：F9 下 FD_REP「panel 有冇 repeater？」冇→消防處·偵測 §1.b 覆示裝置控制板＝NA（q_def） */
+const APP_VERSION = '0.6.265';
+/* v0.6.265：F15 或 T6 冇 → fds §2.h 固定消防泵啓動＝NA；§2 a–g 仍只跟 F15 q_skip */
 /* v0.6.262：消防處·偵測 §1.c（模擬面板）預設 NA（def_v；同 FA_DEF_V／TANK_DEF_V） */
 /* v0.6.261：F23「有冇消防直線？」冇→CL-D e 測試消防直線（fire station link）＝NA（na_unless 早已有；補問卷 note／CL-D hint） */
 /* v0.6.260：F9 下 FD_EOL「有冇頭係要用電阻？」冇→CL-D b3＝NA；F10「有冇 stand alone 頭？」冇→CL-D b4＝NA */
