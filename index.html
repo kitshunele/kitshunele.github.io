@@ -453,8 +453,10 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.328';
-/* v0.6.328：預覽火警偵測年檢核對表用 App fds 官方結構頁（4/2025）；唔靠英文 D／扁平紀錄
+const APP_VERSION = '0.6.330';
+/* v0.6.330：FSD 中文核對表紙本一模一樣（字級／欄位／方格／頁邊；fds／fa／fhhr／tank／ws）；spr 留中文 Excel
+   v0.6.329：xFsdChiPages 紙本是／否／不適用三欄（4/2025／4/2022）
+   v0.6.328：預覽火警偵測年檢核對表用 App fds 官方結構頁（4/2025）；唔靠英文 D／扁平紀錄
    v0.6.327：對埋其他 xPlan 閘（水缸 F24／供水 M6／栓轆 F6）；含 0.6.326 偵測壞表 (2) 永遠唔印 */
 /* v0.6.326：HA「Sprinkler checklist (2)」壞表（標題偵測／內文花灑）永遠唔印；偵測跟 App fds 4/2025 */
 /* v0.6.325：PDF xPlan 系統閘 opt-in（要「有」先印）；淨揀偵測唔再夾花灑等 */
@@ -2993,7 +2995,9 @@ function lkDetail(d) {
    v0.6.325 Fan：xPlan 問卷閘改 opt-in（要答「有」先印；未答／冇 → NA），跟 fsdVisible／formVisible；淨揀偵測唔再印花灑等。
    v0.6.326 Fan：Appendix C「Sprinkler checklist（修訂 01 ) (2)」標題係偵測但內文由 §2 起係花灑（HA 範本壞表）→ 永遠唔印；偵測以 App fds／App提交紀錄（4/2025）為準。
    v0.6.327 Fan：對埋其他系統閘——Supply Tanks／Annex B→F24；Water Supplies→M6；各系統跟最新 FSD 通函（App JSON：4/2025／5/2023／9/2021／7/2021／4/2022）。
-   v0.6.328 Fan：預覽「火警偵測系統年檢核對表」改用 App fds（4/2025）官方結構頁；唔再淨係靠英文 HA sheet D／扁平 App提交紀錄。fa 同樣（無中文 Excel）。 */
+   v0.6.328 Fan：預覽「火警偵測系統年檢核對表」改用 App fds（4/2025）官方結構頁；唔再淨係靠英文 HA sheet D／扁平 App提交紀錄。fa 同樣（無中文 Excel）。
+   v0.6.329 Fan：xFsdChiPages 改紙本格式——是／否／不適用 三欄剔格（跟通函 4/2025／4/2022），唔再用單一「結果」欄。
+   v0.6.330 Fan：紙本一模一樣（字擺位／字體大細／行距／欄闊／方格／頁邊／頁尾）— 量度通函 PDF；X_FSD_APP_ONLY 擴至 fhhr／tank／ws；spr 留中文 Excel。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -3464,7 +3468,12 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
 /* ----- 5. 揀邊啲工作表（同 Excel 輸出一樣隱藏另一類檢查；問卷「冇」嘅系統列做 NA） ----- */
 const X_ANNUAL = ['A-1', 'A-2', 'F', 'H1', 'H2-1', 'H2-2', 'K', 'N', 'O', 'Fire Hydrant Hose Reel Systems', 'Supply Tanks', 'Annex A', 'Annex B', 'Sprinkler checklist（修訂 01 )', 'Checklist for Water Supplies', 'Annual Inspection Checklist for'];
 const X_NOPRINT = ['工作表2', '工作表3', 'Sprinkler checklist（修訂 01 ) (2)']; /* v0.6.326 Fan：HA 範本 (2) 標題偵測、內文花灑 → 永遠唔印；偵測用 App fds */
-const X_FSD_APP_ONLY = new Set(['fds', 'fa']); /* v0.6.328：無中文 Excel FSD 表 → 預覽用 App FSD_BY 畫官方結構頁 */
+const X_FSD_APP_ONLY = new Set(['fds', 'fa', 'fhhr', 'tank', 'ws']); /* v0.6.328：fds／fa；v0.6.330：+fhhr／tank／ws（英文 Excel ≠ 中文紙本）；spr 留中文 Excel */
+const X_FSD_APP_SKIP_SHEETS = { /* App 中文紙本頁已畫 → 唔再印對應英文 X_FSD Excel（HA Appendix C 英文短表仍經 CL-D／E 等） */
+  fhhr: ['Fire Hydrant Hose Reel Systems', 'Annex A'],
+  tank: ['Supply Tanks', 'Annex B'],
+  ws: ['Checklist for Water Supplies', 'Annual Inspection Checklist for']
+};
 function xGateOf(n) { /* → [類別, 問卷格 或 表格 key] */
   if (/FS Pump/.test(n)) return ['f', 'C1', 'B', 'T6']; if (/Upfeed Pump/.test(n)) return ['f', 'C1U', 'BU', 'M6']; if (/Sprinkler Pump/.test(n)) return ['f', 'C1S', 'BS', 'AA6'];
   if (/Street Hydrant Pump/.test(n)) return ['q', 'AH7'];
@@ -3632,6 +3641,7 @@ async function fsdLiveRefresh(r) {
       return;
     }
     fsdLiveRevoke();
+    await xHwLoad();
     const pages = [];
     const sink = p => {
       /* live：只留 canvas → JPEG 預覽；唔做 indexed／PDF */
@@ -3715,70 +3725,366 @@ function fsdPdfTablesFlat(tables, o) {
   })(tables || {}, '', false);
   return tb;
 }
-/* v0.6.328 Fan：偵測／火警鐘無中文 Excel → App 結構頁（X_FSD_APP_ONLY 見上） */
+/* v0.6.328 Fan：偵測／火警鐘無中文 Excel → App 結構頁（X_FSD_APP_ONLY 見上）
+   v0.6.329 Fan：紙本欄——是／否／不適用 [✓]／[ ]；結構頁列齊非 auto 項（含預設不適用），贴近通函表
+   v0.6.330 Fan：量度通函 PDF 紙本幾何（A4 直向；字級／頁邊／欄位 X／方格／頁尾）重畫；擴 fhhr／tank／ws */
+const fsdPdfFormRow = a => !!(a && !a.auto); /* 結構頁：跟紙本列齊；扁平 App提交紀錄仍用 fsdPdfNeed */
+const XF_FSD_SERIF = '"PMingLiU","MingLiU","Noto Serif CJK TC","Noto Serif CJK HK","Noto Serif TC",serif';
+/* 紙本幾何（pt；量度 fsd/2025_04／2022_04／2021_09／2021_07 附件頁 OCR bbox） */
+const FSD_PAPER = {
+  W: 595.28, H: 841.89,
+  ML: 42, MR: 36, MT: 34, MB: 40,
+  xId: 76, xText: 96, xYes: 396, xNo: 424, xNa: 459, xRem: 490, xRight: 555,
+  box: 10.5, titleSz: 11, bodySz: 8, smallSz: 7.5, headSz: 8, footSz: 7, letterSz: 9,
+  lh: 11.2, rowGap: 4
+};
+const FSD_PAPER_META = {
+  fds: { annex: '附件', codes: 'fds', seeTable: '主要設備檢查記錄見表一。', foot: '火警偵測系統年檢核對表（消防處通函第 4/2025 號）' },
+  fa: { annex: '附件', codes: 'fds', seeTable: '主要設備檢查記錄見表一。', foot: '火警警報系統年檢核對表（消防處通函第 4/2022 號）' },
+  fhhr: { annex: '附件 A', codes: 'fhhr', seeTable: '消防栓流量和壓力測試記錄見表一。', foot: '消防栓／喉轆系統－年檢核對表（修訂 01，消防處通函第 9/2021 號）' },
+  tank: { annex: '附件 B', codes: 'fhhr', seeTable: '消防水缸的詳情及位置見表一。', foot: '消防水缸年檢核對表（修訂 01，消防處通函第 9/2021 號）' },
+  ws: { annex: '附件', codes: 'ws', seeTable: '設備明細表及測試記錄見表一。', foot: '供水系統年檢核對表（消防處通函第 7/2021 號）' }
+};
+const FSD_CODES = {
+  fds: [
+    '消防處處長公布的《最低限度之消防裝置及設備守則》的適當版本；',
+    '消防處處長公布的《裝置及設備之檢查、測試及保養守則》；',
+    '在該建築物／處所內安裝的系統適用的相關消防處認可標準和規定；以及',
+    '消防處不時公布的相關消防處通函所載規定。'
+  ],
+  fhhr: [
+    '消防處處長公布的《最低限度之消防裝置及設備守則》的適當版本；',
+    '消防處處長公布的《裝置及設備之檢查、測試及保養守則》；',
+    '適用於安裝於該建築物／處所內系統之相關規定；以及',
+    '消防處不時公布的消防處通函之相關規定。'
+  ],
+  ws: null /* ws 用短引言，唔用 (a)–(d) 清單 */
+};
+const FSD_YNNA_COLS = [
+  { t: '項', w: 0.06 },
+  { t: '檢查內容', w: 0.46 },
+  { t: '是', w: 0.08, a: 'c' },
+  { t: '否', w: 0.08, a: 'c' },
+  { t: '不適用', w: 0.10, a: 'c' },
+  { t: '備註', w: 0.22 }
+];
+const FSD_YNNA_OPT = { sz: 13, hwCols: new Set([2, 3, 4, 5]) };
+const fsdPdfBox = on => on ? '[✓]' : '[ ]';
+const fsdPdfYnnaCells = (it, a) => {
+  const r = (a && a.result) || '';
+  const y = r === '是' || r === '✓';
+  const n = r === '否';
+  const na = r === '不適用';
+  return [it.id || '', it.text || (a && a.text) || '', fsdPdfBox(y), fsdPdfBox(n), fsdPdfBox(na), (a && a.remark) || (a && a.optional) || (it.note || '')];
+};
 function xFsdSecVisible(sec, items, cExp, o) {
-  if ((sec.items || []).some(it => fsdPdfNeed(items[it.k]))) return true;
+  if ((sec.items || []).some(it => fsdPdfFormRow(items[it.k]))) return true;
   if (sec.table || sec.id === 'T1' || sec.id === 'T2') {
     if (fsdPdfTablesFlat((cExp && cExp.tables) || {}, o).length) return true;
   }
+  if (sec.skip) return true; /* 紙本有「如不適用，跳往」列 */
   return (sec.subs || []).some(s => xFsdSecVisible(s, items, cExp, o));
 }
-function xFsdChiPages(key, cExp, o, sink) {
+function xFsdPaperPages(key, cExp, o, sink) {
+  const P = FSD_PAPER, meta = FSD_PAPER_META[key] || { annex: '附件', codes: 'fds', seeTable: '', foot: (cExp && cExp.title) || key };
   const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
   const title = (cExp && cExp.title) || (c && c.title) || key;
-  const E = xDoc(sink, title);
-  E.np();
-  E.text(title, { sz: 28, b: 1, after: 2 });
-  E.text(`${(cExp && cExp.circular) || (c && c.circular) || ''}${(cExp && cExp.revision) || (c && c.revision) ? '，' + ((cExp && cExp.revision) || c.revision) : ''}`, { sz: 17, color: '#475569', after: 2 });
-  E.text(`版本 ${(cExp && cExp.version) || (c && c.version) || '—'} · 發出 ${(cExp && cExp.issued) || (c && c.issued) || '—'} · 生效 ${(cExp && cExp.effective) || (c && c.effective) || '—'}`, { sz: 16, color: '#475569', after: 6 });
-  E.text('工作用數位副本（跟 App 消防處核對表）；正式呈交／簽署仍以消防處原表格為準。', { sz: 15, color: '#64748b', after: 10 });
-  const est = o.estate || {}, blk = o.block || {};
-  const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '—';
-  const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
-  E.table([{ t: '項目', w: 0.32 }, { t: '資料', w: 0.68 }], [
-    ['FS 251編號', o.fs251 || '—'],
-    ['完成年檢日期', o.inspection_date || '—'],
-    ['建築物／處所地址', addr],
-    ['註冊消防裝置承辦商參考編號', href || '—'],
-    ['問卷閘', ((cExp && cExp.gate && cExp.gate.cell) || (c && c.gate) || '') + '＝' + ((cExp && cExp.gate && cExp.gate.answer) || '')]
-  ], { sz: 17 });
-  if (cExp && cExp.whole_na) {
-    E.text('已揀整份不適用 → 唔列項目。', { sz: 18, color: '#475569', after: 8 });
-    E.done(); return;
-  }
+  const circ = (cExp && cExp.circular) || (c && c.circular) || '';
+  const K = PDF_K, W = Math.round(P.W * K), H = Math.round(P.H * K);
+  const px = pt => pt * K;
   const items = (cExp && cExp.items) || {};
+  const est = o.estate || {}, blk = o.block || {};
+  const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '';
+  const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
+  const dateStr = o.inspection_date || '';
+  const fs251 = o.fs251 || '';
+
+  let cv, ctx, yPt, pageNo = 0, pages = [], curP = null;
+  const font = (szPt, bold) => { ctx.font = `${bold ? 'bold ' : ''}${px(szPt)}px ${XF_FSD_SERIF}`; };
+  const flush = () => { if (curP && sink) sink(curP); curP = null; };
+  const drawFooter = () => {
+    font(P.footSz, 0); ctx.fillStyle = '#111';
+    const foot = meta.foot || title;
+    ctx.fillText(foot, px(P.ML), H - px(18));
+    const pn = String(pageNo);
+    const tw = ctx.measureText(pn).width;
+    ctx.fillText(pn, W - px(P.MR) - tw, H - px(18));
+  };
+  const np = () => {
+    flush();
+    pageNo++;
+    cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = 'alphabetic';
+    yPt = P.MT;
+    curP = { cv, land: false, sheet: title };
+    pages.push(curP);
+    /* 續頁只畫居中標題（跟紙本內頁） */
+    if (pageNo > 1) {
+      font(P.titleSz, 1); ctx.fillStyle = '#111';
+      const tw = ctx.measureText(title).width;
+      ctx.fillText(title, (W - tw) / 2, px(yPt + P.titleSz));
+      yPt += P.titleSz + 10;
+      /* 欄頭：是／否／不適用／備註 */
+      drawColHeads();
+    }
+  };
+  const ensure = needPt => {
+    if (!cv || yPt + needPt > P.H - P.MB - 8) {
+      if (cv) drawFooter();
+      np();
+    }
+  };
+  const drawDots = (x0, x1, yBaseline) => {
+    ctx.strokeStyle = '#333'; ctx.lineWidth = Math.max(0.6, px(0.4));
+    ctx.beginPath(); ctx.moveTo(px(x0), px(yBaseline + 1.5)); ctx.lineTo(px(x1), px(yBaseline + 1.5)); ctx.stroke();
+  };
+  const wrap = (t, maxWpt, szPt) => {
+    font(szPt, 0);
+    const maxW = px(maxWpt);
+    const out = [];
+    String(t || '').split(/\n/).forEach(par => {
+      const toks = par.match(/[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000-\u303F]|[^\s\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000-\u303F]+\s*|\s+/g) || [''];
+      let line = '';
+      toks.forEach(tk => {
+        const tst = line + tk;
+        if (line && ctx.measureText(tst.replace(/\s+$/, '')).width > maxW) { out.push(line.replace(/\s+$/, '')); line = tk.replace(/^\s+/, ''); }
+        else line = tst;
+      });
+      out.push(line.replace(/\s+$/, ''));
+    });
+    return out.filter((l, i, a) => l || i === a.length - 1);
+  };
+  const textAt = (t, xPt, baselinePt, szPt, bold) => {
+    font(szPt, bold); ctx.fillStyle = '#111';
+    ctx.fillText(String(t || ''), px(xPt), px(baselinePt));
+  };
+  const drawBox = (xPt, yTopPt, on, seed) => {
+    const s = P.box, x = px(xPt), y = px(yTopPt), b = px(s);
+    ctx.strokeStyle = '#111'; ctx.lineWidth = Math.max(0.8, px(0.55));
+    ctx.strokeRect(x, y, b, b);
+    if (on) {
+      if (XHW_OK) xHwTick(ctx, [x, y, x + b, y + b], xHwSeed(seed || ('box:' + xPt + ':' + yTopPt)));
+      else {
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = Math.max(1.2, px(0.9));
+        ctx.beginPath();
+        ctx.moveTo(x + b * 0.15, y + b * 0.55);
+        ctx.lineTo(x + b * 0.42, y + b * 0.78);
+        ctx.lineTo(x + b * 0.85, y + b * 0.22);
+        ctx.stroke();
+      }
+    }
+  };
+  const drawColHeads = () => {
+    font(P.headSz, 0); ctx.fillStyle = '#111';
+    const base = yPt + P.headSz;
+    const heads = [[P.xYes, '是'], [P.xNo, '否'], [P.xNa, '不適用'], [P.xRem, '備註']];
+    heads.forEach(([x, t]) => {
+      const tw = ctx.measureText(t).width;
+      const cx = px(x) + px(P.box) / 2 - tw / 2;
+      ctx.fillText(t, t === '備註' || t === '不適用' ? px(x) : cx, px(base));
+    });
+    yPt = base + 4;
+  };
+
+  /* —— 首頁頭 —— */
+  np();
+  /* 附件 */
+  font(P.bodySz + 0.5, 0); ctx.fillStyle = '#111';
+  const annex = meta.annex || '附件';
+  ctx.fillText(annex, W - px(P.MR) - ctx.measureText(annex).width, px(yPt + P.bodySz));
+  yPt += P.bodySz + 6;
+  /* 標題置中 */
+  font(P.titleSz, 1);
+  let tw = ctx.measureText(title).width;
+  ctx.fillText(title, (W - tw) / 2, px(yPt + P.titleSz));
+  yPt += P.titleSz + 8;
+  /* 承辦商編號（右） */
+  font(P.smallSz, 0);
+  const crefLab = '註冊消防裝置承辦商參考編號：';
+  const crefX = P.xYes - 20;
+  textAt(crefLab, crefX, yPt + P.smallSz, P.smallSz, 0);
+  const crefLabW = ctx.measureText(crefLab).width / K;
+  drawDots(crefX + crefLabW + 2, P.xRight, yPt + P.smallSz);
+  if (href) {
+    if (XHW_OK) xHwText(ctx, href, px(crefX + crefLabW + 4), px(yPt + P.smallSz), px(P.smallSz), xHwSeed('cref:' + key), px(80));
+    else textAt(href, crefX + crefLabW + 4, yPt + P.smallSz, P.smallSz, 0);
+  }
+  yPt += P.smallSz + 10;
+  /* FS251／日期／地址（紙本常見順序；ws／fds／fa 齊） */
+  const field = (lab, val, full) => {
+    font(P.bodySz, 0); ctx.fillStyle = '#111';
+    textAt(lab, P.ML, yPt + P.bodySz, P.bodySz, 0);
+    const lw = ctx.measureText(lab).width / K;
+    const x1 = full ? P.xRight : Math.min(P.ML + lw + 140, P.xRight);
+    drawDots(P.ML + lw + 2, x1, yPt + P.bodySz);
+    if (val) {
+      if (XHW_OK) xHwText(ctx, val, px(P.ML + lw + 4), px(yPt + P.bodySz), px(P.bodySz), xHwSeed('fld:' + lab + key), px(x1 - P.ML - lw - 6));
+      else textAt(val, P.ML + lw + 4, yPt + P.bodySz, P.bodySz, 0);
+    }
+    yPt += P.bodySz + 6;
+  };
+  field('FS251編號：', fs251, false);
+  field('完成年檢日期：', dateStr, false);
+  field('建築物／處所地址：', addr, true);
+  yPt += 4;
+  /* 守則／引言 */
+  if (meta.codes === 'ws') {
+    const intro = '年檢按《最低限度之消防裝置及設備守則》與《裝置及設備之檢查、測試及保養守則》的適當版本及適用於安裝在建築物／處所內系統的相關規定進行。本核對表內所有適用項目已根據規定檢查及／或測試。';
+    wrap(intro, P.W - P.ML - P.MR, P.bodySz).forEach(l => { ensure(P.lh); textAt(l, P.ML, yPt + P.bodySz, P.bodySz, 0); yPt += P.lh; });
+    yPt += 4;
+  } else {
+    const codes = FSD_CODES[meta.codes] || FSD_CODES.fds;
+    textAt(meta.codes === 'fhhr' ? '年檢按下列要求進行：' : '年檢按照下述守則／規定進行：', P.ML, yPt + P.bodySz, P.bodySz, 0);
+    yPt += P.bodySz + 4;
+    codes.forEach((line, i) => {
+      const lab = '(' + String.fromCharCode(97 + i) + ')';
+      ensure(P.lh);
+      textAt(lab, P.ML, yPt + P.bodySz, P.smallSz, 0);
+      wrap(line, P.W - P.ML - P.MR - 18, P.bodySz).forEach((l, j) => {
+        ensure(P.lh);
+        textAt(l, P.ML + 18, yPt + P.bodySz, P.bodySz, 0);
+        yPt += P.lh;
+      });
+    });
+    yPt += 4;
+  }
+  if (meta.seeTable) {
+    ensure(P.lh + 2);
+    textAt(meta.seeTable, P.ML, yPt + P.bodySz, P.bodySz, 0);
+    yPt += P.bodySz + 8;
+  }
+  /* 備註說明（紙本頁底常見；放頭段後短註） */
+  font(P.smallSz, 0);
+  const legend = '備註：「是」表示符合消防處的要求；「否」表示不符合消防處的要求；「不適用」表示該欄之項目不適用或系統內不須裝設此項目。請在適當方格內加上「✓」號。';
+  wrap(legend, P.W - P.ML - P.MR, P.smallSz).forEach(l => { ensure(P.lh); textAt(l, P.ML, yPt + P.smallSz, P.smallSz, 0); yPt += P.lh - 1; });
+  yPt += 6;
+
+  if (cExp && cExp.whole_na) {
+    ensure(20);
+    textAt('已揀整份不適用 → 唔列項目。', P.ML, yPt + P.bodySz, P.bodySz, 0);
+    drawFooter(); flush(); return;
+  }
+
+  const paintItem = (it, a) => {
+    const mode = it.mode || (a && a.tick_only ? 'y' : 'ynn');
+    const text = it.text || (a && a.text) || '';
+    const rem = (a && a.remark) || (a && a.optional) || it.note || '';
+    const r = (a && a.result) || '';
+    const onY = r === '是' || r === '✓';
+    const onN = r === '否';
+    const onNa = r === '不適用';
+    const textW = (mode === 'y' ? P.xYes : P.xYes) - P.xText - 4;
+    const lines = wrap(text, textW, P.bodySz);
+    const remLines = rem ? wrap(rem, P.xRight - P.xRem, P.smallSz) : [];
+    const boxTop = 1.5;
+    const h = Math.max(lines.length * P.lh, remLines.length * (P.lh - 1), P.box + 4) + P.rowGap;
+    ensure(h + 2);
+    const y0 = yPt;
+    /* 項號 */
+    textAt((it.id || '') + (it.id ? '.' : ''), P.xId, y0 + P.letterSz, P.letterSz, 0);
+    /* 內容 */
+    lines.forEach((l, i) => textAt(l, P.xText, y0 + P.bodySz + i * P.lh, P.bodySz, 0));
+    /* 方格 */
+    if (mode === 'y') {
+      drawBox(P.xYes, y0 + boxTop, onY, key + ':' + it.k + ':y');
+    } else {
+      drawBox(P.xYes, y0 + boxTop, onY, key + ':' + it.k + ':y');
+      drawBox(P.xNo, y0 + boxTop, onN, key + ':' + it.k + ':n');
+      drawBox(P.xNa, y0 + boxTop, onNa, key + ':' + it.k + ':na');
+    }
+    remLines.forEach((l, i) => textAt(l, P.xRem, y0 + P.smallSz + i * (P.lh - 1), P.smallSz, 0));
+    yPt = y0 + h;
+  };
+
   const paintSec = (s, dep) => {
     if (!xFsdSecVisible(s, items, cExp, o)) return;
     const rows = [];
-    (s.items || []).forEach(it => {
-      const a = items[it.k];
-      if (!fsdPdfNeed(a)) return;
-      rows.push([it.id || '', it.text || (a && a.text) || '', (a && a.result) || (it.mode === 'y' ? '' : '—'), (a && a.remark) || (a && a.optional) || '']);
-    });
-    E.text(s.title || s.id, { sz: dep === 0 ? 22 : 19, b: 1, after: 2, ind: dep * 10 });
-    if (s.note && dep === 0) E.text(s.note, { sz: 14, color: '#64748b', after: 4, ind: dep * 10 });
-    if (rows.length) {
-      E.table([{ t: '項', w: 0.08 }, { t: '檢查內容', w: 0.58 }, { t: '結果', w: 0.12, a: 'c' }, { t: '備註', w: 0.22 }], rows, {
-        sz: 14, hwCols: new Set([2, 3]),
-        color: (r, i) => i === 2 ? (r[2] === '否' ? { c: '#b91c1c', b: 1 } : (r[2] === '是' || r[2] === '✓') ? { c: '#15803d', b: 1 } : null) : null
-      });
+    (s.items || []).forEach(it => { if (fsdPdfFormRow(items[it.k])) rows.push(it); });
+    ensure(P.lh + 10);
+    /* 欄頭（每段開始） */
+    if (dep === 0 || !rows.length || s.subs) {
+      /* section title line with optional skip box */
+      font(P.bodySz, 1);
+      const st = s.title || s.id || '';
+      textAt(st, P.ML + (dep ? 8 : 0), yPt + P.bodySz, P.bodySz, 1);
+      if (s.skip) {
+        const lab = s.skip_label || '如不適用，跳往下項';
+        drawBox(P.xNa, yPt + 1, !!(items && false), key + ':sec:' + s.id); /* 整段 skip 狀態唔喺 items；留空格 */
+        textAt(lab, P.xRem, yPt + P.smallSz, P.smallSz, 0);
+      }
+      yPt += P.bodySz + 3;
+      if (s.note && dep === 0) {
+        wrap(s.note, P.xYes - P.ML - 8, P.smallSz).forEach(l => { ensure(P.lh); textAt(l, P.ML + 8, yPt + P.smallSz, P.smallSz, 0); yPt += P.lh - 1; });
+        yPt += 2;
+      }
+      drawColHeads();
+    } else {
+      font(P.bodySz, 1);
+      textAt(s.title || s.id || '', P.ML + dep * 8, yPt + P.bodySz, P.bodySz, 1);
+      yPt += P.bodySz + 2;
     }
+    rows.forEach(it => paintItem(it, items[it.k]));
     const hasTab = !!(s.table || s.id === 'T1' || s.id === 'T2');
     if (hasTab) {
       const tb = fsdPdfTablesFlat((cExp && cExp.tables) || {}, o);
-      if (tb.length) { E.text('表格讀數', { sz: 17, b: 1, after: 2 }); E.table([{ t: '欄', w: 0.5 }, { t: '值', w: 0.5 }], tb, { sz: 14, hwCols: new Set([1]) }); }
+      if (tb.length) {
+        ensure(P.lh * 2);
+        textAt(s.title && /表/.test(s.title) ? s.title : '表一／表二讀數', P.ML, yPt + P.bodySz, P.bodySz, 1);
+        yPt += P.bodySz + 4;
+        tb.forEach(pair => {
+          ensure(P.lh);
+          textAt(String(pair[0]), P.ML, yPt + P.bodySz, P.smallSz, 0);
+          const val = String(pair[1] || '');
+          if (XHW_OK) xHwText(ctx, val, px(P.ML + 160), px(yPt + P.bodySz), px(P.bodySz), xHwSeed('tb:' + pair[0]), px(200));
+          else textAt(val, P.ML + 160, yPt + P.bodySz, P.bodySz, 0);
+          yPt += P.lh;
+        });
+        yPt += 4;
+      }
     }
-    (s.subs || []).forEach(k => paintSec(k, dep + 1));
+    (s.subs || []).forEach(sub => paintSec(sub, dep + 1));
   };
+
   if (c && c.sections) c.sections.forEach(s => paintSec(s, 0));
   else {
-    const rows = Object.keys(items).filter(k => fsdPdfNeed(items[k])).sort().map(k => {
-      const a = items[k]; return [k, a.text || '', a.result || (a.tick_only ? '' : '—'), a.remark || (a.optional || '')];
+    drawColHeads();
+    Object.keys(items).filter(k => fsdPdfFormRow(items[k])).sort().forEach(k => {
+      const a = items[k];
+      paintItem({ k, id: k, text: a.text || '', mode: a.tick_only ? 'y' : 'ynn' }, a);
     });
-    if (rows.length) E.table([{ t: '項', w: 0.1 }, { t: '檢查內容', w: 0.56 }, { t: '結果', w: 0.12, a: 'c' }, { t: '備註', w: 0.22 }], rows, { sz: 14, hwCols: new Set([2, 3]) });
-    else E.text('（呢份核對表冇需要填寫嘅項目）', { sz: 17, color: '#475569', after: 6 });
   }
-  E.done();
+
+  /* 簽署區（跟紙本） */
+  ensure(110);
+  yPt += 10;
+  textAt('註冊消防裝置承辦商的獲授權簽署證書人士：', P.ML, yPt + P.bodySz, P.bodySz, 0);
+  yPt += P.bodySz + 16;
+  drawDots(P.ML + 40, P.ML + 220, yPt);
+  drawDots(P.ML + 260, P.ML + 420, yPt);
+  textAt('（全名）', P.ML + 100, yPt + P.smallSz + 4, P.smallSz, 0);
+  textAt('（簽署）', P.ML + 310, yPt + P.smallSz + 4, P.smallSz, 0);
+  yPt += P.smallSz + 18;
+  drawDots(P.ML + 40, P.ML + 220, yPt);
+  textAt('（日期）', P.ML + 100, yPt + P.smallSz + 4, P.smallSz, 0);
+  yPt += P.smallSz + 16;
+  textAt('註冊消防裝置承辦商：', P.ML, yPt + P.bodySz, P.bodySz, 0);
+  yPt += P.bodySz + 16;
+  drawDots(P.ML + 40, P.ML + 220, yPt);
+  drawDots(P.ML + 260, P.ML + 420, yPt);
+  textAt('（消防處／註冊編號）', P.ML + 70, yPt + P.smallSz + 4, P.smallSz, 0);
+  textAt('（公司名稱）', P.ML + 300, yPt + P.smallSz + 4, P.smallSz, 0);
+  yPt += P.smallSz + 18;
+  drawDots(P.ML + 160, P.ML + 340, yPt);
+  textAt('（公司印章）', P.ML + 210, yPt + P.smallSz + 4, P.smallSz, 0);
+
+  drawFooter();
+  flush();
+  /* 補頁碼 n/m：sink 已收走 canvas，頁碼用 …；正式 preview 腳有 PDF_FOOT。紙本脚已寫 n/… */
+}
+function xFsdChiPages(key, cExp, o, sink) {
+  /* v0.6.330：統一走紙本幾何畫頁 */
+  xFsdPaperPages(key, cExp, o, sink);
 }
 
 async function xBuildPages(o, opt, prog) {
@@ -3812,10 +4118,10 @@ async function xBuildPages(o, opt, prog) {
   if (plan.na.length) { D.text('唔適用（NA，冇印）', { sz: 24, b: 1, after: 2 }); D.table([{ t: '工作表', w: 0.42 }, { t: '原因', w: 0.58 }], plan.na, { sz: 17 }); }
   D.text(`另一類檢查（${plan.half ? '年檢' : '半年檢'}）嘅工作表唔包括，同 Excel 輸出一樣。`, { sz: 17, color: '#475569' });
   D.text('註：呢份係 App 按範本版面畫出嚟嘅預覽，範本公式由 App 計；正式版以公司電腦 import_submission.py 出嘅 Excel 為準。', { sz: 17, color: '#475569' });
-  D.text('註：工作表 D／E＝房署 Checklist（英文短表）。消防處《火警偵測／火警警報系統年檢核對表》用後面 App 繪製頁（跟通函 4/2025／4/2022）；唔再印壞 Excel「(2)」。', { sz: 16, color: '#475569' });
+  D.text('註：工作表 D／E／K 等＝房署 Checklist（英文短表，唔當消防處紙本）。消防處中文年檢核對表用後面 App 紙本頁（fds／fa／fhhr／tank／ws；字級／欄位／方格跟通函 PDF）；花灑仍用中文 Excel「Sprinkler checklist」。唔再印壞 Excel「(2)」同英文 X_FSD 栓轆／水缸／供水表。', { sz: 15, color: '#475569' });
   D.done();
-  /* 消防處核對表（無中文 Excel 嘅系統：封面後、房署 Excel 前，避免 Fan 先睇到英文 D／E 當官方表）
-     v0.6.328：fds／fa → App 官方結構頁；其餘系統仍有 X_FSD 中文 Excel，扁平 App提交紀錄喺後 */
+  /* 消防處核對表（封面後、房署 Excel 前）
+     v0.6.328：fds／fa App 頁；v0.6.330：+fhhr／tank／ws 紙本幾何頁；spr 留中文 Excel；扁平 App提交紀錄只其餘 */
   const fsdKeys = Object.keys(o.fsd_checklists || {}).filter(k => o.fsd_checklists[k] && o.fsd_checklists[k].applicable);
   for (let i = 0; i < fsdKeys.length; i++) {
     const k = fsdKeys[i]; if (!X_FSD_APP_ONLY.has(k)) continue;
@@ -3823,12 +4129,16 @@ async function xBuildPages(o, opt, prog) {
     await new Promise(r => setTimeout(r, 0));
     xFsdChiPages(k, o.fsd_checklists[k], o, sink);
   }
-  /* 範本工作表（房署 Appendix C；D／E＝英文短表，唔係消防處年檢核對表） */
-  for (let i = 0; i < plan.inc.length; i++) { const n = plan.inc[i]; if (prog) prog(`畫緊 ${n}（${i + 1}／${plan.inc.length}）…`);
+  /* 範本工作表（房署 Appendix C；D／E＝英文短表；英文 X_FSD 栓轆／水缸／供水若已有 App 中文紙本頁 → 跳過） */
+  const skipSheets = new Set();
+  fsdKeys.forEach(k => { if (X_FSD_APP_ONLY.has(k) && X_FSD_APP_SKIP_SHEETS[k]) X_FSD_APP_SKIP_SHEETS[k].forEach(n => skipSheets.add(n)); });
+  for (let i = 0; i < plan.inc.length; i++) {
+    const n = plan.inc[i]; if (skipSheets.has(n)) continue;
+    if (prog) prog(`畫緊 ${n}（${i + 1}／${plan.inc.length}）…`);
     await new Promise(r => setTimeout(r, 0));
     await xSheetPages(XL_BY[n], B, { dateText: o.inspection_date || '', sink }); }
   const fsdFlat = fsdKeys.filter(k => !X_FSD_APP_ONLY.has(k)).map(k => Object.assign({ key: k }, o.fsd_checklists[k]));
-  if (fsdFlat.length) { const E = xDoc(sink, 'App提交紀錄'); E.np(); E.text('消防處年檢核對表（App 記錄）', { sz: 30, b: 1, after: 2 }); E.text('只顯示需要填寫嘅項目（不適用／略過唔列）。偵測／火警鐘已用官方結構頁；其餘系統 Excel「App提交紀錄」仍保留完整紀錄。', { sz: 18, color: '#475569', after: 10 });
+  if (fsdFlat.length) { const E = xDoc(sink, 'App提交紀錄'); E.np(); E.text('消防處年檢核對表（App 記錄）', { sz: 30, b: 1, after: 2 }); E.text('只顯示需要填寫嘅項目（不適用／略過唔列）。fds／fa／fhhr／tank／ws 已用通函紙本頁；其餘（如花灑）Excel 中文表為準，呢度保留 App 完整紀錄。', { sz: 18, color: '#475569', after: 10 });
     fsdFlat.forEach(c => {
       E.text(`${c.title}${c.whole_na ? '（整份不適用）' : ''}`, { sz: 24, b: 1, after: 0 }); E.text(`${c.circular || ''} ${c.revision || ''}`, { sz: 17, color: '#475569', after: 4 });
       if (c.whole_na) { E.text('已揀整份不適用 → 唔列項目。', { sz: 17, color: '#475569', after: 8 }); return; }
