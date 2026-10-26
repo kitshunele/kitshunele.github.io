@@ -453,8 +453,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.333';
-/* v0.6.333：疊剔藍色大 V 字剔（#1565C0）
+const APP_VERSION = '0.6.334';
+/* v0.6.334：疊剔每剔自然微變（seed PRNG）
+   v0.6.333：疊剔藍色大 V 字剔（#1565C0）
    v0.6.332：消防處原 PDF 疊剔（fds／fa／fhhr／tank）；ws 暫紙本；spr Excel；Fan 禁止自畫紙本主路徑
    v0.6.329：xFsdChiPages 紙本是／否／不適用三欄（4/2025／4/2022）
    v0.6.328：預覽火警偵測年檢核對表用 App fds 官方結構頁（4/2025）；唔靠英文 D／扁平紀錄
@@ -3001,7 +3002,8 @@ function lkDetail(d) {
    v0.6.331 Fan：紙本表框直綫／續頁欄頭唔喺段內重複／「如不適用，跳過此項」／頁脚 n/m；欄位跟 4/2025 bbox 再校。
    v0.6.330 Fan：紙本一模一樣（字擺位／字體大細／行距／欄闊／方格／頁邊／頁尾）— 量度通函 PDF；X_FSD_APP_ONLY 擴至 fhhr／tank／ws；spr 留中文 Excel。
    v0.6.332 Fan：停自畫紙本；fds／fa／fhhr／tank 用消防處原 PDF（fsd_blank/）＋ tickmaps 疊剔；ws 暫回退紙本（多欄表）；spr 仍中文 Excel。
-   v0.6.333 Fan：疊剔改藍色大 V 字剔（#1565C0），唔用細綠 ✓。 */
+   v0.6.333 Fan：疊剔改藍色大 V 字剔（#1565C0），唔用細綠 ✓。
+   v0.6.334 Fan：每剔 seed PRNG 微抖（角度／臂／線寬／位移）→ 自然唔一樣。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -4142,34 +4144,52 @@ async function fsdLoadBlankPdf(key, rel) {
   return pdf;
 }
 function fsdDrawTickOv(ctx, box, scale, seed) {
-  /* v0.6.333 Fan：藍色、大啲、手寫 V 字剔（短左臂＋長右臂）；唔用細綠 ✓／xHwTick 黑墨 */
+  /* v0.6.334 Fan：藍大 V；每剔用 seed PRNG 微抖（角度／臂長／線寬／位移）→ 自然唔克隆 */
   if (!box) return;
+  const rnd = (typeof xHwRng === 'function')
+    ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ov:' + box.x + ':' + box.y))) : xHwSeed(String(seed || box.x)))
+    : (() => { let n = 0; return () => { n = (n * 1103515245 + 12345) >>> 0; return (n >>> 8) / 16777216; }; })();
+  const u = () => rnd() - 0.5;
   const boxS = (box.s || 9.5) * scale;
-  const s = boxS * 1.85; /* 比 OCR 格大 */
-  const cx = box.x * scale, cy = box.y * scale;
-  let h = 0;
-  if (seed && typeof xHwRng === 'function') {
-    const rnd = xHwRng(typeof xHwSeed === 'function' ? xHwSeed(seed) : String(seed));
-    h = (rnd() - 0.5) * 0.12; /* 輕微傾斜 */
-  }
-  /* V：左短臂落到谷底，右長臂向上拉开 */
-  const x0 = cx - s * 0.38, y0 = cy - s * 0.08;
-  const xv = cx - s * 0.06, yv = cy + s * 0.42;
-  const x1 = cx + s * 0.48, y1 = cy - s * 0.48;
+  const s = boxS * (1.7 + rnd() * 0.35); /* 大細微變 */
+  const cx = box.x * scale + u() * boxS * 0.22;
+  const cy = box.y * scale + u() * boxS * 0.18;
+  const h = u() * 0.22; /* ±~6° */
+  /* V 基準：短左臂＋長右臂；臂長／谷位微變 */
+  const x0 = cx - s * (0.34 + rnd() * 0.10), y0 = cy + s * (-0.12 + u() * 0.10);
+  const xv = cx + s * (-0.10 + u() * 0.10), yv = cy + s * (0.36 + rnd() * 0.14);
+  const x1 = cx + s * (0.42 + rnd() * 0.14), y1 = cy - s * (0.40 + rnd() * 0.16);
   const rot = (x, y) => {
     const dx = x - cx, dy = y - cy;
     return [cx + dx * Math.cos(h) - dy * Math.sin(h), cy + dx * Math.sin(h) + dy * Math.cos(h)];
   };
-  const A = rot(x0, y0), V = rot(xv, yv), E = rot(x1, y1);
+  const A = rot(x0, y0), Vpt = rot(xv, yv), E = rot(x1, y1);
+  /* 輕微弧：quadratic 中點偏移，似手寫 */
+  const bendL = u() * s * 0.06, bendR = u() * s * 0.08;
+  const mid = (p, q, b) => {
+    const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+    const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1;
+    return [mx - dy / L * b, my + dx / L * b];
+  };
+  const c1 = mid(A, Vpt, bendL), c2 = mid(Vpt, E, bendR);
+  const wd = Math.max(2.8, s * (0.13 + rnd() * 0.07));
   ctx.save();
   ctx.strokeStyle = '#1565C0';
-  ctx.lineWidth = Math.max(3.2, s * 0.16);
+  ctx.lineWidth = wd;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.beginPath();
   ctx.moveTo(A[0], A[1]);
-  ctx.lineTo(V[0], V[1]);
-  ctx.lineTo(E[0], E[1]);
+  ctx.quadraticCurveTo(c1[0], c1[1], Vpt[0], Vpt[1]);
+  ctx.quadraticCurveTo(c2[0], c2[1], E[0], E[1]);
   ctx.stroke();
+  /* 偶發右臂加重一撇（手寫習慣） */
+  if (rnd() < 0.45) {
+    ctx.lineWidth = Math.max(2.0, wd * 0.62);
+    ctx.beginPath();
+    ctx.moveTo(Vpt[0], Vpt[1]);
+    ctx.quadraticCurveTo(c2[0], c2[1], E[0] + u() * s * 0.04, E[1] + u() * s * 0.04);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
