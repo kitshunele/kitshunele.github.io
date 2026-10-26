@@ -453,7 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.323';
+const APP_VERSION = '0.6.324';
+/* v0.6.324：提交 PDF 整套 checklist 只顯示需要填寫嘅消防處項目（跟 auto／q_def／def_skip／whole_na） */
 /* v0.6.323：問卷 FD_FACP／REP／BATT_QTY 下即時開 N 填位（同表一）；inc 同步 fdsT1Sync */
 /* v0.6.322：表一‧1／2／4 跟數量開 N 行；拆 321 表一‧5／6；FD_SMOKE／FD_HEAT yn 留 */
 /* v0.6.321：（已廢）表一‧5／6 煙霧／熱力數量 — FAN t868u／t869u 不用 */
@@ -2941,12 +2942,15 @@ function lkDetail(d) {
       return `<tr><td>${esc(id)}</td><td>${esc(def.zh || def.en || '')}${a.reason ? `<div class="why2">原因：${esc(a.reason)}</div>` : ''}${a.auto ? '<div class="mut">（自動）</div>' : ''}${a.measure ? `<div class="mut">讀數見 ${esc(a.measure)}</div>` : ''}${a.input ? `<div class="mut">${a.value != null ? '數值：' + esc(String(a.value)) + ' ' + esc(a.unit || '') : '（留空）'}</div>` : ''}</td><td>${lkRes(a.result)}</td></tr>`; }).join('');
     return sec(esc(F.title) + (o.forms[k].auto ? '（自動）' : ''), `<table class="rot">${rows}</table>`);
   }).join('');
+  /* v0.6.324：查找詳情消防處表跟 PDF——只列需要填寫（auto／預設不適用唔列；whole_na 只留說明） */
   const fsd = Object.keys(o.fsd_checklists || {}).filter(k => o.fsd_checklists[k].applicable).map(k => {
     const c = o.fsd_checklists[k], items = c.items || {};
-    const rows = Object.keys(items).map(key => { const a = items[key];
-      if (a.result === '否') follow.push([c.title + ' ' + key, a.text || '', a.remark || '']);
+    Object.keys(items).forEach(key => { const a = items[key]; if (a.result === '否') follow.push([c.title + ' ' + key, a.text || '', a.remark || '']); });
+    if (c.whole_na) return sec(esc(c.title) + '（整份不適用）', `<div class="mut">${esc(c.circular || '')}</div><div class="mut">已揀整份不適用 → 唔列項目。</div>`);
+    const rows = Object.keys(items).filter(key => typeof fsdPdfNeed === 'function' ? fsdPdfNeed(items[key]) : !(items[key].auto || (items[key].result === '不適用' && items[key].set_by === 'default'))).map(key => { const a = items[key];
       return `<tr><td>${esc(key)}</td><td>${esc(a.text || '')}${a.remark ? `<div class="why2">備註：${esc(a.remark)}</div>` : ''}${a.optional ? `<div class="mut">${esc(a.optional)}</div>` : ''}</td><td>${lkRes(a.result)}</td></tr>`; }).join('');
-    return sec(esc(c.title) + (c.whole_na ? '（整份不適用）' : ''), `<div class="mut">${esc(c.circular || '')}</div><table class="rot">${rows}</table>${Object.keys(c.tables || {}).length ? '<h4>表格讀數</h4>' + lkKv(lkFlat(c.tables)) : ''}`);
+    const tb = typeof fsdPdfTablesFlat === 'function' ? fsdPdfTablesFlat(c.tables, o) : lkFlat(c.tables);
+    return sec(esc(c.title), `<div class="mut">${esc(c.circular || '')} · 只顯示需要填寫</div><table class="rot">${rows || '<tr><td colspan="3" class="mut">（冇需要填寫嘅項目）</td></tr>'}</table>${tb.length ? '<h4>表格讀數</h4>' + lkKv(tb) : ''}`);
   }).join('');
   const q = o.questionnaire || {}, rd = o.readings || {}, c2 = rd.tr_c2 || {}, c2u = rd.tr_c2_upfeed || {}, c2s = rd.tr_c2_sprinkler || {}, h2 = rd.tr_h2 || {};
   const c2h = src => Object.keys(src).map(k => { const x = Object.assign({}, src[k]), lab = x.label || k; delete x.label; delete x.part; delete x.kind; return `<h4>${esc(lab)}</h4>` + lkKv(lkFlat(x)); }).join('');
@@ -2979,7 +2983,8 @@ function lkDetail(d) {
    只係預覽：正式版以 Excel（公司電腦 import_submission.py 出）為準。
    v0.6.228／0.6.231：消防處年檢核對表模擬手寫；0.6.231 是／否／不適用 [ ] 框保留、剔入框內（跟 make.py）。
    v0.6.234：每份選擇表最底各自實時 PDF；basic＝CL-A A-1／A-2。
-   v0.6.239：A-1／A-2 改掛 CL-A tab（唔再 basic）。 */
+   v0.6.239：A-1／A-2 改掛 CL-A tab（唔再 basic）。
+   v0.6.324 Fan：提交 PDF「App提交紀錄」消防處項只列需要填寫（跟 fsdExport auto／q_def／def_skip／whole_na；表一‧3／FD_REP‧2／na 來源唔列）。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -3602,6 +3607,27 @@ function xDoc(sink, sheet) { /* sink：每頁畫完即刻轉 JPEG、放走 canva
   return { np, text, table, img, pages, done: flush, gap: h => { y += h; }, get y() { return y; } };
 }
 const xItype = o => o.inspection_type === 'half_yearly' ? '半年檢 Half-yearly' : o.inspection_type === 'annual' ? '年檢 Annual' : (o.inspection_type_zh || '年檢 Annual（舊紀錄冇註明）');
+/* v0.6.324 Fan：PDF／預覽只顯示需要填寫嘅消防處項目（跟 App fsdExport 既有 skip／NA 狀態，唔另造規則）
+   隱藏：auto（q_skip／def_skip／section／link／parent／off／notank）、q_def／def_v 預設「不適用」（set_by=default）、whole_na 整份（只留一行說明）
+   表讀數：na:true 來源、表一‧3（def_skip）、FD_REP≠有 嘅‧2 行 */
+const fsdPdfNeed = a => !!(a && !a.auto && !(a.result === '不適用' && a.set_by === 'default'));
+const fsdPdfQAns = (o, cell) => { const x = (o.questionnaire || {})[cell]; return x && typeof x === 'object' ? x.a : x; };
+function fsdPdfTablesFlat(tables, o) {
+  const tb = [];
+  const skipFds = k => { const g = String(k).split('.')[0]; if (g === '3') return true; if (g === '2' && fsdPdfQAns(o, 'FD_REP') !== '有') return true; return false; };
+  (function fl(v, pre, inFds) {
+    if (v === null || v === undefined || v === '') return;
+    if (typeof v !== 'object') { tb.push([pre, String(v)]); return; }
+    if (v.na === true) return;
+    if (Array.isArray(v)) { v.forEach((x, i) => fl(x, (pre ? pre + ' ' : '') + '#' + (i + 1), inFds)); return; }
+    Object.keys(v).forEach(k => {
+      if (k === 'na' || k === 'why') return;
+      if (inFds && skipFds(k)) return;
+      fl(v[k], pre ? pre + '.' + k : k, k === 'fds' || inFds);
+    });
+  })(tables || {}, '', false);
+  return tb;
+}
 async function xBuildPages(o, opt, prog) {
   opt = opt || {}; const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov }, plan = xPlan(o), pages = [];
   const sink = p => { /* 頁尾 → JPEG → 放走 canvas */
@@ -3638,14 +3664,19 @@ async function xBuildPages(o, opt, prog) {
   for (let i = 0; i < plan.inc.length; i++) { const n = plan.inc[i]; if (prog) prog(`畫緊 ${n}（${i + 1}／${plan.inc.length}）…`);
     await new Promise(r => setTimeout(r, 0));
     await xSheetPages(XL_BY[n], B, { dateText: o.inspection_date || '', sink }); }
-  /* 消防處核對表（App 記錄；Excel 喺「App提交紀錄」工作表） */
+  /* 消防處核對表（App 記錄；Excel 喺「App提交紀錄」工作表）
+     v0.6.324：只列需要填寫項目（跟 fsdExport auto／預設不適用／whole_na；同 App 畫面適用規則） */
   const fsd = Object.keys(o.fsd_checklists || {}).map(k => o.fsd_checklists[k]).filter(c => c.applicable);
-  if (fsd.length) { const E = xDoc(sink, 'App提交紀錄'); E.np(); E.text('消防處年檢核對表（App 記錄）', { sz: 30, b: 1, after: 2 }); E.text('Excel 入面喺「App提交紀錄」工作表。', { sz: 18, color: '#475569', after: 10 });
-    fsd.forEach(c => { E.text(`${c.title}${c.whole_na ? '（整份不適用）' : ''}`, { sz: 24, b: 1, after: 0 }); E.text(`${c.circular || ''} ${c.revision || ''}`, { sz: 17, color: '#475569', after: 4 });
-      const rows = Object.keys(c.items || {}).map(k => { const a = c.items[k]; return [k, a.text || '', a.result || (a.tick_only ? '' : '—'), a.remark || (a.optional || '')]; });
+  if (fsd.length) { const E = xDoc(sink, 'App提交紀錄'); E.np(); E.text('消防處年檢核對表（App 記錄）', { sz: 30, b: 1, after: 2 }); E.text('只顯示需要填寫嘅項目（不適用／略過唔列）。Excel「App提交紀錄」工作表仍保留完整紀錄。', { sz: 18, color: '#475569', after: 10 });
+    fsd.forEach(c => {
+      E.text(`${c.title}${c.whole_na ? '（整份不適用）' : ''}`, { sz: 24, b: 1, after: 0 }); E.text(`${c.circular || ''} ${c.revision || ''}`, { sz: 17, color: '#475569', after: 4 });
+      if (c.whole_na) { E.text('已揀整份不適用 → 唔列項目。', { sz: 17, color: '#475569', after: 8 }); return; }
+      const rows = Object.keys(c.items || {}).filter(k => fsdPdfNeed(c.items[k])).map(k => { const a = c.items[k]; return [k, a.text || '', a.result || (a.tick_only ? '' : '—'), a.remark || (a.optional || '')]; });
       if (rows.length) E.table([{ t: '項目', w: 0.1 }, { t: '內容', w: 0.56 }, { t: '結果', w: 0.12, a: 'c' }, { t: '備註', w: 0.22 }], rows, { sz: 15, hwCols: new Set([2, 3]), color: (r, i) => i === 2 ? (r[2] === '否' ? { c: '#b91c1c', b: 1 } : r[2] === '是' || r[2] === '✓' ? { c: '#15803d', b: 1 } : null) : null });
-      const tb = []; (function fl(v, pre) { if (v === null || v === undefined || v === '') return; if (typeof v !== 'object') { tb.push([pre, String(v)]); return; } if (Array.isArray(v)) v.forEach((x, i) => fl(x, (pre ? pre + ' ' : '') + '#' + (i + 1))); else Object.keys(v).forEach(k => fl(v[k], pre ? pre + '.' + k : k)); })(c.tables || {}, '');
-      if (tb.length) { E.text('表格讀數', { sz: 20, b: 1 }); E.table([{ t: '欄', w: 0.5 }, { t: '值', w: 0.5 }], tb, { sz: 15, hwCols: new Set([1]) }); } });
+      else E.text('（呢份核對表冇需要填寫嘅項目）', { sz: 17, color: '#475569', after: 6 });
+      const tb = fsdPdfTablesFlat(c.tables, o);
+      if (tb.length) { E.text('表格讀數', { sz: 20, b: 1 }); E.table([{ t: '欄', w: 0.5 }, { t: '值', w: 0.5 }], tb, { sz: 15, hwCols: new Set([1]) }); }
+    });
     E.done(); }
   /* 備註＋相片附錄 */
   const photos = o.photos || []; let phOk = 0, phMiss = 0;
