@@ -453,7 +453,24 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.302';
+const APP_VERSION = '0.6.319';
+/* v0.6.319：F9 下 FD_HYDRO_ELEC 是否用水電；否 → fds 附錄 III‧j／k／l NA */
+/* v0.6.318：fds 附錄 I‧h／i 預設 NA（def_v；兼 0.6.317 FD_REP q_skip 整部） */
+/* v0.6.317：FD_REP＝冇 → fds 附錄 I 覆示裝置控制板整部 NA（q_skip） */
+/* v0.6.316：fds 附錄 II 模擬面板整部預設 NA（def_skip） */
+/* v0.6.315：FD_REP＝冇 → fds §7.7.k 通訊電路完整性＝NA */
+/* v0.6.314：FA_DIGITAL_PANEL＝是＋FA_ISOLATOR＝冇 → fds §7.7.j＝N；＋MCP有 → §7.7.i＝N（MCP冇仍 NA） */
+/* v0.6.313：FA_MCP_PANEL＝冇 → fds §7.7.i 電路完整性測試＝NA */
+/* v0.6.312：fds §7.6.5.z／aa／ab 聯動控制 預設 NA（def_v）；含 0.6.311 r–y／0.6.310 q */
+/* v0.6.311：fds §7.6.5.r／s／t／u／v／w／x／y 聯動控制 預設 NA（def_v）；含 0.6.310 q */
+/* v0.6.310：SPR_WATER_CURTAIN＝冇 → fds §7.6.5.q 聯動控制水簾＝NA */
+/* v0.6.309：fds §7.6.5.m／n／o／p 聯動控制 預設 NA（def_v） */
+/* v0.6.308：FD_DOOR∨FD_MULTI 其中冇 → fds §7.6.5.l＝NA（q_def_or／and） */
+/* v0.6.307：FD_DOOR＝冇 → fds §7.6.5.k 聯動控制出口門電動門鎖＝NA */
+/* v0.6.306：F27＝冇 → fds §7.6.5.i／j Cut VAC 聯動控制＝NA */
+/* v0.6.305：F11＝冇 → fds §7.6.5.h＝NA（q_def；同 c；唔再用 def_v） */
+/* v0.6.304：F11＝冇 → fds §7.6.5.c＝NA；§7.6.5.d／e／f／g 預設 NA（def_v） */
+/* v0.6.303：T6＝冇 → fds §7.6.5.a；F22＝冇 → fds §7.6.5.b 聯動控制＝NA */
 /* v0.6.302：F21＝冇 → fds §7.6.4.g／h／i 視像火警警報＝NA */
 /* v0.6.301：F9 下 FD_PA「有冇廣播系統？」＝冇 → fds §7.6.4.d＝NA */
 /* v0.6.300：F9 下 FD_DOOR「有冇門鎖系統？」＝冇 → fds §7.6.4.b＝NA */
