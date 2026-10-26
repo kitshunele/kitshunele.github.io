@@ -453,7 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.324';
+const APP_VERSION = '0.6.325';
+/* v0.6.325：PDF xPlan 系統閘 opt-in（要「有」先印）；淨揀偵測唔再夾花灑等 */
 /* v0.6.324：提交 PDF 整套 checklist 只顯示需要填寫嘅消防處項目（跟 auto／q_def／def_skip／whole_na） */
 /* v0.6.323：問卷 FD_FACP／REP／BATT_QTY 下即時開 N 填位（同表一）；inc 同步 fdsT1Sync */
 /* v0.6.322：表一‧1／2／4 跟數量開 N 行；拆 321 表一‧5／6；FD_SMOKE／FD_HEAT yn 留 */
@@ -2984,7 +2985,8 @@ function lkDetail(d) {
    v0.6.228／0.6.231：消防處年檢核對表模擬手寫；0.6.231 是／否／不適用 [ ] 框保留、剔入框內（跟 make.py）。
    v0.6.234：每份選擇表最底各自實時 PDF；basic＝CL-A A-1／A-2。
    v0.6.239：A-1／A-2 改掛 CL-A tab（唔再 basic）。
-   v0.6.324 Fan：提交 PDF「App提交紀錄」消防處項只列需要填寫（跟 fsdExport auto／q_def／def_skip／whole_na；表一‧3／FD_REP‧2／na 來源唔列）。 */
+   v0.6.324 Fan：提交 PDF「App提交紀錄」消防處項只列需要填寫（跟 fsdExport auto／q_def／def_skip／whole_na；表一‧3／FD_REP‧2／na 來源唔列）。
+   v0.6.325 Fan：xPlan 問卷閘改 opt-in（要答「有」先印；未答／冇 → NA），跟 fsdVisible／formVisible；淨揀偵測唔再印花灑等。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -3464,14 +3466,28 @@ function xGateOf(n) { /* → [類別, 問卷格 或 表格 key] */
   return null;
 }
 function xPlan(o) {
+  /* v0.6.325 Fan：系統閘 opt-in——問卷／表格要明確適用先印（跟 App fsdVisible／formVisible）；
+     舊邏輯未答當「印」→ 淨揀偵測（F9）都會夾花灑（AA6）等空白表 */
   const half = o.inspection_type === 'half_yearly', qq = o.questionnaire || {}, forms = o.forms || {}, inc = [], na = [];
   XLS.sheets.forEach(S => { const n = S.n; if (X_NOPRINT.includes(n) || S.calc || S.state === 'hidden') return;
     const ann = X_ANNUAL.includes(n) || /^C[12]-\d /.test(n), hal = n.includes('(半年檢)');
     if (half ? ann : hal) return; /* 另一類檢查：Excel 都隱藏 */
     const g = xGateOf(n);
     if (g) { let on = true, why = '';
-      if (g[0] === 'f') { const f = forms[half ? g[2] : g[1]]; if (f && !f.applicable) { on = false; const a = qq[g[3]]; why = a ? `問卷 ${g[3]}「${a.q || ''}」＝${a.a}` : '問卷答「冇」'; if (g[1] === 'C1S' && a && a.a === '有') why = '冇花灑水缸（SPR_TANK＝冇）'; } }
-      else { const a = qq[g[1]]; if (a && a.a !== '有' && a.a !== undefined && a.a !== null && a.a !== '') { on = false; why = `問卷 ${g[1]}「${a.q || ''}」＝${a.a}`; } }
+      if (g[0] === 'f') {
+        const f = forms[half ? g[2] : g[1]];
+        if (!f || !f.applicable) {
+          on = false; const a = qq[g[3]];
+          why = a ? `問卷 ${g[3]}「${a.q || ''}」＝${a.a || '未答'}` : `問卷 ${g[3]} 未答／唔適用`;
+          if (g[1] === 'C1S' && a && a.a === '有') why = '冇花灑水缸（SPR_TANK＝冇）';
+        }
+      } else {
+        const a = qq[g[1]];
+        if (!a || a.a !== '有') {
+          on = false;
+          why = a ? `問卷 ${g[1]}「${a.q || ''}」＝${a.a}` : `問卷 ${g[1]} 未答／唔適用`;
+        }
+      }
       if (!on) { na.push([n, why]); return; } }
     inc.push(n); });
   return { inc, na, half };
