@@ -453,7 +453,17 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.276';
+const APP_VERSION = '0.6.286';
+/* v0.6.286：fds §7.5 管道煙霧偵測器（如有）整段預設不適用（def_skip） */
+/* v0.6.285：fds §7.2.n／o 偵測器內置指示燈／遠距顯示燈測試 預設 NA（def_v） */
+/* v0.6.284：fds §7.2.l／m 複合式一氧化碳／火焰感應器測試 預設 NA（def_v） */
+/* v0.6.283：FD_MULTI「有冇 multi 頭」＝冇 → fds §7.2.j＋§7.2.k 複合式煙霧／熱力感應器測試＝NA */
+/* v0.6.282：F9 下 FD_MULTI「有冇 multi 頭」＝冇 → fds §7.2.j 複合式煙霧感應器測試＝NA */
+/* v0.6.281：fds §7.2.h／i 光束式煙霧／火焰偵測器測試 預設 NA（def_v） */
+/* v0.6.280：F9 下 FD_SMOKE「有冇煙霧頭」＝冇 → fds §7.2.g 煙霧劑測試＝NA */
+/* v0.6.279：FD_EX＝冇 → fds §7.2.f 潛在爆炸危險點型偵測器測試＝NA（同 6.c） */
+/* v0.6.278：fds §7.2.c／d／e 線型熱力偵測器控制器… 預設 NA（def_v） */
+/* v0.6.277：fds §7.2.b 不能復位式熱力偵測器… 預設 NA（def_v） */
 /* v0.6.276：F9 下 FD_HEAT「有冇熱力頭」＝冇 → fds §7.2.a 熱力偵測器測試＝NA */
 /* v0.6.275：fds §7.3／§7.4 預設不適用（def_skip；同 §3.2／§3.3） */
 /* v0.6.274：F15＝冇 → fds §7.1 手動啓動裝置（如有）整段不適用（同 §2） */
