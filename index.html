@@ -453,8 +453,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.331';
-/* v0.6.331：對 LIVE 330 截圖校紙本——表框／頁頂欄頭／跳過此項／n/m／欄位；fds／fa／fhhr／tank／ws；spr Excel
+const APP_VERSION = '0.6.333';
+/* v0.6.333：疊剔藍色大 V 字剔（#1565C0）
+   v0.6.332：消防處原 PDF 疊剔（fds／fa／fhhr／tank）；ws 暫紙本；spr Excel；Fan 禁止自畫紙本主路徑
    v0.6.329：xFsdChiPages 紙本是／否／不適用三欄（4/2025／4/2022）
    v0.6.328：預覽火警偵測年檢核對表用 App fds 官方結構頁（4/2025）；唔靠英文 D／扁平紀錄
    v0.6.327：對埋其他 xPlan 閘（水缸 F24／供水 M6／栓轆 F6）；含 0.6.326 偵測壞表 (2) 永遠唔印 */
@@ -2998,7 +2999,9 @@ function lkDetail(d) {
    v0.6.328 Fan：預覽「火警偵測系統年檢核對表」改用 App fds（4/2025）官方結構頁；唔再淨係靠英文 HA sheet D／扁平 App提交紀錄。fa 同樣（無中文 Excel）。
    v0.6.329 Fan：xFsdChiPages 改紙本格式——是／否／不適用 三欄剔格（跟通函 4/2025／4/2022），唔再用單一「結果」欄。
    v0.6.331 Fan：紙本表框直綫／續頁欄頭唔喺段內重複／「如不適用，跳過此項」／頁脚 n/m；欄位跟 4/2025 bbox 再校。
-   v0.6.330 Fan：紙本一模一樣（字擺位／字體大細／行距／欄闊／方格／頁邊／頁尾）— 量度通函 PDF；X_FSD_APP_ONLY 擴至 fhhr／tank／ws；spr 留中文 Excel。 */
+   v0.6.330 Fan：紙本一模一樣（字擺位／字體大細／行距／欄闊／方格／頁邊／頁尾）— 量度通函 PDF；X_FSD_APP_ONLY 擴至 fhhr／tank／ws；spr 留中文 Excel。
+   v0.6.332 Fan：停自畫紙本；fds／fa／fhhr／tank 用消防處原 PDF（fsd_blank/）＋ tickmaps 疊剔；ws 暫回退紙本（多欄表）；spr 仍中文 Excel。
+   v0.6.333 Fan：疊剔改藍色大 V 字剔（#1565C0），唔用細綠 ✓。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -3648,7 +3651,7 @@ async function fsdLiveRefresh(r) {
       /* live：只留 canvas → JPEG 預覽；唔做 indexed／PDF */
       pages.push(p);
     };
-    xFsdChiPages(key, cExp, o, sink);
+    await xFsdChiPages(key, cExp, o, sink);
     if (tok !== fsdLiveTok || !$('#fsdLive')) {
       pages.forEach(p => { if (p.cv) { p.cv.width = 1; p.cv.height = 1; } });
       return;
@@ -3665,7 +3668,7 @@ async function fsdLiveRefresh(r) {
     });
     box.appendChild(blk);
     const foot = document.createElement('div'); foot.className = 'halive-msg';
-    foot.textContent = `已畫 ${pages.length} 頁（App 結構＝消防處 ${cExp.circular || ''}）`;
+    foot.textContent = `已畫 ${pages.length} 頁（消防處原 PDF 疊剔 · ${cExp.circular || ''}）`;
     box.appendChild(foot);
   } catch (e) {
     if (tok !== fsdLiveTok) return;
@@ -3788,6 +3791,7 @@ function xFsdSecVisible(sec, items, cExp, o) {
   return (sec.subs || []).some(s => xFsdSecVisible(s, items, cExp, o));
 }
 function xFsdPaperPages(key, cExp, o, sink) {
+  /* v0.6.332 Fan：禁止再自畫消防處紙本做主預覽——只保留做 overlay 失敗／ws 回退。主路徑見 xFsdOverlayPages。 */
   const P = FSD_PAPER, meta = FSD_PAPER_META[key] || { annex: '附件', codes: 'fds', seeTable: '', foot: (cExp && cExp.title) || key };
   const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
   const title = (cExp && cExp.title) || (c && c.title) || key;
@@ -4118,8 +4122,141 @@ function xFsdPaperPages(key, cExp, o, sink) {
     if (sink) sink(p);
   });
 }
-function xFsdChiPages(key, cExp, o, sink) {
-  /* v0.6.331：紙本幾何＋表框／頁頂欄頭／跳過此項／n/m 頁脚 */
+/* ----- v0.6.332：消防處原 PDF 疊剔（Fan：唔好再自己畫紙本） ----- */
+let FSD_TICKMAPS = null, FSD_BLANK_PDF = {};
+async function fsdLoadTickmaps() {
+  if (FSD_TICKMAPS) return FSD_TICKMAPS;
+  const u = new URL('fsd_blank/tickmaps.json', location.href).href;
+  const r = await fetch(u, { cache: 'no-cache', credentials: 'same-origin' });
+  if (!r.ok) throw new Error('tickmaps ' + r.status);
+  FSD_TICKMAPS = await r.json();
+  return FSD_TICKMAPS;
+}
+async function fsdLoadBlankPdf(key, rel) {
+  if (FSD_BLANK_PDF[key]) return FSD_BLANK_PDF[key];
+  const L = (typeof bdLoadPdfjs === 'function') ? await bdLoadPdfjs() : await (async () => { throw new Error('bdLoadPdfjs'); })();
+  const u = new URL(rel, location.href).href;
+  const ab = await fetch(u, { cache: 'no-cache', credentials: 'same-origin' }).then(r => { if (!r.ok) throw new Error(rel + ' ' + r.status); return r.arrayBuffer(); });
+  const pdf = await L.getDocument({ data: new Uint8Array(ab), isEvalSupported: false }).promise;
+  FSD_BLANK_PDF[key] = pdf;
+  return pdf;
+}
+function fsdDrawTickOv(ctx, box, scale, seed) {
+  /* v0.6.333 Fan：藍色、大啲、手寫 V 字剔（短左臂＋長右臂）；唔用細綠 ✓／xHwTick 黑墨 */
+  if (!box) return;
+  const boxS = (box.s || 9.5) * scale;
+  const s = boxS * 1.85; /* 比 OCR 格大 */
+  const cx = box.x * scale, cy = box.y * scale;
+  let h = 0;
+  if (seed && typeof xHwRng === 'function') {
+    const rnd = xHwRng(typeof xHwSeed === 'function' ? xHwSeed(seed) : String(seed));
+    h = (rnd() - 0.5) * 0.12; /* 輕微傾斜 */
+  }
+  /* V：左短臂落到谷底，右長臂向上拉开 */
+  const x0 = cx - s * 0.38, y0 = cy - s * 0.08;
+  const xv = cx - s * 0.06, yv = cy + s * 0.42;
+  const x1 = cx + s * 0.48, y1 = cy - s * 0.48;
+  const rot = (x, y) => {
+    const dx = x - cx, dy = y - cy;
+    return [cx + dx * Math.cos(h) - dy * Math.sin(h), cy + dx * Math.sin(h) + dy * Math.cos(h)];
+  };
+  const A = rot(x0, y0), V = rot(xv, yv), E = rot(x1, y1);
+  ctx.save();
+  ctx.strokeStyle = '#1565C0';
+  ctx.lineWidth = Math.max(3.2, s * 0.16);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(A[0], A[1]);
+  ctx.lineTo(V[0], V[1]);
+  ctx.lineTo(E[0], E[1]);
+  ctx.stroke();
+  ctx.restore();
+}
+function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
+  /* best-effort 頭欄（掃瞄紙無 AcroForm；約位跟 OCR） */
+  const est = o.estate || {}, blk = o.block || {};
+  const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '';
+  const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
+  const dateStr = o.inspection_date || '';
+  const fs251 = o.fs251 || '';
+  const sz = 10 * scale;
+  ctx.save();
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `${sz}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
+  ctx.textBaseline = 'alphabetic';
+  const put = (t, xPt, yPt) => { if (!t) return; ctx.fillText(String(t), xPt * scale, yPt * scale); };
+  if (key === 'fds' || key === 'fa' || key === 'fhhr' || key === 'tank') {
+    put(href, 455, 74);
+    put(fs251, 130, 100);
+    put(dateStr, 150, 118);
+    put(addr, 125, 148);
+  }
+  ctx.restore();
+}
+async function xFsdOverlayPages(key, cExp, o, sink) {
+  const maps = await fsdLoadTickmaps();
+  const tm = maps[key];
+  if (!tm || tm.overlay_ok === false) return false;
+  const pdf = await fsdLoadBlankPdf(key, tm.pdf || ('fsd_blank/' + key + '.pdf'));
+  const answers = (cExp && cExp.items) || {};
+  const wholeNa = !!(cExp && cExp.whole_na);
+  const scale = PDF_K;
+  const title = (cExp && cExp.title) || key;
+  const nPages = Math.min(tm.page_count || pdf.numPages, pdf.numPages);
+  const byPage = {};
+  Object.keys(tm.items || {}).forEach(ik => {
+    const m = tm.items[ik];
+    const a = answers[ik];
+    let r = (a && a.result) || '';
+    if (wholeNa) r = '不適用';
+    if (!r) return;
+    (byPage[m.page] = byPage[m.page] || []).push({ ik, m, r, a });
+  });
+  for (let pi = 0; pi < nPages; pi++) {
+    const page = await pdf.getPage(pi + 1);
+    const vp1 = page.getViewport({ scale: 1 });
+    const vp = page.getViewport({ scale });
+    const cv = document.createElement('canvas');
+    cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+    const ctx = cv.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport: vp, intent: 'display' }).promise;
+    if (pi === 0) fsdOvFillHeader(ctx, key, cExp, o, scale, vp1.width);
+    (byPage[pi] || []).forEach(({ ik, m, r, a }) => {
+      const onY = r === '是' || r === '✓';
+      const onN = r === '否';
+      const onNa = r === '不適用';
+      if (m.mode === 'y') {
+        if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y');
+      } else {
+        if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y');
+        if (onN) fsdDrawTickOv(ctx, m.no, scale, key + ':' + ik + ':n');
+        if (onNa) fsdDrawTickOv(ctx, m.na, scale, key + ':' + ik + ':na');
+      }
+      /* 備註：掃瞄紙右欄；有答案就喺 na 右少少用細字寫（best-effort） */
+      const rem = (a && (a.remark || a.optional)) || '';
+      if (rem && m.na) {
+        const x = (m.na.x + 14) * scale, y = m.na.y * scale;
+        ctx.save();
+        ctx.fillStyle = '#0f172a';
+        ctx.font = `${Math.max(9, 8 * scale * 0.45)}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
+        const maxW = cv.width - x - 12;
+        let t = String(rem);
+        while (t && ctx.measureText(t).width > maxW) t = t.slice(0, -1);
+        if (t) ctx.fillText(t, x, y + 3);
+        ctx.restore();
+      }
+    });
+    if (sink) sink({ cv, land: vp1.width > vp1.height + 20, sheet: title });
+  }
+  return true;
+}
+async function xFsdChiPages(key, cExp, o, sink) {
+  /* v0.6.332 Fan：原通函 PDF＋疊剔；失敗／ws → 紙本回退（Fan 禁止自畫做主路徑） */
+  try {
+    if (await xFsdOverlayPages(key, cExp, o, sink)) return;
+  } catch (e) {
+    try { console.warn('fsd overlay', key, e); } catch (e2) {}
+  }
   xFsdPaperPages(key, cExp, o, sink);
 }
 
@@ -4154,7 +4291,7 @@ async function xBuildPages(o, opt, prog) {
   if (plan.na.length) { D.text('唔適用（NA，冇印）', { sz: 24, b: 1, after: 2 }); D.table([{ t: '工作表', w: 0.42 }, { t: '原因', w: 0.58 }], plan.na, { sz: 17 }); }
   D.text(`另一類檢查（${plan.half ? '年檢' : '半年檢'}）嘅工作表唔包括，同 Excel 輸出一樣。`, { sz: 17, color: '#475569' });
   D.text('註：呢份係 App 按範本版面畫出嚟嘅預覽，範本公式由 App 計；正式版以公司電腦 import_submission.py 出嘅 Excel 為準。', { sz: 17, color: '#475569' });
-  D.text('註：工作表 D／E／K 等＝房署 Checklist（英文短表，唔當消防處紙本）。消防處中文年檢核對表用後面 App 紙本頁（fds／fa／fhhr／tank／ws；字級／欄位／方格跟通函 PDF）；花灑仍用中文 Excel「Sprinkler checklist」。唔再印壞 Excel「(2)」同英文 X_FSD 栓轆／水缸／供水表。', { sz: 15, color: '#475569' });
+  D.text('註：工作表 D／E／K 等＝房署 Checklist（英文短表，唔當消防處紙本）。消防處中文年檢核對表用通函原 PDF 疊剔（fds／fa／fhhr／tank；ws 暫紙本回退）；花灑仍用中文 Excel「Sprinkler checklist」。唔再印壞 Excel「(2)」同英文 X_FSD 栓轆／水缸／供水表。', { sz: 15, color: '#475569' });
   D.done();
   /* 消防處核對表（封面後、房署 Excel 前）
      v0.6.328：fds／fa App 頁；v0.6.330：+fhhr／tank／ws 紙本幾何頁；spr 留中文 Excel；扁平 App提交紀錄只其餘 */
@@ -4163,7 +4300,7 @@ async function xBuildPages(o, opt, prog) {
     const k = fsdKeys[i]; if (!X_FSD_APP_ONLY.has(k)) continue;
     if (prog) prog(`畫緊 ${o.fsd_checklists[k].title || k}…`);
     await new Promise(r => setTimeout(r, 0));
-    xFsdChiPages(k, o.fsd_checklists[k], o, sink);
+    await xFsdChiPages(k, o.fsd_checklists[k], o, sink);
   }
   /* 範本工作表（房署 Appendix C；D／E＝英文短表；英文 X_FSD 栓轆／水缸／供水若已有 App 中文紙本頁 → 跳過） */
   const skipSheets = new Set();
