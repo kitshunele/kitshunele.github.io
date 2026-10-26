@@ -453,7 +453,16 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.293';
+const APP_VERSION = '0.6.302';
+/* v0.6.302：F21＝冇 → fds §7.6.4.g／h／i 視像火警警報＝NA */
+/* v0.6.301：F9 下 FD_PA「有冇廣播系統？」＝冇 → fds §7.6.4.d＝NA */
+/* v0.6.300：F9 下 FD_DOOR「有冇門鎖系統？」＝冇 → fds §7.6.4.b＝NA */
+/* v0.6.299：fds §7.6.4.c 公眾娛樂場所緊急警報／影音中斷 預設 NA（def_v） */
+/* v0.6.298：fds §7.6.3 暫緩警報傳送系統整段預設 NA（def_skip） */
+/* v0.6.297：F23＝冇 → fds §7.6.2 直線電話線路（a–d）整段不適用（q_skip） */
+/* v0.6.296：fds §7.6.1.t ← FD_REP（冇→NA）；§7.6.1.u 「疏散」按鈕 預設 NA（def_v） */
+/* v0.6.295：fds §7.6.1.q／r 其他固定裝置／設備狀態視像指示器 預設 NA（def_v） */
+/* v0.6.294：fds §7.6.1.p ← FD_GEN∨FD_REP（冇→NA；兩者有→是） */
 /* v0.6.291：fds §7.6.1.m ← T6（冇消防龍頭泵 → 水泵／水缸／燃料缸狀態視像指示器 NA；有→是） */
 /* v0.6.289：fds §7.6.1.h 覆示裝置控制板外置電池／充電器視像指示器 預設 NA（def_v） */
 /* v0.6.288：fds §7.6.1.c 模擬面板（如有）警報指示 預設 NA（def_v；同 1.c） */
