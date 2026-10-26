@@ -453,7 +453,10 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.273';
+const APP_VERSION = '0.6.276';
+/* v0.6.276：F9 下 FD_HEAT「有冇熱力頭」＝冇 → fds §7.2.a 熱力偵測器測試＝NA */
+/* v0.6.275：fds §7.3／§7.4 預設不適用（def_skip；同 §3.2／§3.3） */
+/* v0.6.274：F15＝冇 → fds §7.1 手動啓動裝置（如有）整段不適用（同 §2） */
 /* v0.6.273：F9 下 FD_FR「是否防火線」＝否 → fds §6.d 5839-1:1988／銅皮／6387＝NA */
 /* v0.6.272：F9 下 FD_EX「有冇用防爆線？」＝冇 → fds §6.c 潛在危險區域／防爆類型＝NA */
 /* v0.6.271：F23＝冇 → fds §5.k 直線電話線路火警信號箱＝NA；CL-D e／fa A1.1.i 等保留 */
