@@ -453,7 +453,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.320';
+const APP_VERSION = '0.6.322';
+/* v0.6.322：表一‧1／2／4 跟 F9 下 FD_FACP_QTY／FD_REP_QTY／FD_BATT_QTY 開 N 行；拆 321 表一‧5／6；FD_SMOKE／FD_HEAT yn 留 */
+/* v0.6.321：（已廢）表一‧5／6 煙霧／熱力數量 — FAN t868u／t869u 不用 */
 /* v0.6.320：fds 表一 cover←屋邨＋樓名；表一‧3 模擬面板預設不適用 */
 /* v0.6.319：F9 下 FD_HYDRO_ELEC 是否用水電；否 → fds 附錄 III‧j／k／l NA */
 /* v0.6.318：fds 附錄 I‧h／i 預設 NA（def_v；兼 0.6.317 FD_REP q_skip 整部） */
@@ -2204,23 +2206,45 @@ function fsdTablesOut(r, c, d) { // 提交用：隱藏咗嘅來源記 NA（App �
   }
   return t;
 }
-const FDS_T1 = [['1', '消防控制和指示板', 5, true], ['2', '覆示裝置控制板', 2], ['3', '模擬面板', 1], ['4', '外置充電器及電池', 5]];
+/* v0.6.322 Fan：表一‧1／2／4 跟問卷數量開 N 行（字母 a…）；3 仍 def_skip
+   元組：[組號, 名, qtyCell|null, ynGate|null, 有主板欄]
+   ynGate＝冇 → 0 行（不適用）；qty 未答／0 → 1（有 gate 且＝有 或無 gate） */
+const FDS_T1_LETTERS = 'abcdefghij';
+const FDS_T1_MAX = 10;
+const FDS_T1 = [
+  ['1', '消防控制和指示板', 'FD_FACP_QTY', null, true],
+  ['2', '覆示裝置控制板', 'FD_REP_QTY', 'FD_REP', false],
+  ['3', '模擬面板', null, null, false],
+  ['4', '外置充電器及電池', 'FD_BATT_QTY', null, false],
+];
 /* v0.6.320 Fan：表一‧3 模擬面板 預設不用（同 §1.c／附錄 II def_skip） */
 const FDS_T1_DEF_SKIP = { '3': 1 };
 /* v0.6.320 Fan：表一 cover ← 基本 1 屋邨＋樓名（空先填；師傅改過唔蓋） */
 function fdsT1Place(r) { return [nameOf(r && r.estate), nameOf(r && r.block)].filter(Boolean).join('，'); }
+function fdsT1N(r, g, qtyCell, ynGate) {
+  if (FDS_T1_DEF_SKIP[g]) return 0;
+  if (ynGate && (r.q || {})[ynGate] !== '有') return 0;
+  if (!qtyCell) return 1;
+  const raw = (r.q || {})[qtyCell];
+  if (!has(raw)) return 1;
+  const n = Number(raw);
+  if (Number.isNaN(n) || n < 1) return 1;
+  return Math.min(FDS_T1_MAX, Math.floor(n));
+}
 function fdsT1Sync(r) {
   if (!r) return;
-  const place = fdsT1Place(r); if (!has(place)) return;
+  const place = fdsT1Place(r);
   const d = fsdRec(r, 'fds'), f = (d.t.fds || (d.t.fds = {}));
   let ch = false;
-  FDS_T1.forEach(([g, , n]) => {
-    if (FDS_T1_DEF_SKIP[g]) return;
-    for (let j = 0; j < n; j++) {
-      const id = g + '.' + 'abcde'[j], x = f[id] || (f[id] = {});
-      if (!has(x.cover)) { x.cover = place; ch = true; }
-    }
-  });
+  if (has(place)) {
+    FDS_T1.forEach(([g, , qtyCell, ynGate]) => {
+      const n = fdsT1N(r, g, qtyCell, ynGate);
+      for (let j = 0; j < n; j++) {
+        const id = g + '.' + FDS_T1_LETTERS[j], x = f[id] || (f[id] = {});
+        if (!has(x.cover)) { x.cover = place; ch = true; }
+      }
+    });
+  }
   if (ch) Store.touch(r);
 }
 function fsdTableMissing(r, c, s) {
@@ -2269,9 +2293,16 @@ function fsdTableMissing(r, c, s) {
         [1, 2].forEach(j => ['f', 'p'].forEach(f => { if (!has(v[f + j]) && !M.has(sb + '.' + f + j)) out.push({ code: `${zc} ${nm}${has(v.no) ? ' ' + v.no : ''} ${f === 'f' ? '流量' : '壓力'}${j}`, sel: `[data-bind="${zb}.src.${k}.${f}${j}"]` }); })); });
     });
   } else if (s.table === 'fds_t1') {
-    const a = (t.fds || {})['1.a'] || {};
-    if (!has(a.loc)) out.push({ code: '表一 1.a 消防控制和指示板位置', sel: `[data-bind="${b}.fds.1~a.loc"]` });
-    if (!has(a.main)) out.push({ code: '表一 1.a 用作主板', sel: `#ft-${c.key}-1-a-main` });
+    /* v0.6.322：跟問卷開出嘅 N 行；每行要位置；1.a 兼要用作主板 */
+    FDS_T1.forEach(([g, lab, qtyCell, ynGate, main]) => {
+      const n = fdsT1N(r, g, qtyCell, ynGate);
+      if (!n) return;
+      for (let j = 0; j < n; j++) {
+        const lettr = FDS_T1_LETTERS[j], id = g + '.' + lettr, x = (t.fds || {})[id] || {};
+        if (!has(x.loc)) out.push({ code: `表一 ${id} ${lab}位置`, sel: `[data-bind="${b}.fds.${g}~${lettr}.loc"]` });
+        if (main && j === 0 && !has(x.main)) out.push({ code: `表一 ${id} 用作主板`, sel: `#ft-${c.key}-${g}-${lettr}-main` });
+      }
+    });
   }
   return out;
 }
@@ -2418,12 +2449,22 @@ function fsdTableHtml(r, c, s) {
   if (s.table === 'fds_t1') {
     const f = t.fds || {};
     fdsT1Sync(r);
-    return `<div id="ft-${c.key}">${FDS_T1.map(([g, l, n, main]) => {
+    /* v0.6.322：1／2／4 跟問卷數量開 N 行；2 跟 FD_REP＝冇 → 不適用；3 def_skip */
+    const panels = FDS_T1.map(([g, l, qtyCell, ynGate, main]) => {
       if (FDS_T1_DEF_SKIP[g]) return `<div class="sub"><h4>${g}. ${esc(l)}</h4><div class="skipnote">預設不適用（同 §1.c／附錄 II 模擬面板）</div></div>`;
-      return `<div class="sub"><h4>${g}. ${esc(l)}</h4>${Array.from({ length: n }, (_, j) => { const id = g + '.' + 'abcde'[j], x = f[id] || {}, rb = `${b}.fds.${id.replace('.', '~')}`;
-      return `<div class="frow"><b>${'abcde'[j]}.</b>${txtField(rb + '.loc', x.loc, '位置', '')}${txtField(rb + '.cover', x.cover, '消防裝置及設備覆蓋的建築物／處所', '')}${txtField(rb + '.note', x.note, '備註', '')}
-        ${main ? `<div class="fld"><label>用作主板</label>${seg(rb + '.main', x.main, [['是', '是', 'yes'], ['否', '否', 'no']], `ft-${c.key}-${g}-${'abcde'[j]}-main`)}</div>` : ''}</div>`; }).join('')}</div>`;
-    }).join('')}<div class="mut" style="margin-top:6px">「消防裝置及設備覆蓋的建築物／處所」空先填基本 1 屋邨＋樓名；師傅改過唔蓋。</div></div>`;
+      if (ynGate && (r.q || {})[ynGate] === '冇') return `<div class="sub"><h4>${g}. ${esc(l)}</h4><div class="skipnote">問卷 ${esc(ynGate)}＝冇 → 不適用</div></div>`;
+      if (ynGate && (r.q || {})[ynGate] !== '有') return `<div class="sub"><h4>${g}. ${esc(l)}</h4><div class="skipnote">問卷未答「panel 有冇 repeater？」→ 答咗先顯示行數</div></div>`;
+      const n = fdsT1N(r, g, qtyCell, ynGate);
+      const qHint = qtyCell && has((r.q || {})[qtyCell]) ? `（問卷＝${esc(String(r.q[qtyCell]))}）` : (qtyCell ? '（問卷未答數量 → 暫 1 行）' : '');
+      return `<div class="sub"><h4>${g}. ${esc(l)}${qHint}</h4>
+        ${n > 1 ? `<div class="mut" style="margin-bottom:6px">共 ${n} 行；改問卷數量加／減（減唔刪已填；再加返會見返）。</div>` : ''}
+        ${Array.from({ length: n }, (_, j) => {
+          const lettr = FDS_T1_LETTERS[j], id = g + '.' + lettr, x = f[id] || {}, rb = `${b}.fds.${g}~${lettr}`;
+          return `<div class="frow"><b>${lettr}.</b>${txtField(rb + '.loc', x.loc, '位置', '')}${txtField(rb + '.cover', x.cover, '消防裝置及設備覆蓋的建築物／處所', '')}${txtField(rb + '.note', x.note, '備註', '')}
+        ${main ? `<div class="fld"><label>用作主板</label>${seg(rb + '.main', x.main, [['是', '是', 'yes'], ['否', '否', 'no']], `ft-${c.key}-${g}-${lettr}-main`)}</div>` : ''}</div>`;
+        }).join('')}</div>`;
+    }).join('');
+    return `<div id="ft-${c.key}">${panels}<div class="mut" style="margin-top:6px">「消防裝置及設備覆蓋的建築物／處所」空先填基本 1 屋邨＋樓名；師傅改過唔蓋。表一‧1／2／4 行數跟問卷 FD_FACP_QTY／FD_REP_QTY／FD_BATT_QTY（FD_REP＝冇 → ‧2 不適用）。上限 ${FDS_T1_MAX}。</div></div>`;
   }
   return '';
 }
