@@ -453,7 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.258';
+const APP_VERSION = '0.6.259';
+/* v0.6.259：待處理工作詳情返回清單保留捲動位置（唔跳頂） */
 /* v0.6.252：尋找相片返下拉（屋邨／大廈）；唔顯示日期（固定近 93 日）；photo_search＋photo_places；GAS 1.79 可繼續但 UI 唔用 browse */
 /* v0.6.251：睇相瀏覽式（已擱置 UI；GAS photo_browse_* 仍在） */
 /* v0.6.248：單據報銷 AI 加總後自動填「金額」；試算表一張單一行＋分類（要 GAS v1.76+） */
@@ -1352,7 +1353,7 @@ function parseHash() {
   else cur = { view: 'grid', id: null, step: null }; /* v0.6.4 KitShun 主頁（功能格） */
   if (cur.view !== 'lookup') lkReset(); // 查閱紀錄只留喺記憶體，離開就清
 }
-window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cur.view !== 'ecall') { EC.live = false; EC.err = ''; } if (cur.view !== 'wo') { WO.live = false; WO.err = ''; WO.perr = ''; WO.show = WO_PAGE; woPriceOff(); } if (cur.view !== 'clock') ckReset(); if (cur.view !== 'sched') { SC.live = false; SC.err = ''; } if (cur.view !== 'echist') { EH.err = ''; EH.show = EH_PAGE; if (typeof EH !== 'undefined') { EH.det = null; EH.fold = null; EH.ferr = ''; EH.ferrCode = ''; EH.thumbs = {}; } } if (cur.view !== 'pend') { PW.live = false; PW.err = ''; } render(true); if ((typeof accLocked === 'function' && accLocked()) || (typeof APPD !== 'undefined' && !APPD.ready)) return; lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); });
+window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cur.view !== 'ecall') { EC.live = false; EC.err = ''; } if (cur.view !== 'wo') { WO.live = false; WO.err = ''; WO.perr = ''; WO.show = WO_PAGE; woPriceOff(); } if (cur.view !== 'clock') ckReset(); if (cur.view !== 'sched') { SC.live = false; SC.err = ''; } if (cur.view !== 'echist') { EH.err = ''; EH.show = EH_PAGE; if (typeof EH !== 'undefined') { EH.det = null; EH.fold = null; EH.ferr = ''; EH.ferrCode = ''; EH.thumbs = {}; } } if (cur.view !== 'pend') { PW.live = false; PW.err = ''; PW.y = null; } render(true); if ((typeof accLocked === 'function' && accLocked()) || (typeof APPD !== 'undefined' && !APPD.ready)) return; lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); });
 
 /* ---------- render ---------- */
 /* v0.6.133：消防檢查核對表（view=rec）每頁記住 scrollY；key = 紀錄id|步驟（含 FSD-…） */
@@ -1394,8 +1395,12 @@ function render(toTop) {
   const LK = typeof accLocked === 'function' && accLocked() && cur.view !== 'accmgr'; /* v0.6.14.3 未批准：任何 hash 都只顯示鎖住頁 */
   const LD = !LK && typeof APPD !== 'undefined' && !APPD.ready && cur.view !== 'accmgr'; /* v0.6.15 未有公司資料：載入資料中／錯誤＋再試 */
   $('#app').innerHTML = LK ? viewLock() : LD ? viewDataLoad() : cur.view === 'wait' ? viewGrid() : cur.view === 'rec' ? viewRec(Store.get(cur.id)) : cur.view === 'lookup' ? viewLookup() : cur.view === 'ecall' ? viewEcall() : cur.view === 'echist' ? viewEchist() : cur.view === 'wo' ? viewWo() : cur.view === 'clock' ? viewClock() : cur.view === 'sched' ? viewSched() : cur.view === 'pend' ? viewPend() : cur.view === 'bldg' ? viewBldg() : cur.view === 'wait' ? viewWait() : cur.view === 'accmgr' ? viewAccMgr() : cur.view === 'home' ? viewHome() : viewGrid();
-  const restore = (cur.view === 'rec' && toTop) ? recScrollRestoreY() : null;
+  /* v0.6.259：待處理工作詳情→清單還原 PW.y（含系統返回）；用完清走，避免之後由主頁再入誤跳 */
+  const restore = (cur.view === 'rec' && toTop) ? recScrollRestoreY()
+    : (cur.view === 'pend' && !cur.id && toTop && PW.y != null) ? (PW.y | 0)
+    : null;
   window.scrollTo(0, restore != null ? restore : (toTop ? 0 : y));
+  if (cur.view === 'pend' && !cur.id && toTop && PW.y != null) { const yR = PW.y | 0; PW.y = null; requestAnimationFrame(() => window.scrollTo(0, yR)); }
   recScrollAt = recScrollKey();
   if (LK || LD) return;
   hydrateThumbs();
@@ -5568,6 +5573,7 @@ function viewEhDetail(id) {
 
 
 /* ---------- v0.6.10.1 🛠️ 待處理工作（只讀）----------
+   v0.6.259：詳情返回清單還原 scrollY（PW.y；唔經 pending_list_update）。
    資料：「Defects List.xlsx／.pdf」（SUMMARY OF DEFECTS FOR FIRE SERVICES INSPECTION，一個屋邨一頁）
    → /workspace/defects/kitshun_pending/extract.py → pending_work.json（放喺公司 Drive「AI 處理 / Defect List」，kitshunele@gmail.com）
    → Apps Script action 'data' name 'pending_work'（要師傅 PIN；Script Property DATA_SOURCES_EXTRA 加 key，唔使重新部署）。
@@ -11435,8 +11441,8 @@ document.addEventListener('click', async e => {
     case 'pwreload': PW.live = false; PW.err = ''; return pwLoad();
     case 'pwst': PW.st = el.dataset.v || ''; return render();
     case 'pwest': PW.open[el.dataset.v || ''] = !PW.open[el.dataset.v || '']; { const l = $('#pwlist'); if (l) l.innerHTML = pwListHtml(); } return;
-    case 'pwopen': if (el.dataset.id) { PW.y = window.scrollY; return go('#/pend/' + encodeURIComponent(el.dataset.id)); } return;
-    case 'pwback': { const y = PW.y || 0; go('#/pend'); setTimeout(() => window.scrollTo(0, y), 0); } return;
+    case 'pwopen': if (el.dataset.id) { if (!cur.id) PW.y = window.scrollY | 0; return go('#/pend/' + encodeURIComponent(el.dataset.id)); } return; /* v0.6.259：只喺清單記 scroll；詳情上一項／下一項唔蓋 */
+    case 'pwback': return go('#/pend'); /* v0.6.259：清單 scroll 由 render 還原 */
     case 'pwclear': return pwClear();
     case 'screload': SC.live = false; SC.err = ''; return scLoad();
     case 'scprev': SC.m = scAddM(SC.m || hkDate().slice(0, 7), -1); return render();
