@@ -453,7 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.319';
+const APP_VERSION = '0.6.320';
+/* v0.6.320：fds 表一 cover←屋邨＋樓名；表一‧3 模擬面板預設不適用 */
 /* v0.6.319：F9 下 FD_HYDRO_ELEC 是否用水電；否 → fds 附錄 III‧j／k／l NA */
 /* v0.6.318：fds 附錄 I‧h／i 預設 NA（def_v；兼 0.6.317 FD_REP q_skip 整部） */
 /* v0.6.317：FD_REP＝冇 → fds 附錄 I 覆示裝置控制板整部 NA（q_skip） */
@@ -2204,6 +2205,24 @@ function fsdTablesOut(r, c, d) { // 提交用：隱藏咗嘅來源記 NA（App �
   return t;
 }
 const FDS_T1 = [['1', '消防控制和指示板', 5, true], ['2', '覆示裝置控制板', 2], ['3', '模擬面板', 1], ['4', '外置充電器及電池', 5]];
+/* v0.6.320 Fan：表一‧3 模擬面板 預設不用（同 §1.c／附錄 II def_skip） */
+const FDS_T1_DEF_SKIP = { '3': 1 };
+/* v0.6.320 Fan：表一 cover ← 基本 1 屋邨＋樓名（空先填；師傅改過唔蓋） */
+function fdsT1Place(r) { return [nameOf(r && r.estate), nameOf(r && r.block)].filter(Boolean).join('，'); }
+function fdsT1Sync(r) {
+  if (!r) return;
+  const place = fdsT1Place(r); if (!has(place)) return;
+  const d = fsdRec(r, 'fds'), f = (d.t.fds || (d.t.fds = {}));
+  let ch = false;
+  FDS_T1.forEach(([g, , n]) => {
+    if (FDS_T1_DEF_SKIP[g]) return;
+    for (let j = 0; j < n; j++) {
+      const id = g + '.' + 'abcde'[j], x = f[id] || (f[id] = {});
+      if (!has(x.cover)) { x.cover = place; ch = true; }
+    }
+  });
+  if (ch) Store.touch(r);
+}
 function fsdTableMissing(r, c, s) {
   const d = fsdGet(r, c.key), t = d.t || {}, out = [], b = `fsd.${c.key}.t`;
   if (s.table === 'fhhr_t1') {
@@ -2264,7 +2283,7 @@ function fsdMissing(r, key) {
     if (!a.v && fsdItemOpt(M, c, s)) return;
     if (!a.v) out.push({ code: fsdCode(s, it), sel: '#' + fsdDom(key, it.k) });
     else if (a.v === 'N' && !has((a.note || '').trim())) out.push({ code: fsdCode(s, it) + '（否 未寫備註）', sel: '#' + fsdDom(key, it.k) }); });
-  if (!fsdIsOff(r, c)) { if (key === 'spr') { sprT1Sync(r); sprT2Sync(r); } fsdTables(c).forEach(s => out.push(...fsdTableMissing(r, c, s))); }
+  if (!fsdIsOff(r, c)) { if (key === 'spr') { sprT1Sync(r); sprT2Sync(r); } if (key === 'fds') fdsT1Sync(r); fsdTables(c).forEach(s => out.push(...fsdTableMissing(r, c, s))); }
   return out;
 }
 function fsdProg(r, key) {
@@ -2398,14 +2417,18 @@ function fsdTableHtml(r, c, s) {
 
   if (s.table === 'fds_t1') {
     const f = t.fds || {};
-    return `<div id="ft-${c.key}">${FDS_T1.map(([g, l, n, main]) => `<div class="sub"><h4>${g}. ${esc(l)}</h4>${Array.from({ length: n }, (_, j) => { const id = g + '.' + 'abcde'[j], x = f[id] || {}, rb = `${b}.fds.${id.replace('.', '~')}`;
+    fdsT1Sync(r);
+    return `<div id="ft-${c.key}">${FDS_T1.map(([g, l, n, main]) => {
+      if (FDS_T1_DEF_SKIP[g]) return `<div class="sub"><h4>${g}. ${esc(l)}</h4><div class="skipnote">預設不適用（同 §1.c／附錄 II 模擬面板）</div></div>`;
+      return `<div class="sub"><h4>${g}. ${esc(l)}</h4>${Array.from({ length: n }, (_, j) => { const id = g + '.' + 'abcde'[j], x = f[id] || {}, rb = `${b}.fds.${id.replace('.', '~')}`;
       return `<div class="frow"><b>${'abcde'[j]}.</b>${txtField(rb + '.loc', x.loc, '位置', '')}${txtField(rb + '.cover', x.cover, '消防裝置及設備覆蓋的建築物／處所', '')}${txtField(rb + '.note', x.note, '備註', '')}
-        ${main ? `<div class="fld"><label>用作主板</label>${seg(rb + '.main', x.main, [['是', '是', 'yes'], ['否', '否', 'no']], `ft-${c.key}-${g}-${'abcde'[j]}-main`)}</div>` : ''}</div>`; }).join('')}</div>`).join('')}</div>`;
+        ${main ? `<div class="fld"><label>用作主板</label>${seg(rb + '.main', x.main, [['是', '是', 'yes'], ['否', '否', 'no']], `ft-${c.key}-${g}-${'abcde'[j]}-main`)}</div>` : ''}</div>`; }).join('')}</div>`;
+    }).join('')}<div class="mut" style="margin-top:6px">「消防裝置及設備覆蓋的建築物／處所」空先填基本 1 屋邨＋樓名；師傅改過唔蓋。</div></div>`;
   }
   return '';
 }
 function stepFsd(r, key) {
-  const c = FSD_BY[key]; fsdMigrateStale(r, c); fsdEnsureRef(r, key); if (key === 'spr') { sprT1Sync(r); sprT2Sync(r); } const d = fsdGet(r, key);
+  const c = FSD_BY[key]; fsdMigrateStale(r, c); fsdEnsureRef(r, key); if (key === 'spr') { sprT1Sync(r); sprT2Sync(r); } if (key === 'fds') fdsT1Sync(r); const d = fsdGet(r, key);
   const act = fsdActive(r, c), M0 = optMap(r), un = act.filter(([s, it]) => !fsdEff(r, c, s, it, M0).v).length;
   const off = fsdIsOff(r, c);
   let body = '';
