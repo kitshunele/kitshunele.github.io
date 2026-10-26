@@ -453,8 +453,8 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.330';
-/* v0.6.330：FSD 中文核對表紙本一模一樣（字級／欄位／方格／頁邊；fds／fa／fhhr／tank／ws）；spr 留中文 Excel
+const APP_VERSION = '0.6.331';
+/* v0.6.331：對 LIVE 330 截圖校紙本——表框／頁頂欄頭／跳過此項／n/m／欄位；fds／fa／fhhr／tank／ws；spr Excel
    v0.6.329：xFsdChiPages 紙本是／否／不適用三欄（4/2025／4/2022）
    v0.6.328：預覽火警偵測年檢核對表用 App fds 官方結構頁（4/2025）；唔靠英文 D／扁平紀錄
    v0.6.327：對埋其他 xPlan 閘（水缸 F24／供水 M6／栓轆 F6）；含 0.6.326 偵測壞表 (2) 永遠唔印 */
@@ -2997,6 +2997,7 @@ function lkDetail(d) {
    v0.6.327 Fan：對埋其他系統閘——Supply Tanks／Annex B→F24；Water Supplies→M6；各系統跟最新 FSD 通函（App JSON：4/2025／5/2023／9/2021／7/2021／4/2022）。
    v0.6.328 Fan：預覽「火警偵測系統年檢核對表」改用 App fds（4/2025）官方結構頁；唔再淨係靠英文 HA sheet D／扁平 App提交紀錄。fa 同樣（無中文 Excel）。
    v0.6.329 Fan：xFsdChiPages 改紙本格式——是／否／不適用 三欄剔格（跟通函 4/2025／4/2022），唔再用單一「結果」欄。
+   v0.6.331 Fan：紙本表框直綫／續頁欄頭唔喺段內重複／「如不適用，跳過此項」／頁脚 n/m；欄位跟 4/2025 bbox 再校。
    v0.6.330 Fan：紙本一模一樣（字擺位／字體大細／行距／欄闊／方格／頁邊／頁尾）— 量度通函 PDF；X_FSD_APP_ONLY 擴至 fhhr／tank／ws；spr 留中文 Excel。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
@@ -3732,11 +3733,12 @@ const fsdPdfFormRow = a => !!(a && !a.auto); /* 結構頁：跟紙本列齊；�
 const XF_FSD_SERIF = '"PMingLiU","MingLiU","Noto Serif CJK TC","Noto Serif CJK HK","Noto Serif TC",serif';
 /* 紙本幾何（pt；量度 fsd/2025_04／2022_04／2021_09／2021_07 附件頁 OCR bbox） */
 const FSD_PAPER = {
+  /* v0.6.331：跟通函 4/2025 §7 頁 bbox 再校；加表框直綫；欄頭只喺頁頂 */
   W: 595.28, H: 841.89,
-  ML: 42, MR: 36, MT: 34, MB: 40,
-  xId: 76, xText: 96, xYes: 396, xNo: 424, xNa: 459, xRem: 490, xRight: 555,
-  box: 10.5, titleSz: 11, bodySz: 8, smallSz: 7.5, headSz: 8, footSz: 7, letterSz: 9,
-  lh: 11.2, rowGap: 4
+  ML: 36, MR: 32, MT: 32, MB: 38,
+  xLeft: 42, xId: 70, xText: 86, xYes: 401, xNo: 429, xNa: 456, xRem: 495, xRight: 560,
+  box: 9.5, titleSz: 11, bodySz: 8, smallSz: 7.5, headSz: 8, footSz: 7, letterSz: 8.5,
+  lh: 11, rowGap: 2.5
 };
 const FSD_PAPER_META = {
   fds: { annex: '附件', codes: 'fds', seeTable: '主要設備檢查記錄見表一。', foot: '火警偵測系統年檢核對表（消防處通函第 4/2025 號）' },
@@ -3782,17 +3784,17 @@ function xFsdSecVisible(sec, items, cExp, o) {
   if (sec.table || sec.id === 'T1' || sec.id === 'T2') {
     if (fsdPdfTablesFlat((cExp && cExp.tables) || {}, o).length) return true;
   }
-  if (sec.skip) return true; /* 紙本有「如不適用，跳往」列 */
+  if (sec.skip) return true; /* 紙本有「如不適用，跳過此項」列 */
   return (sec.subs || []).some(s => xFsdSecVisible(s, items, cExp, o));
 }
 function xFsdPaperPages(key, cExp, o, sink) {
   const P = FSD_PAPER, meta = FSD_PAPER_META[key] || { annex: '附件', codes: 'fds', seeTable: '', foot: (cExp && cExp.title) || key };
   const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
   const title = (cExp && cExp.title) || (c && c.title) || key;
-  const circ = (cExp && cExp.circular) || (c && c.circular) || '';
   const K = PDF_K, W = Math.round(P.W * K), H = Math.round(P.H * K);
   const px = pt => pt * K;
   const items = (cExp && cExp.items) || {};
+  const skipped = new Set((cExp && cExp.skipped_sections) || []);
   const est = o.estate || {}, blk = o.block || {};
   const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '';
   const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
@@ -3801,43 +3803,19 @@ function xFsdPaperPages(key, cExp, o, sink) {
 
   let cv, ctx, yPt, pageNo = 0, pages = [], curP = null;
   const font = (szPt, bold) => { ctx.font = `${bold ? 'bold ' : ''}${px(szPt)}px ${XF_FSD_SERIF}`; };
-  const flush = () => { if (curP && sink) sink(curP); curP = null; };
-  const drawFooter = () => {
-    font(P.footSz, 0); ctx.fillStyle = '#111';
-    const foot = meta.foot || title;
-    ctx.fillText(foot, px(P.ML), H - px(18));
-    const pn = String(pageNo);
-    const tw = ctx.measureText(pn).width;
-    ctx.fillText(pn, W - px(P.MR) - tw, H - px(18));
-  };
-  const np = () => {
-    flush();
-    pageNo++;
-    cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-    ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
-    ctx.textBaseline = 'alphabetic';
-    yPt = P.MT;
-    curP = { cv, land: false, sheet: title };
-    pages.push(curP);
-    /* 續頁只畫居中標題（跟紙本內頁） */
-    if (pageNo > 1) {
-      font(P.titleSz, 1); ctx.fillStyle = '#111';
-      const tw = ctx.measureText(title).width;
-      ctx.fillText(title, (W - tw) / 2, px(yPt + P.titleSz));
-      yPt += P.titleSz + 10;
-      /* 欄頭：是／否／不適用／備註 */
-      drawColHeads();
-    }
-  };
-  const ensure = needPt => {
-    if (!cv || yPt + needPt > P.H - P.MB - 8) {
-      if (cv) drawFooter();
-      np();
-    }
+  const stroke = (wPt, col) => { ctx.strokeStyle = col || '#111'; ctx.lineWidth = Math.max(0.55, px(wPt)); };
+  const vline = (xPt, y0, y1) => { ctx.beginPath(); ctx.moveTo(px(xPt), px(y0)); ctx.lineTo(px(xPt), px(y1)); ctx.stroke(); };
+  const hline = (x0, x1, y) => { ctx.beginPath(); ctx.moveTo(px(x0), px(y)); ctx.lineTo(px(x1), px(y)); ctx.stroke(); };
+  const markTable = () => {
+    if (!curP) return;
+    if (curP._tableTop == null) curP._tableTop = yPt;
+    curP._tableBot = yPt;
   };
   const drawDots = (x0, x1, yBaseline) => {
-    ctx.strokeStyle = '#333'; ctx.lineWidth = Math.max(0.6, px(0.4));
-    ctx.beginPath(); ctx.moveTo(px(x0), px(yBaseline + 1.5)); ctx.lineTo(px(x1), px(yBaseline + 1.5)); ctx.stroke();
+    ctx.strokeStyle = '#555'; ctx.lineWidth = Math.max(0.5, px(0.35));
+    ctx.setLineDash([px(1.2), px(1.4)]);
+    ctx.beginPath(); ctx.moveTo(px(x0), px(yBaseline + 1.2)); ctx.lineTo(px(x1), px(yBaseline + 1.2)); ctx.stroke();
+    ctx.setLineDash([]);
   };
   const wrap = (t, maxWpt, szPt) => {
     font(szPt, 0);
@@ -3864,7 +3842,7 @@ function xFsdPaperPages(key, cExp, o, sink) {
     ctx.strokeStyle = '#111'; ctx.lineWidth = Math.max(0.8, px(0.55));
     ctx.strokeRect(x, y, b, b);
     if (on) {
-      if (XHW_OK) xHwTick(ctx, [x, y, x + b, y + b], xHwSeed(seed || ('box:' + xPt + ':' + yTopPt)));
+      if (typeof XHW_OK !== 'undefined' && XHW_OK) xHwTick(ctx, [x, y, x + b, y + b], xHwSeed(seed || ('box:' + xPt + ':' + yTopPt)));
       else {
         ctx.strokeStyle = '#0f172a'; ctx.lineWidth = Math.max(1.2, px(0.9));
         ctx.beginPath();
@@ -3878,28 +3856,48 @@ function xFsdPaperPages(key, cExp, o, sink) {
   const drawColHeads = () => {
     font(P.headSz, 0); ctx.fillStyle = '#111';
     const base = yPt + P.headSz;
-    const heads = [[P.xYes, '是'], [P.xNo, '否'], [P.xNa, '不適用'], [P.xRem, '備註']];
-    heads.forEach(([x, t]) => {
+    [[P.xYes, '是'], [P.xNo, '否'], [P.xNa, '不適用'], [P.xRem, '備註']].forEach(([x, t]) => {
       const tw = ctx.measureText(t).width;
       const cx = px(x) + px(P.box) / 2 - tw / 2;
-      ctx.fillText(t, t === '備註' || t === '不適用' ? px(x) : cx, px(base));
+      ctx.fillText(t, (t === '備註' || t === '不適用') ? px(x) : cx, px(base));
     });
-    yPt = base + 4;
+    yPt = base + 3;
+    markTable();
+    stroke(0.7, '#111');
+    hline(P.xLeft, P.xRight, yPt);
+    yPt += 2;
+    markTable();
+  };
+  const np = () => {
+    pageNo++;
+    cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = 'alphabetic';
+    yPt = P.MT;
+    curP = { cv, land: false, sheet: title, _tableTop: null, _tableBot: null };
+    pages.push(curP);
+    if (pageNo > 1) {
+      font(P.titleSz, 1); ctx.fillStyle = '#111';
+      const tw = ctx.measureText(title).width;
+      ctx.fillText(title, (W - tw) / 2, px(yPt + P.titleSz));
+      yPt += P.titleSz + 8;
+      drawColHeads(); /* 紙本續頁頂欄頭；段內唔再重複 */
+    }
+  };
+  const ensure = needPt => {
+    if (!cv || yPt + needPt > P.H - P.MB - 10) np();
   };
 
   /* —— 首頁頭 —— */
   np();
-  /* 附件 */
   font(P.bodySz + 0.5, 0); ctx.fillStyle = '#111';
   const annex = meta.annex || '附件';
   ctx.fillText(annex, W - px(P.MR) - ctx.measureText(annex).width, px(yPt + P.bodySz));
   yPt += P.bodySz + 6;
-  /* 標題置中 */
   font(P.titleSz, 1);
   let tw = ctx.measureText(title).width;
   ctx.fillText(title, (W - tw) / 2, px(yPt + P.titleSz));
   yPt += P.titleSz + 8;
-  /* 承辦商編號（右） */
   font(P.smallSz, 0);
   const crefLab = '註冊消防裝置承辦商參考編號：';
   const crefX = P.xYes - 20;
@@ -3907,11 +3905,10 @@ function xFsdPaperPages(key, cExp, o, sink) {
   const crefLabW = ctx.measureText(crefLab).width / K;
   drawDots(crefX + crefLabW + 2, P.xRight, yPt + P.smallSz);
   if (href) {
-    if (XHW_OK) xHwText(ctx, href, px(crefX + crefLabW + 4), px(yPt + P.smallSz), px(P.smallSz), xHwSeed('cref:' + key), px(80));
+    if (typeof XHW_OK !== 'undefined' && XHW_OK) xHwText(ctx, href, px(crefX + crefLabW + 4), px(yPt + P.smallSz), px(P.smallSz), xHwSeed('cref:' + key), px(80));
     else textAt(href, crefX + crefLabW + 4, yPt + P.smallSz, P.smallSz, 0);
   }
   yPt += P.smallSz + 10;
-  /* FS251／日期／地址（紙本常見順序；ws／fds／fa 齊） */
   const field = (lab, val, full) => {
     font(P.bodySz, 0); ctx.fillStyle = '#111';
     textAt(lab, P.ML, yPt + P.bodySz, P.bodySz, 0);
@@ -3919,7 +3916,7 @@ function xFsdPaperPages(key, cExp, o, sink) {
     const x1 = full ? P.xRight : Math.min(P.ML + lw + 140, P.xRight);
     drawDots(P.ML + lw + 2, x1, yPt + P.bodySz);
     if (val) {
-      if (XHW_OK) xHwText(ctx, val, px(P.ML + lw + 4), px(yPt + P.bodySz), px(P.bodySz), xHwSeed('fld:' + lab + key), px(x1 - P.ML - lw - 6));
+      if (typeof XHW_OK !== 'undefined' && XHW_OK) xHwText(ctx, val, px(P.ML + lw + 4), px(yPt + P.bodySz), px(P.bodySz), xHwSeed('fld:' + lab + key), px(x1 - P.ML - lw - 6));
       else textAt(val, P.ML + lw + 4, yPt + P.bodySz, P.bodySz, 0);
     }
     yPt += P.bodySz + 6;
@@ -3928,7 +3925,6 @@ function xFsdPaperPages(key, cExp, o, sink) {
   field('完成年檢日期：', dateStr, false);
   field('建築物／處所地址：', addr, true);
   yPt += 4;
-  /* 守則／引言 */
   if (meta.codes === 'ws') {
     const intro = '年檢按《最低限度之消防裝置及設備守則》與《裝置及設備之檢查、測試及保養守則》的適當版本及適用於安裝在建築物／處所內系統的相關規定進行。本核對表內所有適用項目已根據規定檢查及／或測試。';
     wrap(intro, P.W - P.ML - P.MR, P.bodySz).forEach(l => { ensure(P.lh); textAt(l, P.ML, yPt + P.bodySz, P.bodySz, 0); yPt += P.lh; });
@@ -3941,7 +3937,7 @@ function xFsdPaperPages(key, cExp, o, sink) {
       const lab = '(' + String.fromCharCode(97 + i) + ')';
       ensure(P.lh);
       textAt(lab, P.ML, yPt + P.bodySz, P.smallSz, 0);
-      wrap(line, P.W - P.ML - P.MR - 18, P.bodySz).forEach((l, j) => {
+      wrap(line, P.W - P.ML - P.MR - 18, P.bodySz).forEach(l => {
         ensure(P.lh);
         textAt(l, P.ML + 18, yPt + P.bodySz, P.bodySz, 0);
         yPt += P.lh;
@@ -3954,7 +3950,6 @@ function xFsdPaperPages(key, cExp, o, sink) {
     textAt(meta.seeTable, P.ML, yPt + P.bodySz, P.bodySz, 0);
     yPt += P.bodySz + 8;
   }
-  /* 備註說明（紙本頁底常見；放頭段後短註） */
   font(P.smallSz, 0);
   const legend = '備註：「是」表示符合消防處的要求；「否」表示不符合消防處的要求；「不適用」表示該欄之項目不適用或系統內不須裝設此項目。請在適當方格內加上「✓」號。';
   wrap(legend, P.W - P.ML - P.MR, P.smallSz).forEach(l => { ensure(P.lh); textAt(l, P.ML, yPt + P.smallSz, P.smallSz, 0); yPt += P.lh - 1; });
@@ -3963,127 +3958,168 @@ function xFsdPaperPages(key, cExp, o, sink) {
   if (cExp && cExp.whole_na) {
     ensure(20);
     textAt('已揀整份不適用 → 唔列項目。', P.ML, yPt + P.bodySz, P.bodySz, 0);
-    drawFooter(); flush(); return;
-  }
-
-  const paintItem = (it, a) => {
-    const mode = it.mode || (a && a.tick_only ? 'y' : 'ynn');
-    const text = it.text || (a && a.text) || '';
-    const rem = (a && a.remark) || (a && a.optional) || it.note || '';
-    const r = (a && a.result) || '';
-    const onY = r === '是' || r === '✓';
-    const onN = r === '否';
-    const onNa = r === '不適用';
-    const textW = (mode === 'y' ? P.xYes : P.xYes) - P.xText - 4;
-    const lines = wrap(text, textW, P.bodySz);
-    const remLines = rem ? wrap(rem, P.xRight - P.xRem, P.smallSz) : [];
-    const boxTop = 1.5;
-    const h = Math.max(lines.length * P.lh, remLines.length * (P.lh - 1), P.box + 4) + P.rowGap;
-    ensure(h + 2);
-    const y0 = yPt;
-    /* 項號 */
-    textAt((it.id || '') + (it.id ? '.' : ''), P.xId, y0 + P.letterSz, P.letterSz, 0);
-    /* 內容 */
-    lines.forEach((l, i) => textAt(l, P.xText, y0 + P.bodySz + i * P.lh, P.bodySz, 0));
-    /* 方格 */
-    if (mode === 'y') {
-      drawBox(P.xYes, y0 + boxTop, onY, key + ':' + it.k + ':y');
-    } else {
-      drawBox(P.xYes, y0 + boxTop, onY, key + ':' + it.k + ':y');
-      drawBox(P.xNo, y0 + boxTop, onN, key + ':' + it.k + ':n');
-      drawBox(P.xNa, y0 + boxTop, onNa, key + ':' + it.k + ':na');
-    }
-    remLines.forEach((l, i) => textAt(l, P.xRem, y0 + P.smallSz + i * (P.lh - 1), P.smallSz, 0));
-    yPt = y0 + h;
-  };
-
-  const paintSec = (s, dep) => {
-    if (!xFsdSecVisible(s, items, cExp, o)) return;
-    const rows = [];
-    (s.items || []).forEach(it => { if (fsdPdfFormRow(items[it.k])) rows.push(it); });
-    ensure(P.lh + 10);
-    /* 欄頭（每段開始） */
-    if (dep === 0 || !rows.length || s.subs) {
-      /* section title line with optional skip box */
-      font(P.bodySz, 1);
-      const st = s.title || s.id || '';
-      textAt(st, P.ML + (dep ? 8 : 0), yPt + P.bodySz, P.bodySz, 1);
-      if (s.skip) {
-        const lab = s.skip_label || '如不適用，跳往下項';
-        drawBox(P.xNa, yPt + 1, !!(items && false), key + ':sec:' + s.id); /* 整段 skip 狀態唔喺 items；留空格 */
-        textAt(lab, P.xRem, yPt + P.smallSz, P.smallSz, 0);
-      }
-      yPt += P.bodySz + 3;
-      if (s.note && dep === 0) {
-        wrap(s.note, P.xYes - P.ML - 8, P.smallSz).forEach(l => { ensure(P.lh); textAt(l, P.ML + 8, yPt + P.smallSz, P.smallSz, 0); yPt += P.lh - 1; });
-        yPt += 2;
-      }
-      drawColHeads();
-    } else {
-      font(P.bodySz, 1);
-      textAt(s.title || s.id || '', P.ML + dep * 8, yPt + P.bodySz, P.bodySz, 1);
-      yPt += P.bodySz + 2;
-    }
-    rows.forEach(it => paintItem(it, items[it.k]));
-    const hasTab = !!(s.table || s.id === 'T1' || s.id === 'T2');
-    if (hasTab) {
-      const tb = fsdPdfTablesFlat((cExp && cExp.tables) || {}, o);
-      if (tb.length) {
-        ensure(P.lh * 2);
-        textAt(s.title && /表/.test(s.title) ? s.title : '表一／表二讀數', P.ML, yPt + P.bodySz, P.bodySz, 1);
-        yPt += P.bodySz + 4;
-        tb.forEach(pair => {
-          ensure(P.lh);
-          textAt(String(pair[0]), P.ML, yPt + P.bodySz, P.smallSz, 0);
-          const val = String(pair[1] || '');
-          if (XHW_OK) xHwText(ctx, val, px(P.ML + 160), px(yPt + P.bodySz), px(P.bodySz), xHwSeed('tb:' + pair[0]), px(200));
-          else textAt(val, P.ML + 160, yPt + P.bodySz, P.bodySz, 0);
-          yPt += P.lh;
-        });
-        yPt += 4;
-      }
-    }
-    (s.subs || []).forEach(sub => paintSec(sub, dep + 1));
-  };
-
-  if (c && c.sections) c.sections.forEach(s => paintSec(s, 0));
-  else {
+  } else {
     drawColHeads();
-    Object.keys(items).filter(k => fsdPdfFormRow(items[k])).sort().forEach(k => {
-      const a = items[k];
-      paintItem({ k, id: k, text: a.text || '', mode: a.tick_only ? 'y' : 'ynn' }, a);
-    });
+
+    const paintItem = (it, a) => {
+      const mode = it.mode || (a && a.tick_only ? 'y' : 'ynn');
+      const text = it.text || (a && a.text) || '';
+      const rem = (a && a.remark) || (a && a.optional) || it.note || '';
+      const r = (a && a.result) || '';
+      const onY = r === '是' || r === '✓';
+      const onN = r === '否';
+      const onNa = r === '不適用';
+      const textW = P.xYes - 8 - P.xText;
+      const lines = wrap(text, textW, P.bodySz);
+      const remLines = rem ? wrap(rem, P.xRight - P.xRem - 2, P.smallSz) : [];
+      const boxTop = 1.8;
+      const h = Math.max(lines.length * P.lh, remLines.length * (P.lh - 1), P.box + 5) + P.rowGap;
+      ensure(h + 2);
+      markTable();
+      const y0 = yPt;
+      let letter = it.id || '';
+      const mLet = String(it.id || '').match(/([a-zA-Z]+)\.?$/);
+      if (mLet) letter = mLet[1].toLowerCase() + '.';
+      else if (letter) letter = letter + (/\.$/.test(letter) ? '' : '.');
+      textAt(letter, P.xId, y0 + P.letterSz, P.letterSz, 0);
+      lines.forEach((l, i) => textAt(l, P.xText, y0 + P.bodySz + i * P.lh, P.bodySz, 0));
+      if (mode === 'y') drawBox(P.xYes, y0 + boxTop, onY, key + ':' + it.k + ':y');
+      else {
+        drawBox(P.xYes, y0 + boxTop, onY, key + ':' + it.k + ':y');
+        drawBox(P.xNo, y0 + boxTop, onN, key + ':' + it.k + ':n');
+        drawBox(P.xNa, y0 + boxTop, onNa, key + ':' + it.k + ':na');
+      }
+      if (remLines.length) remLines.forEach((l, i) => textAt(l, P.xRem, y0 + P.smallSz + i * (P.lh - 1), P.smallSz, 0));
+      else {
+        const nDots = Math.max(1, Math.min(3, Math.ceil(h / P.lh)));
+        for (let i = 0; i < nDots; i++) drawDots(P.xRem, P.xRight - 2, y0 + P.smallSz + i * (P.lh - 1));
+      }
+      yPt = y0 + h;
+      stroke(0.45, '#444');
+      hline(P.xLeft, P.xRight, yPt);
+      markTable();
+    };
+
+    const paintSec = (s, dep) => {
+      if (!xFsdSecVisible(s, items, cExp, o)) return;
+      const rows = [];
+      (s.items || []).forEach(it => { if (fsdPdfFormRow(items[it.k])) rows.push(it); });
+      ensure(P.lh + 14);
+      markTable();
+      const st = s.title || s.id || '';
+      const titleLines = wrap(st, (s.skip ? P.xNa - 12 : P.xYes - 8) - P.xLeft - 2, P.bodySz);
+      const skipOn = !!(s.skip && skipped.has(s.id));
+      /* 通函用「如不適用，跳過此項」（兩行）；唔用「跳往下項」 */
+      const skipLab = s.skip_label || '如不適用，跳過此項';
+      const skipLines = s.skip ? (() => {
+        /* 紙本常見斷行：如不適用，／跳過此項 */
+        if (!s.skip_label && /跳過此項/.test(skipLab)) return ['如不適用，', '跳過此項'];
+        return wrap(skipLab, P.xRight - P.xRem - 2, P.smallSz);
+      })() : [];
+      const hSec = Math.max(titleLines.length * P.lh, s.skip ? Math.max(P.box + 4, skipLines.length * (P.lh - 1)) : 0, P.lh) + P.rowGap + 1;
+      ensure(hSec + 2);
+      const ys = yPt;
+      titleLines.forEach((l, i) => textAt(l, P.xLeft + 2, ys + P.bodySz + i * P.lh, P.bodySz, 1));
+      if (s.skip) {
+        drawBox(P.xNa, ys + 1.8, skipOn, key + ':sec:' + s.id);
+        skipLines.forEach((l, i) => textAt(l, P.xRem, ys + P.smallSz + i * (P.lh - 1), P.smallSz, 0));
+      }
+      yPt = ys + hSec;
+      stroke(0.6, '#111');
+      hline(P.xLeft, P.xRight, yPt);
+      markTable();
+      if (s.note) {
+        wrap(s.note, P.xYes - P.xLeft - 10, P.smallSz).forEach(l => {
+          ensure(P.lh);
+          textAt(l, P.xLeft + 10, yPt + P.smallSz, P.smallSz, 0);
+          yPt += P.lh - 1;
+        });
+        yPt += 2;
+        stroke(0.45, '#444');
+        hline(P.xLeft, P.xRight, yPt);
+        markTable();
+      }
+      /* 紙本通函：段標 NA 仍印子項空行；只喺方格剔「不適用」 */
+      rows.forEach(it => paintItem(it, items[it.k]));
+      const hasTab = !!(s.table || s.id === 'T1' || s.id === 'T2');
+      if (hasTab) {
+        const tb = fsdPdfTablesFlat((cExp && cExp.tables) || {}, o);
+        if (tb.length) {
+          ensure(P.lh * 2);
+          textAt(s.title && /表/.test(s.title) ? s.title : '表一／表二讀數', P.xLeft + 2, yPt + P.bodySz, P.bodySz, 1);
+          yPt += P.bodySz + 4;
+          tb.forEach(pair => {
+            ensure(P.lh);
+            textAt(String(pair[0]), P.xLeft + 2, yPt + P.bodySz, P.smallSz, 0);
+            const val = String(pair[1] || '');
+            if (typeof XHW_OK !== 'undefined' && XHW_OK) xHwText(ctx, val, px(P.xLeft + 160), px(yPt + P.bodySz), px(P.bodySz), xHwSeed('tb:' + pair[0]), px(200));
+            else textAt(val, P.xLeft + 160, yPt + P.bodySz, P.bodySz, 0);
+            yPt += P.lh;
+          });
+          yPt += 4;
+          markTable();
+        }
+      }
+      (s.subs || []).forEach(sub => paintSec(sub, dep + 1));
+    };
+
+    if (c && c.sections) c.sections.forEach(s => paintSec(s, 0));
+    else {
+      Object.keys(items).filter(k => fsdPdfFormRow(items[k])).sort().forEach(k => {
+        const a = items[k];
+        paintItem({ k, id: k, text: a.text || '', mode: a.tick_only ? 'y' : 'ynn' }, a);
+      });
+    }
+
+    /* 簽署區（表外） */
+    if (curP) curP._signStart = yPt;
+    ensure(110);
+    yPt += 10;
+    textAt('註冊消防裝置承辦商的獲授權簽署證書人士：', P.ML, yPt + P.bodySz, P.bodySz, 0);
+    yPt += P.bodySz + 16;
+    drawDots(P.ML + 40, P.ML + 220, yPt);
+    drawDots(P.ML + 260, P.ML + 420, yPt);
+    textAt('（全名）', P.ML + 100, yPt + P.smallSz + 4, P.smallSz, 0);
+    textAt('（簽署）', P.ML + 310, yPt + P.smallSz + 4, P.smallSz, 0);
+    yPt += P.smallSz + 18;
+    drawDots(P.ML + 40, P.ML + 220, yPt);
+    textAt('（日期）', P.ML + 100, yPt + P.smallSz + 4, P.smallSz, 0);
+    yPt += P.smallSz + 16;
+    textAt('註冊消防裝置承辦商：', P.ML, yPt + P.bodySz, P.bodySz, 0);
+    yPt += P.bodySz + 16;
+    drawDots(P.ML + 40, P.ML + 220, yPt);
+    drawDots(P.ML + 260, P.ML + 420, yPt);
+    textAt('（消防處／註冊編號）', P.ML + 70, yPt + P.smallSz + 4, P.smallSz, 0);
+    textAt('（公司名稱）', P.ML + 300, yPt + P.smallSz + 4, P.smallSz, 0);
+    yPt += P.smallSz + 18;
+    drawDots(P.ML + 160, P.ML + 340, yPt);
+    textAt('（公司印章）', P.ML + 210, yPt + P.smallSz + 4, P.smallSz, 0);
   }
 
-  /* 簽署區（跟紙本） */
-  ensure(110);
-  yPt += 10;
-  textAt('註冊消防裝置承辦商的獲授權簽署證書人士：', P.ML, yPt + P.bodySz, P.bodySz, 0);
-  yPt += P.bodySz + 16;
-  drawDots(P.ML + 40, P.ML + 220, yPt);
-  drawDots(P.ML + 260, P.ML + 420, yPt);
-  textAt('（全名）', P.ML + 100, yPt + P.smallSz + 4, P.smallSz, 0);
-  textAt('（簽署）', P.ML + 310, yPt + P.smallSz + 4, P.smallSz, 0);
-  yPt += P.smallSz + 18;
-  drawDots(P.ML + 40, P.ML + 220, yPt);
-  textAt('（日期）', P.ML + 100, yPt + P.smallSz + 4, P.smallSz, 0);
-  yPt += P.smallSz + 16;
-  textAt('註冊消防裝置承辦商：', P.ML, yPt + P.bodySz, P.bodySz, 0);
-  yPt += P.bodySz + 16;
-  drawDots(P.ML + 40, P.ML + 220, yPt);
-  drawDots(P.ML + 260, P.ML + 420, yPt);
-  textAt('（消防處／註冊編號）', P.ML + 70, yPt + P.smallSz + 4, P.smallSz, 0);
-  textAt('（公司名稱）', P.ML + 300, yPt + P.smallSz + 4, P.smallSz, 0);
-  yPt += P.smallSz + 18;
-  drawDots(P.ML + 160, P.ML + 340, yPt);
-  textAt('（公司印章）', P.ML + 210, yPt + P.smallSz + 4, P.smallSz, 0);
-
-  drawFooter();
-  flush();
-  /* 補頁碼 n/m：sink 已收走 canvas，頁碼用 …；正式 preview 腳有 PDF_FOOT。紙本脚已寫 n/… */
+  /* 補表直綫 + 頁脚 n/m，再 sink */
+  const total = pages.length;
+  pages.forEach((p, i) => {
+    const g = p.cv.getContext('2d');
+    const yTop = p._tableTop, yBot = p._tableBot;
+    if (yTop != null && yBot != null && yBot > yTop) {
+      g.strokeStyle = '#111'; g.lineWidth = Math.max(0.55, px(0.7));
+      const verts = [P.xLeft, P.xYes - 4, P.xNo - 4, P.xNa - 4, P.xRem - 4, P.xRight];
+      verts.forEach(x => { g.beginPath(); g.moveTo(px(x), px(yTop)); g.lineTo(px(x), px(yBot)); g.stroke(); });
+      g.beginPath(); g.moveTo(px(P.xLeft), px(yTop)); g.lineTo(px(P.xRight), px(yTop)); g.stroke();
+      g.beginPath(); g.moveTo(px(P.xLeft), px(yBot)); g.lineTo(px(P.xRight), px(yBot)); g.stroke();
+    }
+    g.font = `${px(P.footSz)}px ${XF_FSD_SERIF}`;
+    g.fillStyle = '#111';
+    g.textBaseline = 'alphabetic';
+    g.fillText(meta.foot || title, px(P.ML), H - px(16));
+    const pn = `${i + 1}/${total}`;
+    const tw2 = g.measureText(pn).width;
+    g.fillText(pn, W - px(P.MR) - tw2, H - px(16));
+    if (sink) sink(p);
+  });
 }
 function xFsdChiPages(key, cExp, o, sink) {
-  /* v0.6.330：統一走紙本幾何畫頁 */
+  /* v0.6.331：紙本幾何＋表框／頁頂欄頭／跳過此項／n/m 頁脚 */
   xFsdPaperPages(key, cExp, o, sink);
 }
 
