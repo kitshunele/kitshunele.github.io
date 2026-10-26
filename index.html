@@ -453,8 +453,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.327';
-/* v0.6.327：對埋其他 xPlan 閘（水缸 F24／供水 M6／栓轆 F6）；含 0.6.326 偵測壞表 (2) 永遠唔印 */
+const APP_VERSION = '0.6.328';
+/* v0.6.328：預覽火警偵測年檢核對表用 App fds 官方結構頁（4/2025）；唔靠英文 D／扁平紀錄
+   v0.6.327：對埋其他 xPlan 閘（水缸 F24／供水 M6／栓轆 F6）；含 0.6.326 偵測壞表 (2) 永遠唔印 */
 /* v0.6.326：HA「Sprinkler checklist (2)」壞表（標題偵測／內文花灑）永遠唔印；偵測跟 App fds 4/2025 */
 /* v0.6.325：PDF xPlan 系統閘 opt-in（要「有」先印）；淨揀偵測唔再夾花灑等 */
 /* v0.6.324：提交 PDF 整套 checklist 只顯示需要填寫嘅消防處項目（跟 auto／q_def／def_skip／whole_na） */
@@ -1460,7 +1461,7 @@ function render(toTop) {
   recScrollAt = recScrollKey();
   if (LK || LD) return;
   hydrateThumbs();
-  if (cur.view === 'rec') { markMiss(Store.get(cur.id)); paintOpt(Store.get(cur.id)); if (typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id)); }
+  if (cur.view === 'rec') { markMiss(Store.get(cur.id)); paintOpt(Store.get(cur.id)); if (typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id)); if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(Store.get(cur.id)); }
   const c = $('.chip.cur'), nav = $('.steps');
   if (c && nav) nav.scrollLeft = c.offsetLeft - nav.clientWidth / 2 + c.clientWidth / 2;
 }
@@ -1519,10 +1520,11 @@ function viewRec(r) {
   const body = ({ basic: stepBasic, q: stepQ, 'CL-A': stepCla, 'TR-C2': r => stepC2(r, 'TR-C2'), 'TR-C2U': r => stepC2(r, 'TR-C2U'), 'TR-C2S': r => stepC2(r, 'TR-C2S'), 'TR-H2': stepH2, notes: stepNotes, submit: stepSubmit })[cur.step];
   const html = body ? body(r) : (fsdKeyOf(cur.step) ? stepFsd(r, fsdKeyOf(cur.step)) : stepForm(r, cur.step));
   const haSlot = (typeof haLiveMountHtml === 'function') ? haLiveMountHtml(cur.step) : '';
+  const fsdSlot = (typeof fsdLiveMountHtml === 'function') ? fsdLiveMountHtml(cur.step) : '';
   const prev = steps[i - 1], next = steps[i + 1];
   return `<div class="top"><div class="bar"><button data-act="home" aria-label="返消防檢查核對表">‹ 返回</button><div class="ttl">${esc(recTitle(r))} <span class="badge ${st}" style="font-size:12px;vertical-align:middle">${BADGE[st]}</span><small>${esc(r.date || '')} · <span id="saved">✓ 已自動儲存</span></small></div>${canEditCancel(r) ? '<button class="cxe" data-act="canceledit" aria-label="取消修改">✕ 取消修改</button>' : ''}</div>
   <nav class="steps">${chips}</nav></div>
-  <main>${r.rev ? `<div class="revbar">✏️ 修改中：原上傳 ${esc(r.rev.prev_uploaded_hkt || '')} HKT（第 ${r.rev.prev_revision} 版）· 提交後係第 ${r.rev.revision} 版${r.rev.photos_kept ? ` · ${r.rev.photos_kept} 張原有相喺 Drive` : ''}</div>` : ''}${html}${haSlot}</main>
+  <main>${r.rev ? `<div class="revbar">✏️ 修改中：原上傳 ${esc(r.rev.prev_uploaded_hkt || '')} HKT（第 ${r.rev.prev_revision} 版）· 提交後係第 ${r.rev.revision} 版${r.rev.photos_kept ? ` · ${r.rev.photos_kept} 張原有相喺 Drive` : ''}</div>` : ''}${html}${haSlot}${fsdSlot}</main>
   <div class="foot"><div class="in"><button class="btn" data-act="step" data-k="${prev ? prev.k : ''}" ${prev ? '' : 'disabled'}>‹ ${prev ? esc(prev.t) : '上一步'}</button>${next ? `<button class="btn pri" data-act="next" data-k="${next.k}" data-t="${esc(next.t)}">${esc(next.t)} ›</button>` : `<button class="btn" data-act="home">返主頁</button>`}</div></div>`;
 }
 /* ----- step: basic ----- */
@@ -2990,7 +2992,8 @@ function lkDetail(d) {
    v0.6.324 Fan：提交 PDF「App提交紀錄」消防處項只列需要填寫（跟 fsdExport auto／q_def／def_skip／whole_na；表一‧3／FD_REP‧2／na 來源唔列）。
    v0.6.325 Fan：xPlan 問卷閘改 opt-in（要答「有」先印；未答／冇 → NA），跟 fsdVisible／formVisible；淨揀偵測唔再印花灑等。
    v0.6.326 Fan：Appendix C「Sprinkler checklist（修訂 01 ) (2)」標題係偵測但內文由 §2 起係花灑（HA 範本壞表）→ 永遠唔印；偵測以 App fds／App提交紀錄（4/2025）為準。
-   v0.6.327 Fan：對埋其他系統閘——Supply Tanks／Annex B→F24；Water Supplies→M6；各系統跟最新 FSD 通函（App JSON：4/2025／5/2023／9/2021／7/2021／4/2022）。 */
+   v0.6.327 Fan：對埋其他系統閘——Supply Tanks／Annex B→F24；Water Supplies→M6；各系統跟最新 FSD 通函（App JSON：4/2025／5/2023／9/2021／7/2021／4/2022）。
+   v0.6.328 Fan：預覽「火警偵測系統年檢核對表」改用 App fds（4/2025）官方結構頁；唔再淨係靠英文 HA sheet D／扁平 App提交紀錄。fa 同樣（無中文 Excel）。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -3461,6 +3464,7 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
 /* ----- 5. 揀邊啲工作表（同 Excel 輸出一樣隱藏另一類檢查；問卷「冇」嘅系統列做 NA） ----- */
 const X_ANNUAL = ['A-1', 'A-2', 'F', 'H1', 'H2-1', 'H2-2', 'K', 'N', 'O', 'Fire Hydrant Hose Reel Systems', 'Supply Tanks', 'Annex A', 'Annex B', 'Sprinkler checklist（修訂 01 )', 'Checklist for Water Supplies', 'Annual Inspection Checklist for'];
 const X_NOPRINT = ['工作表2', '工作表3', 'Sprinkler checklist（修訂 01 ) (2)']; /* v0.6.326 Fan：HA 範本 (2) 標題偵測、內文花灑 → 永遠唔印；偵測用 App fds */
+const X_FSD_APP_ONLY = new Set(['fds', 'fa']); /* v0.6.328：無中文 Excel FSD 表 → 預覽用 App FSD_BY 畫官方結構頁 */
 function xGateOf(n) { /* → [類別, 問卷格 或 表格 key] */
   if (/FS Pump/.test(n)) return ['f', 'C1', 'B', 'T6']; if (/Upfeed Pump/.test(n)) return ['f', 'C1U', 'BU', 'M6']; if (/Sprinkler Pump/.test(n)) return ['f', 'C1S', 'BS', 'AA6'];
   if (/Street Hydrant Pump/.test(n)) return ['q', 'AH7'];
@@ -3595,6 +3599,69 @@ async function haLiveRefresh(r) {
   }
 }
 
+/* ----- v0.6.328：消防處·偵測／火警鐘步驟實時 PDF（App 結構頁；唔用英文 HA D／E） ----- */
+let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
+function fsdLiveMountHtml(step) {
+  const key = (typeof fsdKeyOf === 'function') ? fsdKeyOf(step) : null;
+  if (!key || !X_FSD_APP_ONLY.has(key)) return '';
+  const c = FSD_BY[key], lab = (c && (c.chip || c.title)) || key;
+  return `<section class="halive" id="fsdLive" data-fsd-key="${esc(key)}" aria-label="${esc(lab)} 實時 PDF"><div class="halive-msg">準備消防處核對表實時 PDF…</div></section>`;
+}
+function fsdLiveSchedule(r) {
+  if (!r || cur.view !== 'rec') return;
+  const key = (typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null;
+  if (!key || !X_FSD_APP_ONLY.has(key)) return;
+  clearTimeout(fsdLiveT);
+  fsdLiveT = setTimeout(() => { fsdLiveRefresh(r); }, 450);
+}
+function fsdLiveRevoke() { fsdLiveUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); fsdLiveUrls = []; }
+async function fsdLiveRefresh(r) {
+  const box = $('#fsdLive'); if (!box) return;
+  const key = box.dataset.fsdKey || ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null);
+  if (!key || !X_FSD_APP_ONLY.has(key)) return;
+  const tok = ++fsdLiveTok;
+  box.innerHTML = '<div class="halive-msg">畫緊消防處核對表實時 PDF…</div>';
+  try {
+    const o = await buildExport(Object.assign({}, r, { photos: [] }), new Date());
+    if (tok !== fsdLiveTok || !$('#fsdLive')) return;
+    o.photos = [];
+    const cExp = (o.fsd_checklists || {})[key];
+    if (!cExp || !cExp.applicable) {
+      fsdLiveRevoke();
+      box.innerHTML = '<div class="halive-msg">呢份消防處核對表而家唔適用（睇下檢查類別／問卷）。</div>';
+      return;
+    }
+    fsdLiveRevoke();
+    const pages = [];
+    const sink = p => {
+      /* live：只留 canvas → JPEG 預覽；唔做 indexed／PDF */
+      pages.push(p);
+    };
+    xFsdChiPages(key, cExp, o, sink);
+    if (tok !== fsdLiveTok || !$('#fsdLive')) {
+      pages.forEach(p => { if (p.cv) { p.cv.width = 1; p.cv.height = 1; } });
+      return;
+    }
+    const head = document.createElement('div'); head.className = 'halive-h';
+    head.innerHTML = `<b>${esc(cExp.title || key)} 實時 PDF</b><span class="mut">${pages.length} 頁 · 跟草稿即時更新 · 跟通函 ${(cExp.version || '')}</span>`;
+    box.innerHTML = ''; box.appendChild(head);
+    const blk = document.createElement('div'); blk.className = 'halive-blk';
+    blk.innerHTML = `<div class="halive-t">${esc(cExp.title || key)}${pages.length > 1 ? ` <span class="mut">· ${pages.length} 頁</span>` : ''}</div>`;
+    pages.forEach((p, pi) => {
+      const u = p.cv.toDataURL('image/jpeg', 0.72); p.cv.width = 1; p.cv.height = 1; p.cv = null;
+      const im = document.createElement('img'); im.className = 'halive-pg' + (p.land ? ' land' : ''); im.alt = `${cExp.title || key} 第 ${pi + 1} 頁`; im.src = u;
+      blk.appendChild(im);
+    });
+    box.appendChild(blk);
+    const foot = document.createElement('div'); foot.className = 'halive-msg';
+    foot.textContent = `已畫 ${pages.length} 頁（App 結構＝消防處 ${cExp.circular || ''}）`;
+    box.appendChild(foot);
+  } catch (e) {
+    if (tok !== fsdLiveTok) return;
+    box.innerHTML = `<div class="halive-msg" style="color:#b91c1c">實時 PDF 出錯：${esc(e.message || e)}</div>`;
+  }
+}
+
 /* ----- 6. 自己嘅頁（封面、消防處核對表 App 記錄、相片附錄） ----- */
 function xDoc(sink, sheet) { /* sink：每頁畫完即刻轉 JPEG、放走 canvas（手機記憶體） */
   const K = PDF_K, W = Math.round(595.28 * K), H = Math.round(841.89 * K), M = 60, pages = [];
@@ -3648,6 +3715,72 @@ function fsdPdfTablesFlat(tables, o) {
   })(tables || {}, '', false);
   return tb;
 }
+/* v0.6.328 Fan：偵測／火警鐘無中文 Excel → App 結構頁（X_FSD_APP_ONLY 見上） */
+function xFsdSecVisible(sec, items, cExp, o) {
+  if ((sec.items || []).some(it => fsdPdfNeed(items[it.k]))) return true;
+  if (sec.table || sec.id === 'T1' || sec.id === 'T2') {
+    if (fsdPdfTablesFlat((cExp && cExp.tables) || {}, o).length) return true;
+  }
+  return (sec.subs || []).some(s => xFsdSecVisible(s, items, cExp, o));
+}
+function xFsdChiPages(key, cExp, o, sink) {
+  const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
+  const title = (cExp && cExp.title) || (c && c.title) || key;
+  const E = xDoc(sink, title);
+  E.np();
+  E.text(title, { sz: 28, b: 1, after: 2 });
+  E.text(`${(cExp && cExp.circular) || (c && c.circular) || ''}${(cExp && cExp.revision) || (c && c.revision) ? '，' + ((cExp && cExp.revision) || c.revision) : ''}`, { sz: 17, color: '#475569', after: 2 });
+  E.text(`版本 ${(cExp && cExp.version) || (c && c.version) || '—'} · 發出 ${(cExp && cExp.issued) || (c && c.issued) || '—'} · 生效 ${(cExp && cExp.effective) || (c && c.effective) || '—'}`, { sz: 16, color: '#475569', after: 6 });
+  E.text('工作用數位副本（跟 App 消防處核對表）；正式呈交／簽署仍以消防處原表格為準。', { sz: 15, color: '#64748b', after: 10 });
+  const est = o.estate || {}, blk = o.block || {};
+  const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '—';
+  const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
+  E.table([{ t: '項目', w: 0.32 }, { t: '資料', w: 0.68 }], [
+    ['FS 251編號', o.fs251 || '—'],
+    ['完成年檢日期', o.inspection_date || '—'],
+    ['建築物／處所地址', addr],
+    ['註冊消防裝置承辦商參考編號', href || '—'],
+    ['問卷閘', ((cExp && cExp.gate && cExp.gate.cell) || (c && c.gate) || '') + '＝' + ((cExp && cExp.gate && cExp.gate.answer) || '')]
+  ], { sz: 17 });
+  if (cExp && cExp.whole_na) {
+    E.text('已揀整份不適用 → 唔列項目。', { sz: 18, color: '#475569', after: 8 });
+    E.done(); return;
+  }
+  const items = (cExp && cExp.items) || {};
+  const paintSec = (s, dep) => {
+    if (!xFsdSecVisible(s, items, cExp, o)) return;
+    const rows = [];
+    (s.items || []).forEach(it => {
+      const a = items[it.k];
+      if (!fsdPdfNeed(a)) return;
+      rows.push([it.id || '', it.text || (a && a.text) || '', (a && a.result) || (it.mode === 'y' ? '' : '—'), (a && a.remark) || (a && a.optional) || '']);
+    });
+    E.text(s.title || s.id, { sz: dep === 0 ? 22 : 19, b: 1, after: 2, ind: dep * 10 });
+    if (s.note && dep === 0) E.text(s.note, { sz: 14, color: '#64748b', after: 4, ind: dep * 10 });
+    if (rows.length) {
+      E.table([{ t: '項', w: 0.08 }, { t: '檢查內容', w: 0.58 }, { t: '結果', w: 0.12, a: 'c' }, { t: '備註', w: 0.22 }], rows, {
+        sz: 14, hwCols: new Set([2, 3]),
+        color: (r, i) => i === 2 ? (r[2] === '否' ? { c: '#b91c1c', b: 1 } : (r[2] === '是' || r[2] === '✓') ? { c: '#15803d', b: 1 } : null) : null
+      });
+    }
+    const hasTab = !!(s.table || s.id === 'T1' || s.id === 'T2');
+    if (hasTab) {
+      const tb = fsdPdfTablesFlat((cExp && cExp.tables) || {}, o);
+      if (tb.length) { E.text('表格讀數', { sz: 17, b: 1, after: 2 }); E.table([{ t: '欄', w: 0.5 }, { t: '值', w: 0.5 }], tb, { sz: 14, hwCols: new Set([1]) }); }
+    }
+    (s.subs || []).forEach(k => paintSec(k, dep + 1));
+  };
+  if (c && c.sections) c.sections.forEach(s => paintSec(s, 0));
+  else {
+    const rows = Object.keys(items).filter(k => fsdPdfNeed(items[k])).sort().map(k => {
+      const a = items[k]; return [k, a.text || '', a.result || (a.tick_only ? '' : '—'), a.remark || (a.optional || '')];
+    });
+    if (rows.length) E.table([{ t: '項', w: 0.1 }, { t: '檢查內容', w: 0.56 }, { t: '結果', w: 0.12, a: 'c' }, { t: '備註', w: 0.22 }], rows, { sz: 14, hwCols: new Set([2, 3]) });
+    else E.text('（呢份核對表冇需要填寫嘅項目）', { sz: 17, color: '#475569', after: 6 });
+  }
+  E.done();
+}
+
 async function xBuildPages(o, opt, prog) {
   opt = opt || {}; const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov }, plan = xPlan(o), pages = [];
   const sink = p => { /* 頁尾 → JPEG → 放走 canvas */
@@ -3679,16 +3812,24 @@ async function xBuildPages(o, opt, prog) {
   if (plan.na.length) { D.text('唔適用（NA，冇印）', { sz: 24, b: 1, after: 2 }); D.table([{ t: '工作表', w: 0.42 }, { t: '原因', w: 0.58 }], plan.na, { sz: 17 }); }
   D.text(`另一類檢查（${plan.half ? '年檢' : '半年檢'}）嘅工作表唔包括，同 Excel 輸出一樣。`, { sz: 17, color: '#475569' });
   D.text('註：呢份係 App 按範本版面畫出嚟嘅預覽，範本公式由 App 計；正式版以公司電腦 import_submission.py 出嘅 Excel 為準。', { sz: 17, color: '#475569' });
+  D.text('註：工作表 D／E＝房署 Checklist（英文短表）。消防處《火警偵測／火警警報系統年檢核對表》用後面 App 繪製頁（跟通函 4/2025／4/2022）；唔再印壞 Excel「(2)」。', { sz: 16, color: '#475569' });
   D.done();
-  /* 範本工作表 */
+  /* 消防處核對表（無中文 Excel 嘅系統：封面後、房署 Excel 前，避免 Fan 先睇到英文 D／E 當官方表）
+     v0.6.328：fds／fa → App 官方結構頁；其餘系統仍有 X_FSD 中文 Excel，扁平 App提交紀錄喺後 */
+  const fsdKeys = Object.keys(o.fsd_checklists || {}).filter(k => o.fsd_checklists[k] && o.fsd_checklists[k].applicable);
+  for (let i = 0; i < fsdKeys.length; i++) {
+    const k = fsdKeys[i]; if (!X_FSD_APP_ONLY.has(k)) continue;
+    if (prog) prog(`畫緊 ${o.fsd_checklists[k].title || k}…`);
+    await new Promise(r => setTimeout(r, 0));
+    xFsdChiPages(k, o.fsd_checklists[k], o, sink);
+  }
+  /* 範本工作表（房署 Appendix C；D／E＝英文短表，唔係消防處年檢核對表） */
   for (let i = 0; i < plan.inc.length; i++) { const n = plan.inc[i]; if (prog) prog(`畫緊 ${n}（${i + 1}／${plan.inc.length}）…`);
     await new Promise(r => setTimeout(r, 0));
     await xSheetPages(XL_BY[n], B, { dateText: o.inspection_date || '', sink }); }
-  /* 消防處核對表（App 記錄；Excel 喺「App提交紀錄」工作表）
-     v0.6.324：只列需要填寫項目（跟 fsdExport auto／預設不適用／whole_na；同 App 畫面適用規則） */
-  const fsd = Object.keys(o.fsd_checklists || {}).map(k => o.fsd_checklists[k]).filter(c => c.applicable);
-  if (fsd.length) { const E = xDoc(sink, 'App提交紀錄'); E.np(); E.text('消防處年檢核對表（App 記錄）', { sz: 30, b: 1, after: 2 }); E.text('只顯示需要填寫嘅項目（不適用／略過唔列）。Excel「App提交紀錄」工作表仍保留完整紀錄。', { sz: 18, color: '#475569', after: 10 });
-    fsd.forEach(c => {
+  const fsdFlat = fsdKeys.filter(k => !X_FSD_APP_ONLY.has(k)).map(k => Object.assign({ key: k }, o.fsd_checklists[k]));
+  if (fsdFlat.length) { const E = xDoc(sink, 'App提交紀錄'); E.np(); E.text('消防處年檢核對表（App 記錄）', { sz: 30, b: 1, after: 2 }); E.text('只顯示需要填寫嘅項目（不適用／略過唔列）。偵測／火警鐘已用官方結構頁；其餘系統 Excel「App提交紀錄」仍保留完整紀錄。', { sz: 18, color: '#475569', after: 10 });
+    fsdFlat.forEach(c => {
       E.text(`${c.title}${c.whole_na ? '（整份不適用）' : ''}`, { sz: 24, b: 1, after: 0 }); E.text(`${c.circular || ''} ${c.revision || ''}`, { sz: 17, color: '#475569', after: 4 });
       if (c.whole_na) { E.text('已揀整份不適用 → 唔列項目。', { sz: 17, color: '#475569', after: 8 }); return; }
       const rows = Object.keys(c.items || {}).filter(k => fsdPdfNeed(c.items[k])).map(k => { const a = c.items[k]; return [k, a.text || '', a.result || (a.tick_only ? '' : '—'), a.remark || (a.optional || '')]; });
