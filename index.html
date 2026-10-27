@@ -157,9 +157,17 @@ h3 .revtag{display:inline;font-size:13px}
 .pbar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:8px}
 .pbar i{display:block;height:100%;background:var(--ok)}
 .empty{text-align:center;color:var(--mut);padding:40px 10px}
-.q{padding:12px 0;border-top:1px solid #edf1f5}
+.q{padding:12px 0;border-top:1px solid #edf1f5;position:relative}
 .q:first-of-type{border-top:0}
-.q .ql{font-size:17px;font-weight:600;margin-bottom:4px}
+.q .qhead{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px}
+.q .qdrag{flex:0 0 28px;width:28px;min-height:40px;margin:0;padding:0;border:0;border-radius:8px;background:transparent;color:#94a3b8;font-size:15px;font-weight:800;letter-spacing:-1px;line-height:1;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;display:flex;align-items:center;justify-content:center}
+.q .qdrag:active,.q.q-dragging .qdrag{cursor:grabbing;color:var(--pri);background:#eff6ff}
+.q.q-dragging{opacity:.95;z-index:6;box-shadow:0 10px 28px rgba(15,23,42,.16);background:#fff;border-radius:12px}
+.q.q-drop{border-top:2px solid var(--pri)}
+.q .ql{font-size:17px;font-weight:600;margin-bottom:0;flex:1;min-width:0;touch-action:manipulation}
+.q .ql[data-qlong]{cursor:grab}
+body.q-reorder-on{user-select:none;-webkit-user-select:none;cursor:grabbing}
+body.q-reorder-on .liveform{touch-action:none}
 .q .ql .c{font-size:12px;color:var(--mut);font-weight:400;margin-left:6px}
 .q .qfsd{font-size:12px;color:var(--mut);margin:0 0 8px;line-height:1.35;font-weight:400}
 .q .note{font-size:13px;color:var(--mut);margin:-4px 0 8px}
@@ -580,8 +588,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.354';
-/* v0.6.354：揀答案後右欄 .livepane 唔跳頂（save/restore；闊屏唔俾 pin／refresh 蓋位置；窄屏仍 force 跟頁）
+const APP_VERSION = '0.6.355';
+/* v0.6.355：問卷題目可撳住／≡ 拉上拉下調次序；鬆手自動存 Store.prefs.qOrder（唔使另撳儲存）
+   v0.6.354：揀答案後右欄 .livepane 唔跳頂（save/restore；闊屏唔俾 pin／refresh 蓋位置；窄屏仍 force 跟頁）
    v0.6.353：右欄揀睇邊份消防處 checklist（跟問卷／手動）；官方 fsd_blank／spr Excel
    v0.6.352：桌面闊屏 haslive＝兩獨立 pane（左捲唔跟 PDF）＋加闊；含 0.6.351 自動更新
    v0.6.351：新 SW／版本偵測到 → skipWaiting+claim 後自動 reload（唔使撳「更新」）；sessionStorage 防迴圈＋靜音 toast
@@ -1572,7 +1581,8 @@ window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cu
    v0.6.350：問卷 haslive＋消防處 blank 跟題
    v0.6.352：闊屏 liveform／livepane 各自 overflow（見 app_head）；scroll keep 繼續記 f／p
    v0.6.353：右欄 livepick 揀邊份消防處 PDF
-   v0.6.354：闊屏揀答案後一定還原 .livepane（唔 skip）；窄屏先 skip＋force 跟頁 */
+   v0.6.354：闊屏揀答案後一定還原 .livepane（唔 skip）；窄屏先 skip＋force 跟頁
+   v0.6.355：問卷題目拖曳調次序（prefs.qOrder 自動儲存） */
 const LS_REC_SCROLL = 'fsapp20259005.recScroll.v1';
 let REC_SCROLL = {};
 try { REC_SCROLL = JSON.parse(localStorage.getItem(LS_REC_SCROLL) || '{}') || {}; } catch (e) { REC_SCROLL = {}; }
@@ -1697,6 +1707,7 @@ function render(toTop) {
     if (typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id));
     if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(Store.get(cur.id));
     if (typeof liveSplitInit === 'function') liveSplitInit();
+    if (typeof qReorderBind === 'function') qReorderBind(); /* v0.6.355 問卷拉次序 */
     /* v0.6.346／347：換步驟重置跟頁；同頁重畫保留 fsdLiveFollowPi；還原 scroll 後再 sync */
     if (typeof fsdLiveFollowBind === 'function') {
       const fk = (typeof fsdLivePaneKey === 'function') ? fsdLivePaneKey(cur.step) : ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null);
@@ -1904,8 +1915,170 @@ function qInput(r, it) {
   if (it.type === 'floor') return floorField(b, v, '', '只打數字／字母，例如 5、G、R → 5/F、G/F、R/F', 'pure');
   return `<input class="inp ${has(v) ? 'filled' : ''}" data-bind="${b}" value="${esc(v || '')}" placeholder="例：G/F、5/F、R/F">`;
 }
+/* v0.6.355：問卷題目次序（撳住／≡ 拉上拉下）——存 Store.prefs.qOrder；鬆手自動 saveSoon，唔使另撳儲存 */
+function qOrderList() {
+  const o = Store.prefs && Store.prefs.qOrder;
+  return Array.isArray(o) ? o.map(String) : [];
+}
+function qSortItems(items) {
+  const ord = qOrderList();
+  if (!ord.length || !items || !items.length) return items;
+  const rank = new Map(ord.map((c, i) => [c, i]));
+  return items.slice().sort((a, b) => {
+    const ra = rank.has(a.cell) ? rank.get(a.cell) : 1e9;
+    const rb = rank.has(b.cell) ? rank.get(b.cell) : 1e9;
+    if (ra !== rb) return ra - rb;
+    return 0;
+  });
+}
+function qOrderCommitSection(card) {
+  if (!card) return false;
+  const cells = Array.from(card.querySelectorAll('.q[data-qcell]')).map(el => el.getAttribute('data-qcell')).filter(Boolean);
+  if (!cells.length) return false;
+  const set = new Set(cells);
+  const old = qOrderList();
+  const without = old.filter(c => !set.has(c));
+  let insertAt = without.length;
+  for (let i = 0; i < old.length; i++) {
+    if (set.has(old[i])) {
+      insertAt = old.slice(0, i).filter(c => !set.has(c)).length;
+      break;
+    }
+  }
+  const next = without.slice(0, insertAt).concat(cells).concat(without.slice(insertAt));
+  const same = next.length === old.length && next.every((c, i) => c === old[i]);
+  if (same) return false;
+  Store.prefs.qOrder = next;
+  Store.saveSoon(); /* 自動紀錄；跟其他 prefs／草稿同一套 */
+  return true;
+}
+function qReorderMoveWithFe(el, before) {
+  const parent = el.parentNode;
+  if (!parent) return;
+  const fe = (el.getAttribute('data-qcell') === 'F18') ? parent.querySelector('#q-fe') : null;
+  if (before) parent.insertBefore(el, before);
+  else parent.appendChild(el);
+  if (fe) {
+    if (el.nextSibling) parent.insertBefore(fe, el.nextSibling);
+    else parent.appendChild(fe);
+  }
+}
+function qReorderSiblings(card, exclude) {
+  return Array.from(card.querySelectorAll(':scope > .q[data-qcell]')).filter(el => el !== exclude);
+}
+let _qDrag = null, _qLongT = 0, _qBound = false;
+function qReorderClearLong() { clearTimeout(_qLongT); _qLongT = 0; }
+function qReorderStart(el, ev) {
+  if (!el || !el.getAttribute('data-qcell')) return;
+  const card = el.closest('.card');
+  if (!card) return;
+  qReorderClearLong();
+  try { if (ev && ev.pointerId != null) el.setPointerCapture(ev.pointerId); } catch (e) {}
+  const y = ev && ev.clientY != null ? ev.clientY : 0;
+  _qDrag = {
+    el, card, startY: y, lastY: y, moved: false, changed: false,
+    from: Array.from(card.querySelectorAll(':scope > .q[data-qcell]')).map(x => x.getAttribute('data-qcell'))
+  };
+  el.classList.add('q-dragging');
+  try { document.body.classList.add('q-reorder-on'); } catch (e2) {}
+}
+function qReorderOnMove(ev) {
+  if (!_qDrag) return;
+  const d = _qDrag;
+  const y = ev.clientY;
+  const dy = y - d.startY;
+  if (!d.moved) {
+    if (Math.abs(dy) < 6 && Math.abs(y - d.lastY) < 6) { d.lastY = y; return; }
+    d.moved = true;
+  }
+  d.lastY = y;
+  ev.preventDefault();
+  const sibs = qReorderSiblings(d.card, d.el);
+  let before = null;
+  for (const s of sibs) {
+    const r = s.getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    if (y < mid) { before = s; break; }
+  }
+  /* before may be null → append at end（仍喺 skipnote 前：只同 .q[data-qcell] 排） */
+  const curNext = d.el.nextElementSibling;
+  const curNextQ = curNext && curNext.id === 'q-fe' ? curNext.nextElementSibling : curNext;
+  const want = before;
+  if (want !== d.el && want !== curNextQ) {
+    qReorderMoveWithFe(d.el, want);
+    d.changed = true;
+  }
+  sibs.forEach(s => s.classList.toggle('q-drop', s === before));
+}
+function qReorderEnd(ev) {
+  if (!_qDrag) { qReorderClearLong(); return; }
+  const d = _qDrag;
+  _qDrag = null;
+  qReorderClearLong();
+  try { if (ev && ev.pointerId != null) d.el.releasePointerCapture(ev.pointerId); } catch (e) {}
+  d.el.classList.remove('q-dragging');
+  d.card.querySelectorAll('.q-drop').forEach(x => x.classList.remove('q-drop'));
+  try { document.body.classList.remove('q-reorder-on'); } catch (e2) {}
+  if (!d.moved && !d.changed) return;
+  const ok = qOrderCommitSection(d.card);
+  if (ok) toast('已調次序（自動儲存）', 1800);
+  /* 唔強制 render——DOM 已排好；prefs 已存；下次入問卷跟 prefs */
+}
+function qReorderOnDown(ev) {
+  if (ev.button != null && ev.button !== 0) return;
+  if (_qDrag) return;
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  if (t.closest('button.seg, .seg button, input, textarea, select, a, [data-act="ans"], [data-act="inc"]')) return;
+  const handle = t.closest('.qdrag');
+  const ql = t.closest('.ql[data-qlong]');
+  const row = t.closest('.q[data-qcell]');
+  if (!row || row.id === 'q-fe') return;
+  if (handle) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    qReorderStart(row, ev);
+    return;
+  }
+  if (ql && row.contains(ql)) {
+    /* 撳住題目標題 → 長按開始拖（唔阻短撳跟 PDF） */
+    qReorderClearLong();
+    const pid = ev.pointerId;
+    const y0 = ev.clientY, x0 = ev.clientX;
+    _qLongT = setTimeout(() => {
+      _qLongT = 0;
+      if (_qDrag) return;
+      qReorderStart(row, { clientY: y0, pointerId: pid });
+    }, 420);
+    const cancel = (e2) => {
+      if (e2.pointerId != null && pid != null && e2.pointerId !== pid) return;
+      if (e2.type === 'pointermove' && !_qDrag) {
+        const dx = (e2.clientX || 0) - x0, dy = (e2.clientY || 0) - y0;
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      }
+      if (!_qDrag) qReorderClearLong();
+      if (e2.type === 'pointermove' && _qDrag) return; /* 拖緊交俾 qReorderOnMove */
+      document.removeEventListener('pointermove', cancel, true);
+      document.removeEventListener('pointerup', cancel, true);
+      document.removeEventListener('pointercancel', cancel, true);
+    };
+    document.addEventListener('pointermove', cancel, true);
+    document.addEventListener('pointerup', cancel, true);
+    document.addEventListener('pointercancel', cancel, true);
+  }
+}
+function qReorderBind() {
+  if (!(cur.view === 'rec' && cur.step === 'q')) return;
+  if (_qBound) return;
+  _qBound = true;
+  document.addEventListener('pointerdown', qReorderOnDown, true);
+  document.addEventListener('pointermove', e => { if (_qDrag) qReorderOnMove(e); }, { capture: true, passive: false });
+  document.addEventListener('pointerup', qReorderEnd, true);
+  document.addEventListener('pointercancel', qReorderEnd, true);
+}
 function stepQ(r) {
-  /* v0.6.350：問卷都掛 haslive（見 fsdLiveMountHtml／fsdKeyOf('q')）；下半／右欄跟系統顯示消防處原 blank PDF */
+  /* v0.6.350：問卷都掛 haslive（見 fsdLiveMountHtml／fsdKeyOf('q')）；下半／右欄跟系統閘／題目顯示消防處原 blank PDF
+     v0.6.355：題目可 ≡／撳住拉上拉下調次序（prefs.qOrder 自動儲存） */
   const qLiveAttrs = cell => {
     if (typeof qLiveTargetOf !== 'function' && !(typeof FSD_GATE_KEY !== 'undefined' && FSD_GATE_KEY[cell])) return '';
     const tg = (typeof qLiveTargetOf === 'function') ? qLiveTargetOf(cell) : null;
@@ -1920,12 +2093,12 @@ function stepQ(r) {
     const sec = tg && tg.sec != null && tg.sec !== '' ? ` data-live-sec="${esc(tg.sec)}"` : '';
     return ` data-live-qcell="${esc(cell)}" data-live-key="${esc(key)}"${ik}${sec}`;
   };
-  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺頂欄「CL-A」。下半（電話）／右欄即時 PDF＝消防處年檢核對表原 blank（預設跟問卷；右欄可揀偵測／火警鐘／栓轆／水缸／供水道／花灑，或撳「跟問卷」恢復自動）。撳題目會跟頁／切換系統。</div>` + QS.map(s => {
-    const items = s.items.filter(it => qVisible(r, it, s)), OM = optMap(r);
+  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺頂欄「CL-A」。下半（電話）／右欄即時 PDF＝消防處年檢核對表原 blank（預設跟問卷；右欄可揀偵測／火警鐘／栓轆／水缸／供水道／花灑，或撳「跟問卷」恢復自動）。撳題目會跟頁／切換系統。<b>撳住題目</b>或左嘅 <b>≡</b> 可拉上拉下調次序（鬆手自動儲存）。</div>` + QS.map(s => {
+    const items = qSortItems(s.items.filter(it => qVisible(r, it, s))), OM = optMap(r);
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
     return `<div class="card" id="sec-${s.key}"><h3>${esc(s.title)} <span class="mut">${p}/${need}</span></h3>
-      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"${qLiveAttrs(it.cell)}><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
+      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}" data-qcell="${esc(it.cell)}"${qLiveAttrs(it.cell)}><div class="qhead"><button type="button" class="qdrag" data-qdrag="${esc(it.cell)}" aria-label="拉上拉下調次序" title="撳住拉上拉下調次序">≡</button><div class="ql" data-qlong="1">${esc(it.label)}<span class="c">${it.cell}</span></div></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
 }
@@ -4568,6 +4741,8 @@ function fsdLiveFollowOnFocus(ev) {
 function fsdLiveFollowOnClick(ev) {
   const t = ev && ev.target;
   if (!t || !t.closest) return;
+  if (typeof _qDrag !== 'undefined' && _qDrag) return; /* v0.6.355：拖問卷次序期間唔 pin PDF */
+  if (t.closest && t.closest('.qdrag')) return;
   const node = t.closest('[data-live-ik],[data-live-sec],[data-live-qcell],[data-live-key]');
   if (!node) return;
   if (!node.closest('.liveform') && !node.closest('main.haslive')) return;
