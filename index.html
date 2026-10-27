@@ -473,7 +473,16 @@ main.haslive .livepane .halive-pg{max-width:100%}
 .livepick-row{display:flex;flex-wrap:wrap;gap:6px}
 .livepick .lpk{flex:0 0 auto;border:2px solid var(--line);background:#fff;border-radius:999px;min-height:36px;padding:0 11px;font:inherit;font-size:13px;font-weight:800;color:#334155;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .livepick .lpk.on{border-color:var(--pri);background:var(--pri);color:#fff}
+.livepick .lpk.na-mode{border-color:#94a3b8;color:#475569}
+.livepick .lpk.na-mode.on{border-color:#64748b;background:#64748b;color:#fff}
 .livepick .lpk:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+/* v0.6.364：右欄「不適用」剔模式 */
+.fsdna{margin:0 0 8px;padding:8px 10px;background:#f8fafc;border:2px solid #64748b;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.fsdna-lab{font-size:13px;font-weight:700;color:#334155;margin:0 0 6px;line-height:1.35}
+.fsdna-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fsdna .lpk{flex:0 0 auto;border:2px solid #64748b;background:#fff;border-radius:999px;min-height:36px;padding:0 11px;font:inherit;font-size:13px;font-weight:800;color:#334155;cursor:pointer}
+.fsdna .lpk:active{background:#e2e8f0}
+#fsdLive.fsdna-mode .halive-pg{cursor:crosshair}
 /* v0.6.356：教 Q→核對表對應 */
 .qteach{margin:0 0 8px;padding:8px 10px;background:#fffbeb;border:2px solid #f59e0b;border-radius:12px;box-shadow:0 1px 2px rgba(120,53,15,.08)}
 .qteach-lab{font-size:13px;font-weight:700;color:#92400e;margin:0 0 6px;line-height:1.35}
@@ -608,8 +617,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.363';
-/* v0.6.363：① 唔同問答題用唔同色——穩定按 Q cell id 著色（答案掣＋教標記＋疊剔同色；唔再跟有／冇／是／否共用色）② 冇／不適用／跳往… 路徑——左欄是／否／不適用（同表一欄）仍可揀；段「如不適用，跳往…」NA 可教／剔（所有 Q／所有 skip 段）
+const APP_VERSION = '0.6.364';
+/* v0.6.364：核對表右欄 livepick 加「不適用」模式掣——開咗之後撳 PDF 是／否／不適用格一律剔為不適用（再撳取消）；段「如不適用／跳往…」跟 __skip__／d.skip；同教對應互斥
+   v0.6.363：① 唔同問答題用唔同色——穩定按 Q cell id 著色（答案掣＋教標記＋疊剔同色；唔再跟有／冇／是／否共用色）② 冇／不適用／跳往… 路徑——左欄是／否／不適用（同表一欄）仍可揀；段「如不適用，跳往…」NA 可教／剔（所有 Q／所有 skip 段）
    v0.6.362：同一題有／冇／不適用可各自教右欄剔位（claim 只跨題）；揀答案唔 pin／唔跳右欄 PDF；§2 不適用／其他框 hit 略闊；含 0.6.361 問答解鎖
    v0.6.361：解除問答入面已教／已對鎖定——Q 揀選永遠可撳（保留「已對」標＋色聯動＋教對應 map；跨表剔位獨佔仍在）
    v0.6.360：花灑官方 fsd_blank/spr.pdf＋tickmap 疊剔（通函 5/2023）；修 FA 第一頁§2「不適用」位；問答答案色＝核對表疊剔同色；已教對應嘅答曾鎖住（0.6.361 解除）；跨第二表剔位獨佔（已教過嘅框唔可以再教）
@@ -4621,6 +4631,7 @@ let fsdLiveFollowSyncT = null;
 let fsdLiveQCell = null; /* v0.6.350：問卷跟緊邊格 → 揀邊份 FSD blank */
 let fsdLiveManualKey = null; /* v0.6.353：右欄手動揀；null＝跟問卷／自動（Q_FSD_MAP／閘／步驟） */
 let qTeachActive = null; /* v0.6.356：{cell,ans} 問卷揀完答案後教右欄剔位對應 */
+let fsdNaMode = false; /* v0.6.364：右欄「不適用」剔模式——撳格強制 NA／段 skip */
 const FSD_LIVE_PICK_ORDER = ['fds', 'fa', 'fhhr', 'tank', 'ws', 'spr'];
 const FSD_LIVE_PICK_SHORT = { fds: '偵測', fa: '火警鐘', fhhr: '栓轆', tank: '水缸', ws: '供水道', spr: '花灑' };
 function fsdLivePaneKey(step) {
@@ -4655,12 +4666,90 @@ function fsdLivePickBarHtml(step) {
       const full = c.chip || c.title || lab;
       return `<button type="button" class="lpk${on ? ' on' : ''}" data-act="fsdlivepick" data-k="${k}" title="${esc(full)}" aria-pressed="${on ? 'true' : 'false'}">${esc(lab)}</button>`;
     }));
+  /* v0.6.364：核對表上面「不適用」模式掣 */
+  const naOn = !!fsdNaMode;
+  btns.push(`<button type="button" class="lpk na-mode${naOn ? ' on' : ''}" data-act="fsdnamode" title="撳開後喺 PDF 剔不適用／段跳過" aria-pressed="${naOn ? 'true' : 'false'}">不適用</button>`);
   const mode = autoOn ? ((step === 'q') ? '跟緊問卷／題目' : '跟左邊表單') : ('固定睇：' + (FSD_LIVE_PICK_SHORT[fsdLiveManualKey] || fsdLiveManualKey));
   const teach = (step === 'q') ? qTeachBarHtml() : '';
-  return `<div class="livepick" id="livepick" role="toolbar" aria-label="揀睇邊份消防處年檢核對表"><div class="livepick-lab">右欄 PDF · ${esc(mode)}</div><div class="livepick-row">${btns.join('')}</div></div>${teach}`;
+  const naBar = fsdNaBarHtml();
+  return `<div class="livepick" id="livepick" role="toolbar" aria-label="揀睇邊份消防處年檢核對表"><div class="livepick-lab">右欄 PDF · ${esc(mode)}</div><div class="livepick-row">${btns.join('')}</div></div>${teach}${naBar}`;
+}
+function fsdNaBarHtml() {
+  if (!fsdNaMode) return '';
+  return `<div class="fsdna" id="fsdna" role="status"><div class="fsdna-lab">不適用模式：撳右欄「是／否／不適用」格 → 剔為<strong>不適用</strong> · 段「如不適用，跳往…」→ 跳過（__skip__）· 再撳同一格取消 · 撳「完成」關模式</div><div class="fsdna-row"><button type="button" class="lpk" data-act="fsdnadone">完成</button></div></div>`;
+}
+function fsdNaActivate() {
+  if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
+  fsdNaMode = true;
+  const box = (typeof $ === 'function') ? $('#fsdLive') : null;
+  if (box) box.classList.add('fsdna-mode');
+  fsdNaRefreshBar();
+  fsdNaRefreshBtn();
+  if (typeof toast === 'function') toast('不適用模式：撳右欄框剔為不適用', 2000);
+}
+function fsdNaDeactivate() {
+  fsdNaMode = false;
+  const box = (typeof $ === 'function') ? $('#fsdLive') : null;
+  if (box) box.classList.remove('fsdna-mode');
+  document.querySelectorAll('.fsdna').forEach(n => n.remove());
+  fsdNaRefreshBtn();
+}
+function fsdNaRefreshBtn() {
+  const btn = document.querySelector('#livepick .lpk.na-mode');
+  if (!btn) return;
+  const on = !!fsdNaMode;
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+function fsdNaRefreshBar() {
+  const pane = document.getElementById('livepane');
+  if (!pane) return;
+  const old = document.getElementById('fsdna');
+  const html = fsdNaBarHtml();
+  if (!html) { if (old) old.remove(); return; }
+  const wrap = document.createElement('div'); wrap.innerHTML = html;
+  const neu = wrap.firstElementChild;
+  if (old) old.replaceWith(neu);
+  else {
+    const teach = document.getElementById('qteach');
+    const pick = document.getElementById('livepick');
+    if (teach && teach.nextSibling) teach.parentNode.insertBefore(neu, teach.nextSibling);
+    else if (teach) teach.parentNode.appendChild(neu);
+    else if (pick && pick.nextSibling) pick.parentNode.insertBefore(neu, pick.nextSibling);
+    else if (pick) pick.parentNode.appendChild(neu);
+    else pane.insertBefore(neu, pane.firstChild);
+  }
+}
+function fsdNaApplyHit(hit) {
+  /* v0.6.364：強制 NA；段 skip 跟現有 __skip__／d.skip；剔選項（mode y）清剔／提示 */
+  if (!hit) return false;
+  const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
+  if (sid != null) return fsdPdfApplyHit(hit);
+  if (hit.mode === 'y' || hit.v === 'T') {
+    /* 剔選項無「不適用」欄——清已剔；否則提示用段跳過 */
+    if (!hit || typeof fsdRec !== 'function') return false;
+    const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
+    if (!r) return false;
+    const d = fsdRec(r, hit.key);
+    const a = d.a[hit.ik] || {};
+    if (a.v === 'T' && a.by === 'technician') {
+      delete a.v; delete a.by;
+      if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
+      else d.a[hit.ik] = a;
+      Store.touch(r);
+      if (typeof toast === 'function') toast('已清剔選 ' + hit.key + ' ' + hit.ik, 1800);
+      if (typeof render === 'function') render();
+      else if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
+      return true;
+    }
+    if (typeof toast === 'function') toast('剔選項無「不適用」——用段「如不適用」跳過，或左欄處理', 2200);
+    return false;
+  }
+  return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'NA', mode: hit.mode || 'ynn' });
 }
 function qTeachActivate(cell, ans) {
   if (!cell || ans == null || ans === '') { qTeachDeactivate(); return; }
+  if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate(); /* v0.6.364：同不適用模式互斥 */
   qTeachActive = { cell: String(cell), ans: String(ans) };
   qTeachRefreshBar();
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
@@ -4893,6 +4982,8 @@ function fsdLivePickApply(k) {
     wrap.innerHTML = fsdLivePickBarHtml(cur.step);
     const neu = wrap.firstElementChild;
     if (neu) bar.replaceWith(neu);
+    if (typeof fsdNaRefreshBar === 'function') fsdNaRefreshBar();
+    if (typeof qTeachRefreshBar === 'function') qTeachRefreshBar();
   }
   const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
   if (r) {
@@ -4949,6 +5040,21 @@ document.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
     qTeachApplyHit(hit);
+    return;
+  }
+  /* v0.6.364：不適用模式——撳格強制 NA／段 skip */
+  if (fsdNaMode) {
+    if (typeof cur === 'undefined' || !cur.step) return;
+    const stNa = String(cur.step || '');
+    if (!(stNa.startsWith('FSD-') || stNa === 'q')) return;
+    const hitNa = qTeachHitTest(im, e.clientX, e.clientY);
+    if (!hitNa) {
+      if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    fsdNaApplyHit(hitNa);
     return;
   }
   /* 非教：FSD 步或問卷右欄 —— 撳剔位改寫已填／預設 */
@@ -5508,6 +5614,7 @@ async function fsdLiveRefresh(r) {
     fsdLiveFollowBind();
     fsdLivePaneScrollApplyKeep(keepPane, wantKeep);
     if (typeof qTeachActive !== 'undefined' && qTeachActive) { const b = $('#fsdLive'); if (b) b.classList.add('qteach-mode'); setTimeout(() => { if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers(); }, 30); }
+    if (typeof fsdNaMode !== 'undefined' && fsdNaMode) { const b2 = $('#fsdLive'); if (b2) b2.classList.add('fsdna-mode'); }
   } catch (e) {
     if (tok !== fsdLiveTok) return;
     box.innerHTML = `<div class="halive-msg" style="color:#b91c1c">實時 PDF 出錯：${esc(e.message || e)}</div>`;
@@ -14182,6 +14289,14 @@ document.addEventListener('click', async e => {
       return; }
     case 'fsdlivepick': { /* v0.6.353：右欄揀邊份消防處 checklist PDF */
       if (typeof fsdLivePickApply === 'function') fsdLivePickApply(el.dataset.k);
+      return; }
+    case 'fsdnamode': { /* v0.6.364：核對表「不適用」模式掣 */
+      if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
+        if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
+      } else if (typeof fsdNaActivate === 'function') fsdNaActivate();
+      return; }
+    case 'fsdnadone': { /* v0.6.364：關閉不適用模式 */
+      if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
       return; }
     case 'qteachdone': { /* v0.6.356：完成教對應 */
       if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
