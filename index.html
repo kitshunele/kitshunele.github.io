@@ -402,7 +402,7 @@ a.jump{color:var(--pri);font-weight:700}
 .halive-pg{display:block;width:100%;max-width:720px;margin:0 auto 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.08)}
 .halive-pg.land{max-width:100%}
 .halive.halive-upd{opacity:.72;transition:opacity .15s}
-/* v0.6.343：haslive 永遠同時見表單＋即時 PDF；中間 .livesplit 可拖調大細（窄上下／闊左右）；比例存 localStorage */
+/* v0.6.344：haslive 永遠同時見表單＋即時 PDF；.livesplit 可拖；撳下唔跳（唔再用 pointer-events:none 搞亂 scroll） */
 .liveform{min-width:0}
 .livepane{min-width:0}
 .livepeek{display:block;width:100%;margin:6px 0 4px;z-index:6;box-shadow:none}
@@ -413,15 +413,16 @@ a.jump{color:var(--pri);font-weight:700}
   background:linear-gradient(180deg,#e2e8f0,#94a3b8 45%,#e2e8f0);
   box-shadow:0 1px 2px rgba(15,23,42,.12);
   cursor:row-resize;touch-action:none;user-select:none;-webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent;
 }
 .livesplit::before{
   content:"";display:block;width:42px;height:4px;border-radius:999px;background:#475569;
   box-shadow:0 -5px 0 #64748b,0 5px 0 #64748b;opacity:.9;
 }
 .livesplit:focus{outline:2px solid #2563eb;outline-offset:2px}
-main.haslive.ls-dragging{cursor:row-resize;user-select:none;-webkit-user-select:none}
-main.haslive.ls-dragging *{pointer-events:none!important}
-main.haslive.ls-dragging .livesplit{pointer-events:auto!important}
+.livesplit:focus:not(:focus-visible){outline:none} /* 滑鼠／觸控撳唔使 outline，減少視覺跳 */
+main.haslive.ls-dragging{cursor:row-resize;user-select:none;-webkit-user-select:none;touch-action:none}
+/* v0.6.344：唔再用 pointer-events:none／overflow:hidden——兩者都會令 scroll／版面 snap */
 /* 窄屏：上表單／下即時 PDF 同屏可見（唔使撳 peek）；高度跟 --ls-pane-h */
 main.haslive{
   display:flex;flex-direction:column;
@@ -556,8 +557,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.343';
-/* v0.6.343：中間分隔可拖——窄上下／闊左右調大細；localStorage 記住比例
+const APP_VERSION = '0.6.344';
+/* v0.6.344：分隔撳下唔跳（實測起點＋唔用 pointer-events:none）
+   v0.6.343：中間分隔可拖——窄上下／闊左右；localStorage 記住比例
    v0.6.342：haslive 窄屏都永遠上下同屏見即時 PDF（唔使撳 peek）；peek＝可選放大全屏
    v0.6.341：消防處·花灑（spr）左填右睇；右欄中文 Excel→xSheetPages（同提交；無 fake blank）
    v0.6.340：消防處填表左欄／右欄即時原 PDF 疊剔（闊螢幕分欄；手機「即時預覽」）
@@ -3660,7 +3662,7 @@ function xPlan(o) {
 const HA_LIVE_STEPS = new Set(['CL-A', 'C1U', 'TR-C2U', 'C1', 'TR-C2', 'C1S', 'TR-C2S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'CL-F', 'H1', 'TR-H2', 'G1', 'CL-I', 'CL-J', 'CL-K', 'CL-L', 'CL-M', 'CL-N', 'CL-O', 'CL-P']);
 function haLiveStepOk(step) { return HA_LIVE_STEPS.has(step); }
 let LIVE_PEEK = false, LIVE_PEEK_STEP = ''; /* v0.6.340／342：可選放大全屏；換步驟關；窄屏 pane 永遠可見唔靠呢個 */
-/* v0.6.343：中間分隔拖曳——窄上下／闊左右；分開記窄／闊比例 */
+/* v0.6.344：中間分隔拖曳——撳下唔跳；用 pointerdown 當下實測比例做起點；唔再用 pointer-events:none 搞亂 scroll */
 const LS_SPLIT_N = 'fsapp20259005.livesplit.n.v1', LS_SPLIT_W = 'fsapp20259005.livesplit.w.v1';
 const LS_SPLIT_MIN = 0.22, LS_SPLIT_MAX = 0.78;
 let _lsDrag = null, _lsBound = false;
@@ -3690,13 +3692,19 @@ function liveSplitPaint(main, formFrac, wide) {
     main.style.setProperty('--ls-form-pct', (formFrac * 100).toFixed(2) + '%');
     main.style.removeProperty('--ls-form-grow');
     main.style.removeProperty('--ls-pane-grow');
+    main.style.removeProperty('grid-template-columns');
   } else {
     const fg = Math.max(1, Math.round(formFrac * 100));
     const pg = Math.max(1, Math.round((1 - formFrac) * 100));
     main.style.setProperty('--ls-form-grow', String(fg));
     main.style.setProperty('--ls-pane-grow', String(pg));
     main.style.removeProperty('--ls-form-pct');
+    main.style.removeProperty('grid-template-columns');
   }
+  const formEl = main.querySelector('.liveform');
+  const paneEl = main.querySelector('.livepane');
+  if (formEl) { formEl.style.flex = ''; formEl.style.width = ''; formEl.style.height = ''; formEl.style.maxHeight = ''; }
+  if (paneEl) { paneEl.style.flex = ''; paneEl.style.width = ''; paneEl.style.height = ''; paneEl.style.maxHeight = ''; }
 }
 function liveSplitApply() {
   const main = document.querySelector('main.haslive');
@@ -3706,6 +3714,11 @@ function liveSplitApply() {
     main.style.removeProperty('--ls-form-pct');
     main.style.removeProperty('--ls-form-grow');
     main.style.removeProperty('--ls-pane-grow');
+    main.style.removeProperty('grid-template-columns');
+    const formEl = main.querySelector('.liveform');
+    const paneEl = main.querySelector('.livepane');
+    if (formEl) { formEl.style.flex = ''; formEl.style.width = ''; formEl.style.height = ''; formEl.style.maxHeight = ''; }
+    if (paneEl) { paneEl.style.flex = ''; paneEl.style.width = ''; paneEl.style.height = ''; paneEl.style.maxHeight = ''; }
     return;
   }
   const formFrac = liveSplitRead();
@@ -3721,33 +3734,78 @@ function liveSplitOnPointerDown(ev) {
   const formEl = main.querySelector('.liveform');
   const paneEl = main.querySelector('.livepane');
   if (!formEl || !paneEl) return;
+  /* 阻止 focus／scrollIntoView 同預設手勢；pointerdown 本身唔改任何尺寸 */
   ev.preventDefault();
+  if (typeof split.blur === 'function' && document.activeElement === split) {
+    try { split.blur(); } catch (e) {}
+  }
   const wide = liveSplitWide();
   const fr = formEl.getBoundingClientRect();
   const pr = paneEl.getBoundingClientRect();
-  const total = wide ? (fr.width + pr.width) : (fr.height + pr.height);
+  const formPx = wide ? fr.width : fr.height;
+  const panePx = wide ? pr.width : pr.height;
+  const total = formPx + panePx;
   if (!(total > 0)) return;
+  const minPx = total * LS_SPLIT_MIN;
+  const maxPx = total * LS_SPLIT_MAX;
   _lsDrag = {
-    wide, main, split,
+    wide, main, split, formEl, paneEl,
     startPos: wide ? ev.clientX : ev.clientY,
-    startFrac: liveSplitRead(),
-    total
+    startFormPx: formPx,
+    total, minPx, maxPx,
+    moved: false,
+    lastFormPx: formPx,
+    formScroll: formEl.scrollTop | 0,
+    paneScroll: paneEl.scrollTop | 0
   };
-  main.classList.add('ls-dragging');
   try { split.setPointerCapture(ev.pointerId); } catch (e) {}
+}
+function liveSplitDragPixels(d, formPx) {
+  formPx = Math.min(d.maxPx, Math.max(d.minPx, formPx));
+  d.lastFormPx = formPx;
+  const panePx = d.total - formPx;
+  if (d.wide) {
+    /* 拖緊用 px grid，跟住手指；鬆手先寫返 % —— 第一像素都唔會 snap 去 storage % */
+    d.main.style.gridTemplateColumns = formPx.toFixed(1) + 'px 14px minmax(260px,1fr)';
+  } else {
+    d.formEl.style.flex = '0 0 ' + formPx.toFixed(1) + 'px';
+    d.paneEl.style.flex = '0 0 ' + panePx.toFixed(1) + 'px';
+  }
+  if (d.formEl.scrollTop !== d.formScroll) d.formEl.scrollTop = d.formScroll;
+  if (d.paneEl.scrollTop !== d.paneScroll) d.paneEl.scrollTop = d.paneScroll;
+  return formPx;
 }
 function liveSplitOnPointerMove(ev) {
   if (!_lsDrag) return;
   ev.preventDefault();
-  const { wide, main, startPos, startFrac, total } = _lsDrag;
-  const pos = wide ? ev.clientX : ev.clientY;
-  const formFrac = liveSplitSave(startFrac + (pos - startPos) / total);
-  liveSplitPaint(main, formFrac, wide);
+  const d = _lsDrag;
+  const pos = d.wide ? ev.clientX : ev.clientY;
+  const delta = pos - d.startPos;
+  if (!d.moved) {
+    if (Math.abs(delta) < 1) return; /* 純 tap／微震：完全唔改版面 */
+    d.moved = true;
+    d.main.classList.add('ls-dragging');
+  }
+  liveSplitDragPixels(d, d.startFormPx + delta);
 }
 function liveSplitOnPointerUp(ev) {
   if (!_lsDrag) return;
-  try { _lsDrag.split.releasePointerCapture(ev.pointerId); } catch (e) {}
-  _lsDrag.main.classList.remove('ls-dragging');
+  const d = _lsDrag;
+  try { d.split.releasePointerCapture(ev.pointerId); } catch (e) {}
+  if (d.moved) {
+    /* 闊屏 % 相對成個 main（含 14px gutter）；窄屏 grow 相對 form+pane */
+    let formFrac;
+    if (d.wide) {
+      const mainW = d.main.getBoundingClientRect().width || (d.total + 14);
+      formFrac = liveSplitSave(d.lastFormPx / mainW);
+    } else {
+      formFrac = liveSplitSave(d.lastFormPx / d.total);
+    }
+    liveSplitPaint(d.main, formFrac, d.wide); /* 清 px inline，寫返 grow／% */
+    if (d.formEl) d.formEl.scrollTop = d.formScroll;
+    if (d.paneEl) d.paneEl.scrollTop = d.paneScroll;
+  }
+  d.main.classList.remove('ls-dragging');
   _lsDrag = null;
 }
 function liveSplitOnKey(ev) {
@@ -3764,7 +3822,7 @@ function liveSplitOnKey(ev) {
   liveSplitPaint(main, formFrac, wide);
 }
 function liveSplitInit() {
-  liveSplitApply();
+  liveSplitApply(); /* 一入 haslive 即套用已存比例，避免第一次拖先 snap */
   const split = $('#livesplit');
   if (!split) return;
   split.addEventListener('pointerdown', liveSplitOnPointerDown);
@@ -3896,7 +3954,7 @@ async function haLiveRefresh(r) {
    v0.6.340：闊屏左填右睇（#livepane）；窄屏「即時預覽」；X_FSD_APP_ONLY 走 xFsdChiPages＝原 PDF 疊剔
    v0.6.341：spr 同樣左右；右欄中文 Excel「Sprinkler checklist」→ xSheetPages（同提交；無 fake blank PDF）
    v0.6.342：窄屏上下同屏永遠見 livepane；peek＝放大
-   v0.6.343：.livesplit 可拖調大細（窄上下／闊左右） ----- */
+   v0.6.344：.livesplit 拖曳唔跳；v0.6.343 可拖調大細（窄上下／闊左右） ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
 function fsdLiveMountHtml(step) {
   const key = (typeof fsdKeyOf === 'function') ? fsdKeyOf(step) : null;
@@ -12641,7 +12699,7 @@ document.addEventListener('click', async e => {
     case 'new': return newRecord(false);
     case 'copyprev': return copyPicker();
     case 'pdfview': return pdfDraft(r);
-    case 'livepeek': { /* v0.6.342／343：可選放大全屏；關返要還原 livesplit 比例 */
+    case 'livepeek': { /* v0.6.342／343／344：可選放大全屏；關返要還原 livesplit 比例 */
       LIVE_PEEK = !LIVE_PEEK; LIVE_PEEK_STEP = cur.step || LIVE_PEEK_STEP;
       const main = document.querySelector('main.haslive');
       if (main) {
