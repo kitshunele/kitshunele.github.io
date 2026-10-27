@@ -608,8 +608,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.362';
-/* v0.6.362：同一題有／冇／不適用可各自教右欄剔位（claim 只跨題）；揀答案唔 pin／唔跳右欄 PDF；§2 不適用／其他框 hit 略闊；含 0.6.361 問答解鎖
+const APP_VERSION = '0.6.363';
+/* v0.6.363：① 唔同問答題用唔同色——穩定按 Q cell id 著色（答案掣＋教標記＋疊剔同色；唔再跟有／冇／是／否共用色）② 冇／不適用／跳往… 路徑——左欄是／否／不適用（同表一欄）仍可揀；段「如不適用，跳往…」NA 可教／剔（所有 Q／所有 skip 段）
+   v0.6.362：同一題有／冇／不適用可各自教右欄剔位（claim 只跨題）；揀答案唔 pin／唔跳右欄 PDF；§2 不適用／其他框 hit 略闊；含 0.6.361 問答解鎖
    v0.6.361：解除問答入面已教／已對鎖定——Q 揀選永遠可撳（保留「已對」標＋色聯動＋教對應 map；跨表剔位獨佔仍在）
    v0.6.360：花灑官方 fsd_blank/spr.pdf＋tickmap 疊剔（通函 5/2023）；修 FA 第一頁§2「不適用」位；問答答案色＝核對表疊剔同色；已教對應嘅答曾鎖住（0.6.361 解除）；跨第二表剔位獨佔（已教過嘅框唔可以再教）
    v0.6.359：取消全部舊預設預填（左表 ✓／tdef／ndef／問卷自動 NA；FSD q_def*／def_v／ynn→Y／def_skip／q_skip 自動不適用；表一‧3）；空白直至師傅揀；教對應／用戶跳過／可改覆寫保留
@@ -1924,9 +1925,10 @@ function qInput(r, it) {
   const v = r.q[it.cell], b = 'q.' + it.cell;
   /* v0.6.137：還原有／冇（是／否／OH）掣；撤銷 0.6.136／137 打剔 UI
      v0.6.360：每答獨色（--ans）；曾 disabled 已教答
-     v0.6.361：解除鎖定——已教仍標「已對」／色，但可再撳改選 */
+     v0.6.361：解除鎖定——已教仍標「已對」／色，但可再撳改選
+     v0.6.363：色跟 Q cell id（同題有／冇／是／否同一色；唔同題唔同色） */
   const segBtn = (val, cls) => {
-    const col = (typeof qAnsColor === 'function') ? qAnsColor(val) : '';
+    const col = (typeof qAnsColor === 'function') ? qAnsColor(val, it.cell) : '';
     const taught = (typeof qTeachCellHas === 'function') && qTeachCellHas(it.cell, val);
     const on = v === val ? ' on' : '';
     const mark = taught ? ' q-taught' : '';
@@ -2395,7 +2397,8 @@ function qTeachMapGet() {
   return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
 }
 function qTeachKey(cell, ans) { return String(cell || '') + '|' + String(ans == null ? '' : ans); }
-/* v0.6.360：問答答案色＝核對表疊剔同色（左揀右對得上） */
+/* v0.6.360：問答答案色＝核對表疊剔同色（左揀右對得上）
+   v0.6.363：改按 Q cell id 穩定獨色（每題一色；答案掣＋教標記＋疊剔 ink 同色）；冇 cell 先退回答案字面色 */
 const Q_ANS_COLOR = {
   '有': '#15803d', '是': '#15803d',
   '冇': '#b45309', '否': '#b91c1c',
@@ -2403,16 +2406,31 @@ const Q_ANS_COLOR = {
   'LH': '#1d4ed8', 'OH1': '#0d9488', 'OH2': '#7c3aed', 'OH3': '#db2777', 'OH4': '#ea580c',
   '水': '#0284c7', '電': '#ca8a04', '泵': '#9333ea'
 };
-function qAnsColor(ans) {
+function qHash32(s) {
+  let h = 2166136261;
+  const t = String(s == null ? '' : s);
+  for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function qCellColor(cell) {
+  const s = String(cell == null ? '' : cell);
+  if (!s) return '';
+  /* golden-angle：136 題都散開，穩定跟 cell id（唔跟 qOrder） */
+  const hue = Math.floor((qHash32(s) % 10007) * 137.508) % 360;
+  return 'hsl(' + hue + ' 70% 32%)';
+}
+function qAnsColor(ans, cell) {
+  if (cell != null && String(cell) !== '') {
+    const c = qCellColor(cell);
+    if (c) return c;
+  }
   const s = String(ans == null ? '' : ans);
   if (Q_ANS_COLOR[s]) return Q_ANS_COLOR[s];
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  const hue = (h >>> 0) % 360;
+  const hue = Math.floor((qHash32(s) % 10007) * 137.508) % 360;
   return 'hsl(' + hue + ' 62% 36%)';
 }
-function qAnsColorRgb(ans) {
-  const c = qAnsColor(ans);
+function qAnsColorRgb(ans, cell) {
+  const c = qAnsColor(ans, cell);
   if (c.charAt(0) === '#' && c.length === 7) {
     const n = parseInt(c.slice(1), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -2514,6 +2532,8 @@ function qTeachApplyToRec(r, cell, ans, prevAns) {
   clearList.forEach(e => {
     if (!e || !e.key || e.ik == null) return;
     const d = fsdRec(r, e.key);
+    const sid = (typeof qTeachParseSkipIk === 'function') ? qTeachParseSkipIk(e.ik) : null;
+    if (sid != null) { delete d.skip[sid]; return; }
     const a = (d.a || {})[e.ik];
     if (!a || a.by === 'technician') return;
     /* 只清 default；若新答亦教同一 ik 會喺下面覆寫 */
@@ -2527,6 +2547,8 @@ function qTeachApplyToRec(r, cell, ans, prevAns) {
   qTeachList(cell, ans).forEach(e => {
     if (!e || !e.key || e.ik == null || !e.v) return;
     const d = fsdRec(r, e.key);
+    const sid = (typeof qTeachParseSkipIk === 'function') ? qTeachParseSkipIk(e.ik) : null;
+    if (sid != null) { d.skip[sid] = true; return; }
     const a = d.a[e.ik] || {};
     if (a.by === 'technician') return;
     a.v = e.v; a.by = 'default'; d.a[e.ik] = a;
@@ -3193,11 +3215,14 @@ function fsdTableHtml(r, c, s) {
     /* v0.6.322：1／2／4 跟問卷數量開 N 行；2 跟 FD_REP＝冇 → 不適用；3 def_skip */
     const panels = FDS_T1.map(([g, l, qtyCell, ynGate, main]) => {
       if (FDS_T1_DEF_SKIP[g]) return `<div class="sub"><h4>${g}. ${esc(l)}</h4><div class="skipnote">預設不適用（同 §1.c／附錄 II 模擬面板）</div></div>`;
-      if (ynGate && (r.q || {})[ynGate] === '冇') return `<div class="sub"><h4>${g}. ${esc(l)}</h4><div class="skipnote">問卷 ${esc(ynGate)}＝冇 → 不適用</div></div>`;
-      if (ynGate && (r.q || {})[ynGate] !== '有') return `<div class="sub"><h4>${g}. ${esc(l)}</h4><div class="skipnote">問卷未答「panel 有冇 repeater？」→ 答咗先顯示行數</div></div>`;
-      const n = fdsT1N(r, g, qtyCell, ynGate);
+      /* v0.6.363：問卷＝冇／未答都仍顯示左欄（最少 1 行）可填；唔再淨 skipnote */
+      const ynNo = ynGate && (r.q || {})[ynGate] === '冇';
+      const ynPend = ynGate && (r.q || {})[ynGate] !== '有' && !ynNo;
+      const n = Math.max(1, fdsT1N(r, g, qtyCell, ynGate) || (ynNo || ynPend ? 1 : 0));
+      const gateNote = ynNo ? `<div class="skipnote">問卷 ${esc(ynGate)}＝冇 → 匯出不適用；左欄仍可填。</div>`
+        : ynPend ? `<div class="skipnote">問卷未答「panel 有冇…？」→ 答咗先跟數量；左欄暫可填。</div>` : '';
       const qHint = qtyCell && has((r.q || {})[qtyCell]) ? `（問卷＝${esc(String(r.q[qtyCell]))}）` : (qtyCell ? '（問卷未答數量 → 暫 1 行）' : '');
-      return `<div class="sub"><h4>${g}. ${esc(l)}${qHint}</h4>
+      return `<div class="sub"><h4>${g}. ${esc(l)}${qHint}</h4>${gateNote}
         ${n > 1 ? `<div class="mut" style="margin-bottom:6px">共 ${n} 行；改問卷數量加／減（減唔刪已填；再加返會見返）。</div>` : ''}
         ${Array.from({ length: n }, (_, j) => {
           const lettr = FDS_T1_LETTERS[j], id = g + '.' + lettr, x = f[id] || {}, rb = `${b}.fds.${g}~${lettr}`;
@@ -3221,14 +3246,15 @@ function stepFsd(r, key) {
     /* v0.6.359：可跳過＝紙本 skip／舊 def_skip／q_skip 位（畀用戶手動剔）；唔再自動不適用 */
     const showSkip = !!(s.skip || s.def_skip || s.q_skip || (d.skip || {})[s.id]);
     const skipBtn = showSkip ? `<button class="fskip ${skipOn ? 'on' : ''}" data-act="fsdskip" data-c="${key}" data-s="${esc(s.id)}">${skipOn ? '☑' : '☐'} 不適用${s.skip_label ? '（' + esc(s.skip_label) + '）' : ''}</button>` : '';
-    const skipNote = why === 'own' ? '<div class="skipnote">已揀「不適用」，呢部分略過。</div>'
-      : why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」，本附錄略過。</div>`
+    /* v0.6.363：不適用／跳往… 路徑仍顯示左欄是／否／不適用（可揀）；略過只影響匯出／PDF 段 skip 剔 */
+    const skipNote = why === 'own' ? '<div class="skipnote">已揀「不適用」（跳過此段匯出）；左欄框仍可揀／改。</div>'
+      : why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」；左欄框仍可揀／改。</div>`
       : '';
     /* v0.6.148：表一／表二 → 表格欄位放喺長註之前（避免淨見註唔見欄）；T1/T2 id 後備 table；items 防空 */
     const tab = s.table || (s.id === 'T1' ? 'spr_t1' : s.id === 'T2' ? 'spr_t2' : '');
     const isTab = !!tab;
     const noteHtml = s.note ? `<div class="mut fsn">${esc(s.note)}</div>` : '';
-    const formHtml = sk ? '' : (s.items || []).map(it => fsdItemHtml(r, c, s, it)).join('') + (tab ? fsdTableHtml(r, c, Object.assign({}, s, { table: tab })) : '');
+    const formHtml = (s.items || []).map(it => fsdItemHtml(r, c, s, it)).join('') + (tab ? fsdTableHtml(r, c, Object.assign({}, s, { table: tab })) : '');
     body += `<div class="${dep === 0 ? 'card' : 'sub'} fsec" id="fs-${key}-${String(s.id).replace(/[^A-Za-z0-9_-]/g, '-')}" data-live-key="${esc(key)}" data-live-sec="${esc(s.id)}"><${H}>${esc(s.title)}</${H}>${skipBtn}${skipNote}
       ${isTab ? formHtml + noteHtml : noteHtml + formHtml}</div>`;
   }, off, fsdHide(r, c), r);
@@ -4613,7 +4639,7 @@ function qTeachBarHtml() {
     const vv = e.v === 'Y' ? '是' : e.v === 'N' ? '否' : e.v === 'NA' ? 'NA' : e.v === 'T' ? '✓' : (e.v || '');
     return (e.key || '') + ' ' + e.ik + '＝' + vv;
   }).join('、');
-  const col = (typeof qAnsColor === 'function') ? qAnsColor(ans) : '#b45309';
+  const col = (typeof qAnsColor === 'function') ? qAnsColor(ans, cell) : '#b45309';
   return `<div class="qteach" id="qteach" role="status" style="--ans:${esc(col)}"><div class="qteach-lab">教對應中：<b style="color:${esc(col)}">${esc(cell)}</b>＝<b style="color:${esc(col)}">${esc(ans)}</b> · 撳右欄剔位記住（同色）· 已教過嘅格唔可以再撳 · 再撳自己嘅取消</div><div class="qteach-row"><span class="qteach-n">已記 ${n} 項${items ? '：' + esc(items) : ''} · 自動儲存</span><button type="button" class="lpk" data-act="qteachclear">清除呢題教過</button><button type="button" class="lpk" data-act="qteachdone">完成</button></div></div>`;
 }
 function fsdLivePickBarHtml(step) {
@@ -4669,6 +4695,13 @@ function qTeachRefreshBar() {
     else pane.insertBefore(neu, pane.firstChild);
   }
 }
+/* v0.6.363：段 skip（如不適用，跳往第 4 項）教／剔用 ik */
+const Q_TEACH_SKIP_PFX = '__skip__:';
+function qTeachSkipIk(sid) { return Q_TEACH_SKIP_PFX + String(sid || ''); }
+function qTeachParseSkipIk(ik) {
+  const s = String(ik == null ? '' : ik);
+  return s.indexOf(Q_TEACH_SKIP_PFX) === 0 ? s.slice(Q_TEACH_SKIP_PFX.length) : null;
+}
 function qTeachHitTest(im, clientX, clientY) {
   const key = im && im.dataset && im.dataset.liveKey;
   if (!key) return null;
@@ -4686,21 +4719,30 @@ function qTeachHitTest(im, clientX, clientY) {
   const xPt = ((clientX - rect.left) / rect.width) * pageWpt;
   const yPt = ((clientY - rect.top) / rect.height) * pageHpt;
   let best = null, bestD = 1e9;
+  const tryBox = (box, ik, v, mode) => {
+    if (!box) return;
+    const s = (box.s || 9.5) * 2.25; /* v0.6.362：略闊 hit，§2 不適用／其他框易撳中 */
+    const dx = xPt - box.x, dy = yPt - box.y;
+    if (Math.abs(dx) <= s && Math.abs(dy) <= s) {
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = { key: key, ik: ik, v: v, mode: mode || 'ynn' }; }
+    }
+  };
   Object.keys(tm.items).forEach(ik => {
     const m = tm.items[ik];
     if ((m.page | 0) !== (pi | 0)) return;
-    const tryBox = (box, v) => {
-      if (!box) return;
-      const s = (box.s || 9.5) * 2.25; /* v0.6.362：略闊 hit，§2 不適用／其他框易撳中 */
-      const dx = xPt - box.x, dy = yPt - box.y;
-      if (Math.abs(dx) <= s && Math.abs(dy) <= s) {
-        const d = dx * dx + dy * dy;
-        if (d < bestD) { bestD = d; best = { key: key, ik: ik, v: v, mode: m.mode || 'ynn' }; }
-      }
-    };
-    if (m.mode === 'y') tryBox(m.yes, 'T');
-    else { tryBox(m.yes, 'Y'); tryBox(m.no, 'N'); tryBox(m.na, 'NA'); }
+    if (m.mode === 'y') tryBox(m.yes, ik, 'T', 'y');
+    else { tryBox(m.yes, ik, 'Y', m.mode); tryBox(m.no, ik, 'N', m.mode); tryBox(m.na, ik, 'NA', m.mode); }
   });
+  /* v0.6.363：段「如不適用，跳往…」NA 框亦可教／剔（所有 skip 段） */
+  if (typeof fsdOvSkipMap === 'function') {
+    const skipMap = fsdOvSkipMap(key, tm);
+    Object.keys(skipMap || {}).forEach(sid => {
+      const sk = skipMap[sid];
+      if (!sk || !sk.na || (sk.page | 0) !== (pi | 0)) return;
+      tryBox(sk.na, qTeachSkipIk(sid), 'NA', 'secskip');
+    });
+  }
   return best;
 }
 function qTeachPaintMarkers() {
@@ -4720,12 +4762,20 @@ function qTeachPaintMarkers() {
   const key = box.dataset.fsdKey || '';
   const tm = (typeof FSD_TICKMAPS !== 'undefined' && FSD_TICKMAPS[key]) || null;
   if (!tm || !tm.items) return;
-  const ansCol = (typeof qAnsColor === 'function') ? qAnsColor(ans) : '#f59e0b';
+  const ansCol = (typeof qAnsColor === 'function') ? qAnsColor(ans, cell) : '#f59e0b';
   const byPi = {};
   const pushMark = (pi, b, v, ik, locked, title, col) => {
     (byPi[pi] = byPi[pi] || []).push({ b, v, ik, locked: !!locked, title: title || (ik + '=' + v), col: col || ansCol });
   };
+  const skipMapPaint = (typeof fsdOvSkipMap === 'function') ? fsdOvSkipMap(key, tm) : {};
   L.filter(e => e && e.key === key).forEach(e => {
+    const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(e.ik) : null;
+    if (sid != null) {
+      const sk = skipMapPaint[sid];
+      if (!sk || !sk.na) return;
+      pushMark(sk.page, sk.na, e.v || 'NA', e.ik, false, '不適用／跳過 §' + sid, ansCol);
+      return;
+    }
     const m = tm.items[e.ik]; if (!m) return;
     const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
     if (!b) return;
@@ -4739,9 +4789,16 @@ function qTeachPaintMarkers() {
       if (pipe < 0) return;
       const oCell = ka.slice(0, pipe), oAns = ka.slice(pipe + 1);
       if (oCell === cell) return; /* v0.6.362：同一題有／冇／不適用可各自教；只鎖其他題 */
-      const oCol = (typeof qAnsColor === 'function') ? qAnsColor(oAns) : '#94a3b8';
+      const oCol = (typeof qAnsColor === 'function') ? qAnsColor(oAns, oCell) : '#94a3b8';
       (map[ka] || []).forEach(e => {
         if (!e || e.key !== key || !e.ik) return;
+        const sidO = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(e.ik) : null;
+        if (sidO != null) {
+          const sk = skipMapPaint[sidO];
+          if (!sk || !sk.na) return;
+          pushMark(sk.page, sk.na, e.v || 'NA', e.ik, true, '已教：' + oCell + '＝' + oAns + ' · 跳過§' + sidO, oCol);
+          return;
+        }
         const m = tm.items[e.ik]; if (!m) return;
         const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
         if (!b) return;
@@ -4789,15 +4846,22 @@ function qTeachApplyHit(hit) {
   }
   const list = qTeachToggle(cell, ans, hit.key, hit.ik, hit.v);
   const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
+  const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
   if (r && typeof fsdRec === 'function') {
     const d = fsdRec(r, hit.key);
     const still = list.find(e => e.key === hit.key && e.ik === hit.ik);
-    const a = d.a[hit.ik] || {};
-    if (still) { a.v = still.v; a.by = 'default'; d.a[hit.ik] = a; }
-    else if (a.by === 'default' || !a.by) {
-      delete a.v; delete a.by;
-      if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
-      else d.a[hit.ik] = a;
+    if (sid != null) {
+      /* v0.6.363：教段 skip NA → d.skip[sid] */
+      if (still) d.skip[sid] = true;
+      else delete d.skip[sid];
+    } else {
+      const a = d.a[hit.ik] || {};
+      if (still) { a.v = still.v; a.by = 'default'; d.a[hit.ik] = a; }
+      else if (a.by === 'default' || !a.by) {
+        delete a.v; delete a.by;
+        if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
+        else d.a[hit.ik] = a;
+      }
     }
     Store.touch(r);
     if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(r);
@@ -4807,8 +4871,8 @@ function qTeachApplyHit(hit) {
   setTimeout(() => qTeachPaintMarkers(), 80);
   const still2 = list.find(e => e.key === hit.key && e.ik === hit.ik);
   if (typeof toast === 'function') {
-    const lab = still2 ? (still2.v === 'Y' ? '是' : still2.v === 'N' ? '否' : still2.v === 'NA' ? '不適用' : still2.v === 'T' ? '✓' : still2.v) : '—';
-    toast((still2 ? '已記住 ' : '已取消 ') + hit.key + ' ' + hit.ik + '＝' + lab + '（prefs.qTeachMap 自動儲存）', 2200);
+    const lab = still2 ? (sid != null ? ('不適用／跳過§' + sid) : (still2.v === 'Y' ? '是' : still2.v === 'N' ? '否' : still2.v === 'NA' ? '不適用' : still2.v === 'T' ? '✓' : still2.v)) : '—';
+    toast((still2 ? '已記住 ' : '已取消 ') + hit.key + ' ' + (sid != null ? ('跳過§' + sid) : hit.ik) + '＝' + lab + '（prefs.qTeachMap 自動儲存）', 2200);
   }
 }
 function fsdLivePickApply(k) {
@@ -4844,6 +4908,16 @@ function fsdPdfApplyHit(hit) {
   const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
   if (!r) return false;
   const d = fsdRec(r, hit.key);
+  const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
+  if (sid != null) {
+    /* v0.6.363：右欄撳段「如不適用，跳往…」＝ toggling d.skip */
+    if (d.skip[sid]) { delete d.skip[sid]; if (typeof toast === 'function') toast('已清跳過 §' + sid, 1800); }
+    else { d.skip[sid] = true; if (typeof toast === 'function') toast('已剔不適用／跳過 §' + sid, 1800); }
+    Store.touch(r);
+    if (typeof render === 'function') render();
+    else if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
+    return true;
+  }
   const a = d.a[hit.ik] || {};
   const lab = ({ Y: '是', N: '否', NA: '不適用', T: '✓' })[hit.v] || hit.v;
   if (a.v === hit.v && a.by === 'technician') {
@@ -6080,11 +6154,11 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
       if (typeof qTeachSource === 'function' && typeof Store !== 'undefined' && cur && cur.id) {
         const rec = Store.get(cur.id);
         const src = qTeachSource(rec, key, ik);
-        if (src && src.ans && typeof qAnsColorRgb === 'function') ink = qAnsColorRgb(src.ans);
+        if (src && (src.cell || src.ans) && typeof qAnsColorRgb === 'function') ink = qAnsColorRgb(src.ans, src.cell);
       }
-      if (!ink && a && a.q_ans && typeof qAnsColorRgb === 'function') ink = qAnsColorRgb(a.q_ans);
+      if (!ink && a && (a.q_cell || a.q_ans) && typeof qAnsColorRgb === 'function') ink = qAnsColorRgb(a.q_ans, a.q_cell);
       if (!ink && typeof qAnsColorRgb === 'function') {
-        /* 無教來源：是／否／不適用跟問答同色板 */
+        /* 無教來源：是／否／不適用跟答案字面色板（冇 Q cell） */
         if (onY) ink = qAnsColorRgb('是');
         else if (onN) ink = qAnsColorRgb('否');
         else if (onNa) ink = qAnsColorRgb('不適用');
