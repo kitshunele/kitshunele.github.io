@@ -401,6 +401,27 @@ a.jump{color:var(--pri);font-weight:700}
 .halive-t{font-weight:800;font-size:15px;margin:0 0 8px;padding:6px 10px;background:#e2e8f0;border-radius:10px}
 .halive-pg{display:block;width:100%;max-width:720px;margin:0 auto 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.08)}
 .halive-pg.land{max-width:100%}
+.halive.halive-upd{opacity:.72;transition:opacity .15s}
+/* v0.6.340：左填右睇（闊螢幕）；窄屏「即時預覽」全屏 */
+.liveform{min-width:0}
+.livepane{min-width:0}
+.livepeek{display:block;width:100%;margin:14px 0 8px;position:sticky;bottom:76px;z-index:6;box-shadow:0 4px 14px rgba(15,23,42,.18)}
+main.haslive:not(.liveopen) .livepane{display:none}
+main.liveopen .livepane{display:block;position:fixed;inset:0;z-index:45;background:#f1f5f9;overflow:auto;-webkit-overflow-scrolling:touch;padding:56px 12px 28px;border:0;margin:0}
+main.liveopen .livepeek{position:fixed;top:10px;right:10px;left:auto;bottom:auto;width:auto;z-index:50;margin:0}
+main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
+@media (min-width:1000px){
+  .livepeek{display:none!important}
+  main.haslive{display:grid;grid-template-columns:minmax(320px,1fr) minmax(340px,1.08fr);gap:0 16px;align-items:start;max-width:min(1480px,100%)}
+  main.haslive > .revbar{grid-column:1/-1}
+  main.haslive .liveform{min-width:0}
+  main.haslive .livepane,
+  main.haslive:not(.liveopen) .livepane{display:block;position:sticky;top:72px;max-height:calc(100vh - 88px);overflow:auto;-webkit-overflow-scrolling:touch;padding:0 0 24px;background:transparent;inset:auto;z-index:auto}
+  main.haslive .livepane .halive{margin:0;padding:10px 10px 20px;border:1px solid #cbd5e1;border-radius:14px;background:#f8fafc;border-top:1px solid #cbd5e1}
+  main.haslive .livepane .halive-pg{max-width:100%}
+  main.haslive .liveform .fsec{grid-template-columns:1fr} /* 左欄單欄填，右欄睇紙 */
+  body:has(main.haslive) .foot .in{max-width:min(1480px,100%)}
+}
 @media (min-width:900px){
   .halive-pg{max-width:900px}
   .basicla{display:grid;grid-template-columns:1fr minmax(280px,360px);gap:0 14px;align-items:start}
@@ -453,8 +474,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.339';
-/* v0.6.339：跳過此項打剔；子項唔填是／否／不適用
+const APP_VERSION = '0.6.340';
+/* v0.6.340：消防處填表左欄／右欄即時原 PDF 疊剔（闊螢幕分欄；手機「即時預覽」）
+   v0.6.339：跳過此項打剔；子項唔填是／否／不適用
    v0.6.338：疊剔再自然（角度／弧／臂長／墨色微變）
    v0.6.337：設定加入「桌面安裝」
    v0.6.336：登入／批准後自動提示加到手機桌面（PWA）
@@ -1456,6 +1478,8 @@ function recScrollRestoreY() {
 window.addEventListener('scroll', () => { if (!recScrollAt) return; REC_SCROLL[recScrollAt] = window.scrollY | 0; clearTimeout(recScrollT); recScrollT = setTimeout(recScrollPersist, 350); }, { passive: true });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { recScrollSave(); clearTimeout(recScrollT); recScrollPersist(); } });
 function render(toTop) {
+  if (typeof fsdLiveRemember === 'function') fsdLiveRemember();
+  if (typeof haLiveRemember === 'function') haLiveRemember();
   recScrollSave(); /* 換頁前先記低舊頁位置（recScrollAt 仍係舊 key；hash 已改 cur） */
   const y = window.scrollY;
   const LK = typeof accLocked === 'function' && accLocked() && cur.view !== 'accmgr'; /* v0.6.14.3 未批准：任何 hash 都只顯示鎖住頁 */
@@ -1530,10 +1554,18 @@ function viewRec(r) {
   const html = body ? body(r) : (fsdKeyOf(cur.step) ? stepFsd(r, fsdKeyOf(cur.step)) : stepForm(r, cur.step));
   const haSlot = (typeof haLiveMountHtml === 'function') ? haLiveMountHtml(cur.step) : '';
   const fsdSlot = (typeof fsdLiveMountHtml === 'function') ? fsdLiveMountHtml(cur.step) : '';
+  const liveSlot = !!(haSlot || fsdSlot);
+  if (typeof LIVE_PEEK_STEP !== 'undefined' && LIVE_PEEK_STEP !== cur.step) { LIVE_PEEK = false; LIVE_PEEK_STEP = cur.step; }
+  const liveOpen = liveSlot && (typeof LIVE_PEEK !== 'undefined') && LIVE_PEEK;
   const prev = steps[i - 1], next = steps[i + 1];
+  const rev = r.rev ? `<div class="revbar">✏️ 修改中：原上傳 ${esc(r.rev.prev_uploaded_hkt || '')} HKT（第 ${r.rev.prev_revision} 版）· 提交後係第 ${r.rev.revision} 版${r.rev.photos_kept ? ` · ${r.rev.photos_kept} 張原有相喺 Drive` : ''}</div>` : '';
+  const peek = liveSlot ? `<button type="button" class="btn sm livepeek" data-act="livepeek">${liveOpen ? '✕ 關閉預覽' : '📄 即時預覽'}</button>` : '';
+  const mainInner = liveSlot
+    ? `${rev}<div class="liveform">${html}</div><aside class="livepane" id="livepane" aria-label="即時 PDF 預覽">${haSlot}${fsdSlot}</aside>${peek}`
+    : `${rev}${html}`;
   return `<div class="top"><div class="bar"><button data-act="home" aria-label="返消防檢查核對表">‹ 返回</button><div class="ttl">${esc(recTitle(r))} <span class="badge ${st}" style="font-size:12px;vertical-align:middle">${BADGE[st]}</span><small>${esc(r.date || '')} · <span id="saved">✓ 已自動儲存</span></small></div>${canEditCancel(r) ? '<button class="cxe" data-act="canceledit" aria-label="取消修改">✕ 取消修改</button>' : ''}</div>
   <nav class="steps">${chips}</nav></div>
-  <main>${r.rev ? `<div class="revbar">✏️ 修改中：原上傳 ${esc(r.rev.prev_uploaded_hkt || '')} HKT（第 ${r.rev.prev_revision} 版）· 提交後係第 ${r.rev.revision} 版${r.rev.photos_kept ? ` · ${r.rev.photos_kept} 張原有相喺 Drive` : ''}</div>` : ''}${html}${haSlot}${fsdSlot}</main>
+  <main class="${liveSlot ? 'haslive' : ''}${liveOpen ? ' liveopen' : ''}">${mainInner}</main>
   <div class="foot"><div class="in"><button class="btn" data-act="step" data-k="${prev ? prev.k : ''}" ${prev ? '' : 'disabled'}>‹ ${prev ? esc(prev.t) : '上一步'}</button>${next ? `<button class="btn pri" data-act="next" data-k="${next.k}" data-t="${esc(next.t)}">${esc(next.t)} ›</button>` : `<button class="btn" data-act="home">返主頁</button>`}</div></div>`;
 }
 /* ----- step: basic ----- */
@@ -3016,7 +3048,9 @@ function lkDetail(d) {
    v0.6.333 Fan：疊剔改藍色大 V 字剔（#1565C0），唔用細綠 ✓。
    v0.6.334 Fan：每剔 seed PRNG 微抖（角度／臂／線寬／位移）→ 自然唔一樣。
    v0.6.335 Fan：疊剔線寬幼啲。
-   v0.6.338 Fan：疊剔再自然（角度／弧／臂／墨色）。 */
+   v0.6.338 Fan：疊剔再自然（角度／弧／臂／墨色）。
+   v0.6.340 Fan：闊屏左表單／右即時原 PDF 疊剔；窄屏「即時預覽」；沿用 xFsdChiPages。 */
+
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -3533,10 +3567,23 @@ function xPlan(o) {
    CL-A → A-1／A-2；H1 → H1；C1 → C1 FS Pump…；類推。問卷步驟唔再堆晒全部。 */
 const HA_LIVE_STEPS = new Set(['CL-A', 'C1U', 'TR-C2U', 'C1', 'TR-C2', 'C1S', 'TR-C2S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'CL-F', 'H1', 'TR-H2', 'G1', 'CL-I', 'CL-J', 'CL-K', 'CL-L', 'CL-M', 'CL-N', 'CL-O', 'CL-P']);
 function haLiveStepOk(step) { return HA_LIVE_STEPS.has(step); }
+let LIVE_PEEK = false, LIVE_PEEK_STEP = ''; /* v0.6.340：窄屏「即時預覽」開關；換步驟關 */
+let haLiveSnap = { step: '', html: '' }, fsdLiveSnap = { key: '', html: '' };
+function haLiveRemember() {
+  const box = $('#haLive'); if (!box) return;
+  const step = box.dataset.haStep || '';
+  if (step && box.querySelector('.halive-pg')) haLiveSnap = { step, html: box.innerHTML };
+}
+function fsdLiveRemember() {
+  const box = $('#fsdLive'); if (!box) return;
+  const key = box.dataset.fsdKey || '';
+  if (key && box.querySelector('.halive-pg')) fsdLiveSnap = { key, html: box.innerHTML };
+}
 function haLiveMountHtml(step) {
   if (!haLiveStepOk(step)) return '';
   const lab = step === 'CL-A' ? 'CL-A（A-1／A-2）實時 PDF' : `Checklist ${step} 實時 PDF`;
-  return `<section class="halive" id="haLive" data-ha-step="${esc(step)}" aria-label="${esc(lab)}"><div class="halive-msg">準備實時 PDF…</div></section>`;
+  const inner = (haLiveSnap.step === step && haLiveSnap.html) ? haLiveSnap.html : '<div class="halive-msg">準備實時 PDF…</div>';
+  return `<section class="halive" id="haLive" data-ha-step="${esc(step)}" aria-label="${esc(lab)}">${inner}</section>`;
 }
 function haSheetsForStep(step, all) {
   const f = pred => all.filter(pred);
@@ -3586,7 +3633,9 @@ async function haLiveRefresh(r) {
   const step = box.dataset.haStep || cur.step;
   if (!XLS || !XLS.sheets || !XLS.sheets.length) { box.innerHTML = '<div class="halive-msg">未載入範本版面，實時 PDF 暫時唔得。</div>'; return; }
   const tok = ++haLiveTok;
-  box.innerHTML = '<div class="halive-msg">畫緊實時 PDF…</div>';
+  const hadPg = !!box.querySelector('.halive-pg');
+  if (!hadPg) box.innerHTML = '<div class="halive-msg">畫緊實時 PDF…</div>';
+  else box.classList.add('halive-upd');
   try {
     const o = await buildExport(Object.assign({}, r, { photos: [] }), new Date());
     if (tok !== haLiveTok || !$('#haLive')) return;
@@ -3620,20 +3669,25 @@ async function haLiveRefresh(r) {
       const foot = document.createElement('div'); foot.className = 'halive-msg';
       foot.textContent = `已畫 ${sheets.length} 份：` + sheets.join('、');
       box.appendChild(foot);
+      haLiveSnap = { step, html: box.innerHTML };
     }
   } catch (e) {
     if (tok !== haLiveTok) return;
     box.innerHTML = `<div class="halive-msg" style="color:#b91c1c">實時 PDF 出錯：${esc(e.message || e)}</div>`;
+  } finally {
+    const b = $('#haLive'); if (b) b.classList.remove('halive-upd');
   }
 }
 
-/* ----- v0.6.328：消防處·偵測／火警鐘步驟實時 PDF（App 結構頁；唔用英文 HA D／E） ----- */
+/* ----- v0.6.328：消防處·偵測／火警鐘步驟實時 PDF（App 結構頁；唔用英文 HA D／E）
+   v0.6.340：闊屏左填右睇（#livepane）；窄屏「即時預覽」；仍走 xFsdChiPages＝原 PDF 疊剔 ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
 function fsdLiveMountHtml(step) {
   const key = (typeof fsdKeyOf === 'function') ? fsdKeyOf(step) : null;
   if (!key || !X_FSD_APP_ONLY.has(key)) return '';
   const c = FSD_BY[key], lab = (c && (c.chip || c.title)) || key;
-  return `<section class="halive" id="fsdLive" data-fsd-key="${esc(key)}" aria-label="${esc(lab)} 實時 PDF"><div class="halive-msg">準備消防處核對表實時 PDF…</div></section>`;
+  const inner = (fsdLiveSnap.key === key && fsdLiveSnap.html) ? fsdLiveSnap.html : '<div class="halive-msg">準備消防處核對表實時 PDF…</div>';
+  return `<section class="halive" id="fsdLive" data-fsd-key="${esc(key)}" aria-label="${esc(lab)} 實時 PDF">${inner}</section>`;
 }
 function fsdLiveSchedule(r) {
   if (!r || cur.view !== 'rec') return;
@@ -3648,7 +3702,9 @@ async function fsdLiveRefresh(r) {
   const key = box.dataset.fsdKey || ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null);
   if (!key || !X_FSD_APP_ONLY.has(key)) return;
   const tok = ++fsdLiveTok;
-  box.innerHTML = '<div class="halive-msg">畫緊消防處核對表實時 PDF…</div>';
+  const hadPg = !!box.querySelector('.halive-pg');
+  if (!hadPg) box.innerHTML = '<div class="halive-msg">畫緊消防處核對表實時 PDF…</div>';
+  else box.classList.add('halive-upd');
   try {
     const o = await buildExport(Object.assign({}, r, { photos: [] }), new Date());
     if (tok !== fsdLiveTok || !$('#fsdLive')) return;
@@ -3657,10 +3713,16 @@ async function fsdLiveRefresh(r) {
     if (!cExp || !cExp.applicable) {
       fsdLiveRevoke();
       box.innerHTML = '<div class="halive-msg">呢份消防處核對表而家唔適用（睇下檢查類別／問卷）。</div>';
+      fsdLiveSnap = { key: '', html: '' };
       return;
     }
     fsdLiveRevoke();
     await xHwLoad();
+    let ovOk = false;
+    try {
+      const tmAll = await fsdLoadTickmaps();
+      ovOk = !!(tmAll && tmAll[key] && tmAll[key].overlay_ok !== false);
+    } catch (e0) { ovOk = false; }
     const pages = [];
     const sink = p => {
       /* live：只留 canvas → JPEG 預覽；唔做 indexed／PDF */
@@ -3672,7 +3734,7 @@ async function fsdLiveRefresh(r) {
       return;
     }
     const head = document.createElement('div'); head.className = 'halive-h';
-    head.innerHTML = `<b>${esc(cExp.title || key)} 實時 PDF</b><span class="mut">${pages.length} 頁 · 跟草稿即時更新 · 跟通函 ${(cExp.version || '')}</span>`;
+    head.innerHTML = `<b>${esc(cExp.title || key)} 即時核對</b><span class="mut">${pages.length} 頁 · 左填右睇 · 跟通函 ${(cExp.version || '')}</span>`;
     box.innerHTML = ''; box.appendChild(head);
     const blk = document.createElement('div'); blk.className = 'halive-blk';
     blk.innerHTML = `<div class="halive-t">${esc(cExp.title || key)}${pages.length > 1 ? ` <span class="mut">· ${pages.length} 頁</span>` : ''}</div>`;
@@ -3683,11 +3745,16 @@ async function fsdLiveRefresh(r) {
     });
     box.appendChild(blk);
     const foot = document.createElement('div'); foot.className = 'halive-msg';
-    foot.textContent = `已畫 ${pages.length} 頁（消防處原 PDF 疊剔 · ${cExp.circular || ''}）`;
+    foot.textContent = ovOk
+      ? `已畫 ${pages.length} 頁（消防處原 PDF 疊剔 · ${cExp.circular || ''}）`
+      : `已畫 ${pages.length} 頁（暫用結構紙本回退 · ${key} 未有疊剔圖；正式匯出規則不變）`;
     box.appendChild(foot);
+    fsdLiveSnap = { key, html: box.innerHTML };
   } catch (e) {
     if (tok !== fsdLiveTok) return;
     box.innerHTML = `<div class="halive-msg" style="color:#b91c1c">實時 PDF 出錯：${esc(e.message || e)}</div>`;
+  } finally {
+    const b = $('#fsdLive'); if (b) b.classList.remove('halive-upd');
   }
 }
 
@@ -12311,6 +12378,19 @@ document.addEventListener('click', async e => {
     case 'new': return newRecord(false);
     case 'copyprev': return copyPicker();
     case 'pdfview': return pdfDraft(r);
+    case 'livepeek': { /* v0.6.340：窄屏開／關即時 PDF（闊屏 CSS 已分欄） */
+      LIVE_PEEK = !LIVE_PEEK; LIVE_PEEK_STEP = cur.step || LIVE_PEEK_STEP;
+      const main = document.querySelector('main.haslive');
+      if (main) {
+        main.classList.toggle('liveopen', !!LIVE_PEEK);
+        const b = main.querySelector('.livepeek');
+        if (b) b.textContent = LIVE_PEEK ? '✕ 關閉預覽' : '📄 即時預覽';
+      } else if (r) render();
+      if (LIVE_PEEK && r) {
+        if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(r);
+        if (typeof haLiveSchedule === 'function') haLiveSchedule(r);
+      }
+      return; }
     case 'lkpdf': return pdfLookup();
     case 'waphotos': return phDay(r);
     case 'ecphotos': return phOpen({ title: el.dataset.t || 'E call 相片', sub: el.dataset.s || '', q: { folder: el.dataset.url }, drive: el.dataset.url });
