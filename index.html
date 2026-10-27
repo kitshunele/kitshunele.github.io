@@ -603,8 +603,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.357';
-/* v0.6.357：問答選擇→核對表硬編碼對齊（T8→6.j＋6.l＋§3 skip；AA25 唔跟 6.1.h／9.g；7.6.5.l 只 FD_DOOR；7.6.5.h←F14）；教對應保留
+const APP_VERSION = '0.6.358';
+/* v0.6.358：表內已填（預設／自動 NA／禁剔／q_skip）都可改寫並記住；右欄 PDF 撳剔覆寫；教對應保留
+   v0.6.357：問答選擇→核對表硬編碼對齊（T8→6.j＋6.l＋§3 skip；AA25 唔跟 6.1.h／9.g；7.6.5.l 只 FD_DOOR；7.6.5.h←F14）；教對應保留
    v0.6.356：問卷揀完答案 → 右欄撳剔位教 Q→核對表對應；prefs.qTeachMap 自動儲存（如 qOrder）；修 T8≠6.i、FD_DOOR≠7.6.4.b
    v0.6.355：問卷題目可撳住／≡ 拉上拉下調次序；鬆手自動存 Store.prefs.qOrder（唔使另撳儲存）
    v0.6.354：揀答案後右欄 .livepane 唔跳頂（save/restore；闊屏唔俾 pin／refresh 蓋位置；窄屏仍 force 跟頁）
@@ -966,9 +967,15 @@ function inInfo(r, k, it) { /* v0.6.245：數目／讀數 → { n, by:'technicia
   return { n: a.n, by: '' };
 }
 const inVal = (r, k, it) => inInfo(r, k, it).n; /* v0.4.9／0.6.245 輸入項目（數目／讀數；有 ndef 就預設） */
+function itemAutoEditable(it, r) { /* v0.6.358：自動 NA（問卷）可改；固定／半年檢隱藏除外 */
+  return !!(it && !it.always_na && !(it.annual_only && r && isHalf(r)));
+}
 function itemVal(r, k, it) { // → { v, note, by: 'technician' | 'default' | '' }
   const a = r.items[k + '.' + it.id] || {};
   if (a.v) return { v: a.v, note: a.note || '', by: 'technician' };
+  /* v0.6.358：自動 NA 顯示為預設 NA（可改寫） */
+  if (itemMode(r, it) === 'autona' && itemAutoEditable(it, r))
+    return { v: 'NA', note: a.note || '', by: 'default' };
   const d = itemDef(r, it); return { v: d, note: a.note || '', by: d ? 'default' : '' };
 }
 
@@ -1148,7 +1155,7 @@ function prog(r, k) {
   if (k === 'basic') return { done: (has(r.block.zh) || has(r.block.en) ? 1 : 0) + (has(r.date) ? 1 : 0) + (ITYPE[r.itype] ? 1 : 0), total: 3 };
   if (k === 'CL-A') return null; /* v0.6.239：唯讀總表，唔計師傅填寫進度 */
   if (k === 'q') { let d = 0, t = 0; const M = optMap(r); QS.forEach(s => s.items.forEach(it => { if (qVisible(r, it, s)) { if (!has(r.q[it.cell]) && M.has('q.' + it.cell)) return; t++; if (has(r.q[it.cell])) d++; } })); return { done: d, total: t }; }
-  if (FORMS[k]) { let d = 0, t = 0, err = 0; FORMS[k].items.forEach(it => { if (itemMode(r, it) === 'input') { if (!it.optional) { t++; if (has(inVal(r, k, it))) d++; } return; } if (itemMode(r, it) !== 'ask') return; t++; const a = itemVal(r, k, it); if (a.v) { d++; if (a.v === 'X' && !has((a.note || '').trim())) err++; } }); return { done: d, total: t, err }; }
+  if (FORMS[k]) { let d = 0, t = 0, err = 0; FORMS[k].items.forEach(it => { const m = itemMode(r, it); if (m === 'input') { if (!it.optional) { t++; if (has(inVal(r, k, it))) d++; } return; } if (m !== 'ask' && !(m === 'autona' && itemAutoEditable(it, r))) return; t++; const a = itemVal(r, k, it); if (a.v) { d++; if (a.v === 'X' && !has((a.note || '').trim())) err++; } }); return { done: d, total: t, err }; }
   if (isC2(k)) { const rows = c2Set(k)(r); return { done: rows.filter(x => c2RowDone(r, x)).length, total: rows.length }; }
   if (k === 'TR-H2') return h2Need(r);
   if (fsdKeyOf(k)) return fsdProg(r, fsdKeyOf(k));
@@ -1166,8 +1173,8 @@ function pageMissing(r, k) { // → [{code, sel}]
   } else if (k === 'q') {
     const M = optMap(r); QS.forEach(s => s.items.forEach(it => { if (qVisible(r, it, s) && !has(r.q[it.cell]) && !M.has('q.' + it.cell)) out.push({ code: it.cell, sel: '#q-' + it.cell }); }));
   } else if (FORMS[k]) {
-    FORMS[k].items.forEach(it => { if (itemMode(r, it) === 'input') { if (!it.optional && !has(inVal(r, k, it))) out.push({ code: it.id, sel: '#it-' + (k + '.' + it.id).replace(/\./g, '-') }); return; }
-      if (itemMode(r, it) !== 'ask') return; const key = k + '.' + it.id, a = itemVal(r, k, it);
+    FORMS[k].items.forEach(it => { const m = itemMode(r, it); if (m === 'input') { if (!it.optional && !has(inVal(r, k, it))) out.push({ code: it.id, sel: '#it-' + (k + '.' + it.id).replace(/\./g, '-') }); return; }
+      if (m !== 'ask' && !(m === 'autona' && itemAutoEditable(it, r))) return; const key = k + '.' + it.id, a = itemVal(r, k, it);
       if (!a.v) out.push({ code: it.id, sel: '#it-' + key.replace(/\./g, '-') });
       else if (a.v === 'X' && !has((a.note || '').trim())) out.push({ code: it.id + '（X 未寫原因）', sel: '#it-' + key.replace(/\./g, '-') }); });
   } else if (isC2(k)) {
@@ -2138,10 +2145,10 @@ function stepForm(r, k) {
   const f = FORMS[k]; if (!f) return '';
   const ask_ = [], meas = [], auto = [];
   const halfHidden = [];
-  f.items.forEach(it => { const m = itemMode(r, it); if (m === 'ask' || m === 'input') ask_.push(it); else if (m === 'measure') meas.push(it); else if (m === 'autona' && it.annual_only && isHalf(r)) halfHidden.push(it); else if (m === 'autona' && !it.always_na) (it.na_if ? ask_ : auto).push(it); }); /* always_na（C1 i／m）、半年檢 CL-D *g–*h／CL-E *k–*n：唔顯示；na_if（天台缸）：原位鎖定 NA */
-  const unanswered = ask_.filter(it => itemMode(r, it) === 'ask' && !itemVal(r, k, it).v).length;
+  f.items.forEach(it => { const m = itemMode(r, it); if (m === 'ask' || m === 'input') ask_.push(it); else if (m === 'measure') meas.push(it); else if (m === 'autona' && it.annual_only && isHalf(r)) halfHidden.push(it); else if (m === 'autona' && it.always_na) { /* 固定 NA：唔顯示 */ } else if (m === 'autona' && itemAutoEditable(it, r)) ask_.push(it); /* v0.6.358：自動 NA（含 na_if）入主列表可改 */ else if (m === 'autona' && !it.always_na) auto.push(it); });
+  const unanswered = ask_.filter(it => { const m = itemMode(r, it); return (m === 'ask' || (m === 'autona' && itemAutoEditable(it, r))) && !itemVal(r, k, it).v; }).length;
   const inMiss = ask_.filter(it => itemMode(r, it) === 'input' && !it.optional && !has(inVal(r, k, it))).length; /* v0.4.9 */
-  const nDef = ask_.filter(it => itemMode(r, it) === 'ask' && itemVal(r, k, it).by === 'default').length + ask_.filter(it => itemMode(r, it) === 'input' && inInfo(r, k, it).by === 'default').length; /* v0.6.245：數目 ndef 都計 */
+  const nDef = ask_.filter(it => { const m = itemMode(r, it); return (m === 'ask' || (m === 'autona' && itemAutoEditable(it, r))) && itemVal(r, k, it).by === 'default'; }).length + ask_.filter(it => itemMode(r, it) === 'input' && inInfo(r, k, it).by === 'default').length; /* v0.6.245／0.6.358 */
   const toStep = (k === 'H1' || k === 'G1' || k === 'B' || k === 'BU') ? 'TR-H2' : k === 'C1U' ? 'TR-C2U' : k === 'C1S' ? 'TR-C2S' : k === 'BS' ? 'CL-J' : 'TR-C2';
   let header = '';
   if (k === 'C1') { const q = r.q; header = `<div class="card"><div class="kv"><b>泵數</b><span>${q.T16 === '有' ? '3（1號、2號 + Jockey）' : q.T16 === '冇' ? '2（1號、2號）' : '（問卷 T16 未答）'}</span><b>泵類</b><span>${q.T8 === '有' ? 'Booster no. 1 & 2' : q.T8 === '冇' ? 'Fixed no. 1 & 2' : '（問卷 T8 未答）'}</span><b>系統</b><span>FH/HR（消防泵：Fixed／Booster 中途泵）</span><b>範本</b><span>C1-1／C1-2 FS Pump</span></div></div>`; }
@@ -2151,12 +2158,22 @@ function stepForm(r, k) {
     if (itemMode(r, it) === 'input') { const info = inInfo(r, k, it), n = info.n, dflt = info.by === 'default', kind = it.input === 'int' ? 'int' : 'num1'; /* v0.6.245：ndef 預設（CL-J k＝24） */
       return `<div class="item inp ${has(n) ? 'v-ok' : ''} ${dflt ? 'dflt' : ''}" id="it-${key.replace(/\./g, '-')}"><div class="ih"><span class="iid">${esc(it.id)}</span><div><div class="zh">${esc(it.zh)}</div><div class="en">${esc(it.en)}</div>${dflt ? `<span class="dtag">預設 ${esc(String(n))} · 可改</span>` : (it.optional ? '<span class="dtag">可留空（留空 = NA）</span>' : '')}</div></div>
       <div class="row" style="align-items:center;gap:8px"><input class="num ${has(n) ? 'filled' : (it.optional ? '' : 'need')}" style="max-width:150px" inputmode="${kind === 'int' ? 'numeric' : 'decimal'}" data-bind="items.${key.replace(/\./g, '~')}.n" data-kind="${kind}" value="${has(n) ? esc(kind === 'num1' ? show1(n) : String(n)) : ''}" placeholder="${kind === 'int' ? '例：24' : '例：7.5'}"><span class="mut">${esc(it.unit || '')}</span></div></div>`; }
-    if (it.na_if && itemMode(r, it) === 'autona') return `<div class="item v-na locked" id="it-${key.replace(/\./g, '-')}"><div class="ih"><span class="iid">${esc(it.id)}</span><div><div class="zh">${esc(it.zh)}</div><div class="en">${esc(it.en)}</div></div></div>
-    <div class="tri"><button class="ok" disabled aria-label="合格">✓</button><button class="x" disabled aria-label="唔合格">X</button><button class="na on" disabled aria-label="不適用">NA</button></div><div class="locknote">🔒 ${ROOF_NA}（問卷 ${it.na_if[0]}「${esc((QBY[it.na_if[0]] || {}).label || '')}」＝${esc(it.na_if[1])}）</div></div>`;
+    /* v0.6.358：自動 NA／預設都可改（唔再 locked disabled） */
     const a = itemVal(r, k, it), v = a.v || '', dflt = a.by === 'default';
+    const m0 = itemMode(r, it);
+    const autoEd = m0 === 'autona' && itemAutoEditable(it, r);
+    let dtag = '';
+    if (autoEd && dflt) {
+      const lab = it.na_if ? (ROOF_NA + '（問卷 ' + it.na_if[0] + '＝' + it.na_if[1] + '）') : it.na_lt ? ('問卷 ' + it.na_lt[0] + '＜' + it.na_lt[1]) : it.na_any ? ((it.na_any || []).map(c => (QBY[c] || {}).label || c).join('／') + ' → 冇') : it.na_unless ? (((QBY[it.na_unless] || {}).label || it.na_unless) + ' → 冇') : '自動 NA';
+      dtag = `<span class="dtag">自動 NA · ${esc(lab)} · 可改</span>`;
+    } else if (autoEd && !dflt) {
+      dtag = '<span class="dtag">已改（唔跟問卷自動 NA）</span>';
+    } else if (dflt) {
+      dtag = `<span class="dtag">預設 ${esc(v)}（${esc(defWhy(r, k, it))}）· 可改</span>`;
+    }
     const cls = v === '✓' ? 'v-ok' : v === 'X' ? 'v-x' : v === 'NA' ? 'v-na' : '';
     const ph = (r.photos || []).filter(p => p.item === key);
-    return `<div class="item ${cls} ${dflt ? 'dflt' : ''}" id="it-${key.replace(/\./g, '-')}"><div class="ih"><span class="iid">${esc(it.id)}</span><div><div class="zh">${esc(it.zh)}</div><div class="en">${esc(it.en)}</div>${dflt ? `<span class="dtag">預設 ${esc(v)}（${esc(defWhy(r, k, it))}）· 可改</span>` : ''}</div></div>
+    return `<div class="item ${cls} ${dflt ? 'dflt' : ''}" id="it-${key.replace(/\./g, '-')}"><div class="ih"><span class="iid">${esc(it.id)}</span><div><div class="zh">${esc(it.zh)}</div><div class="en">${esc(it.en)}</div>${dtag}</div></div>
     ${k === 'CL-A' && it.id === 'o' ? `<div class="feo">${feCard(r, true)}</div>` : ''}
     <div class="tri"><button class="ok ${v === '✓' ? 'on' : ''}" data-act="tick" data-key="${key}" data-v="✓" aria-label="合格">✓</button><button class="x ${v === 'X' ? 'on' : ''}" data-act="tick" data-key="${key}" data-v="X" aria-label="唔合格">X</button><button class="na ${v === 'NA' ? 'on' : ''}" data-act="tick" data-key="${key}" data-v="NA" aria-label="不適用">NA</button></div>
     ${v === 'X' ? `<div class="why"><label>原因／建議（必填）</label><textarea class="${has((a.note || '').trim()) ? '' : 'need'}" data-bind="items.${key.replace(/\./g, '~')}.note" data-kind="text" placeholder="例：急停掣失效，建議更換">${esc(a.note || '')}</textarea>
@@ -2617,8 +2634,9 @@ const fsdDefault = (r, c, s, it, M) => {
 const fsdEff = (r, c, s, it, M) => {
   const a = (fsdGet(r, c.key).a || {})[it.k] || {};
   const def = fsdDefault(r, c, s, it, M);
-  if (def.by === 'lock') return def; /* v0.6.221：禁剔／清剔蓋過師傅 */
+  /* v0.6.358：師傅覆寫優先於 lock／預設（表內已填都可改） */
   if (a.v && a.by === 'technician') return { v: a.v, by: 'technician' };
+  if (def.by === 'lock') return def; /* 未覆寫先跟問卷禁剔建議 */
   /* bulk／legacy（無 by）若同 def_v／q_def 預設唔同 → 跟預設（例如 NA 蓋過舊「是」） */
   if (a.v && (a.by === 'bulk' || !a.by) && def.v && def.v !== a.v) return def;
   if (a.v) return { v: a.v, by: a.by === 'bulk' ? 'bulk' : 'technician' };
@@ -2630,13 +2648,13 @@ function fsdMigrateStale(r, c) {
   const sweep = (s, it) => {
     const a = d.a[it.k]; if (!a || !a.v) return;
     const def = fsdDefault(r, c, s, it);
-    /* v0.6.221：lock → 清走任何已存剔（含 technician） */
+    /* v0.6.358：lock 只清非師傅覆寫；technician 保留 */
+    if (a.by === 'technician') return;
     if (def.by === 'lock') {
       delete a.v; delete a.by;
       if (!has(a.note)) delete d.a[it.k]; else d.a[it.k] = a;
       ch = true; return;
     }
-    if (a.by === 'technician') return;
     if (!(def.v && def.v !== a.v)) return;
     delete a.v; delete a.by;
     if (!has(a.note)) delete d.a[it.k]; else d.a[it.k] = a;
@@ -2654,7 +2672,7 @@ const fsdOffAllowed = (r, c) => c.key === 'fa' && r.q.F9 === '有';
 const fsdIsOff = (r, c) => !!(fsdGet(r, c.key).off && fsdOffAllowed(r, c));
 function fsdWalk(c, d, fn, off, hide, r) { // fn(sec, depth, skipped, why) — why: '' | 'own' | 'q' | 'def' | 'link' | 'parent' | 'off' | 'notank'
   const byId = {}; const idx = s => { byId[s.id] = s; (s.subs || []).forEach(idx); }; c.sections.forEach(idx);
-  const autoWhy = s => { if ((d.skip || {})[s.id]) return 'own'; if (qSkipMatch(s, r)) return 'q'; if (s.def_skip && !(d.force_on || {})[s.id]) return 'def'; return ''; };
+  const autoWhy = s => { if ((d.skip || {})[s.id]) return 'own'; if (qSkipMatch(s, r) && !(d.force_on || {})[s.id]) return 'q'; /* v0.6.358：force_on 可開返 q_skip 部 */ if (s.def_skip && !(d.force_on || {})[s.id]) return 'def'; return ''; };
   const linkedSkip = s => { if (!s.link) return false; const p = byId[s.link]; if (!p) return !!(d.skip || {})[s.link]; return !!autoWhy(p) || linkedSkip(p); };
   const rec = (s, depth, pwhy) => {
     const aw = autoWhy(s);
@@ -3012,14 +3030,18 @@ function fsdItemHtml(r, c, s, it) {
   const d = fsdGet(r, c.key), a = d.a[it.k] || {}, ef = fsdEff(r, c, s, it), v = ef.v || '', bk = `fsd.${c.key}.a.${it.k.replace(/\./g, '~')}`;
   const note = it.note ? `<div class="en">${esc(it.note)}</div>` : '';
   if (it.mode === 'y') {
-    const locked = ef.by === 'lock';
-    return `<div class="item fitem ${v ? 'v-ok' : ''}${locked ? ' dflt' : ''}" id="${fsdDom(c.key, it.k)}" data-live-key="${esc(c.key)}" data-live-sec="${esc(s.id)}" data-live-ik="${esc(it.k)}"><div class="ih"><span class="iid">${esc(it.id || s.id)}</span><div><div class="zh">${esc(it.text)}</div>${note}${locked ? '<span class="dtag">問卷禁剔（冇警鐘撳手 panel）</span>' : ''}</div></div>
-    <div class="tri fsdtri"><button class="ok ${v === 'T' ? 'on' : ''}" data-act="fsdv" data-c="${c.key}" data-k="${esc(it.k)}" data-v="T"${locked ? ' disabled aria-disabled="true"' : ''}>✓ 適用（剔）</button></div></div>`;
+    const sugLock = ef.by === 'lock' || (ef.by !== 'technician' && fsdDefault(r, c, s, it).by === 'lock');
+    const lockTag = ef.by === 'technician' && fsdDefault(r, c, s, it).by === 'lock'
+      ? '<span class="dtag">已改（問卷建議禁剔）</span>'
+      : (ef.by === 'lock' ? '<span class="dtag">問卷建議禁剔 · 可改</span>' : '');
+    return `<div class="item fitem ${v ? 'v-ok' : ''}${ef.by === 'lock' || sugLock ? ' dflt' : ''}" id="${fsdDom(c.key, it.k)}" data-live-key="${esc(c.key)}" data-live-sec="${esc(s.id)}" data-live-ik="${esc(it.k)}"><div class="ih"><span class="iid">${esc(it.id || s.id)}</span><div><div class="zh">${esc(it.text)}</div>${note}${lockTag}</div></div>
+    <div class="tri fsdtri"><button class="ok ${v === 'T' ? 'on' : ''}" data-act="fsdv" data-c="${c.key}" data-k="${esc(it.k)}" data-v="T">✓ 適用（剔）</button></div></div>`;
   }
   const cls = v === 'Y' ? 'v-ok' : v === 'N' ? 'v-x' : v === 'NA' ? 'v-na' : '';
   const ph = (r.photos || []).filter(p => p.item === c.key + ':' + it.k);
   const showNote = v === 'N' || has(a.note) || fsdOpenNote[c.key + ':' + it.k];
-  return `<div class="item fitem ${cls} ${ef.by === 'default' ? 'dflt' : ''}" id="${fsdDom(c.key, it.k)}" data-live-key="${esc(c.key)}" data-live-sec="${esc(s.id)}" data-live-ik="${esc(it.k)}"><div class="ih"><span class="iid">${esc(it.id || s.id)}</span><div><div class="zh">${esc(it.text)}</div>${note}${ef.by === 'default' ? `<span class="dtag">預設「${FSD_V[ef.v]||ef.v}」（問卷）· 可改</span>` : ''}</div></div>
+  const defTag = ef.by === 'default' ? `<span class="dtag">預設「${FSD_V[ef.v]||ef.v}」（問卷）· 可改</span>` : (ef.by === 'technician' ? '<span class="dtag">已改</span>' : '');
+  return `<div class="item fitem ${cls} ${ef.by === 'default' ? 'dflt' : ''}" id="${fsdDom(c.key, it.k)}" data-live-key="${esc(c.key)}" data-live-sec="${esc(s.id)}" data-live-ik="${esc(it.k)}"><div class="ih"><span class="iid">${esc(it.id || s.id)}</span><div><div class="zh">${esc(it.text)}</div>${note}${defTag}</div></div>
     <div class="tri fsdtri"><button class="ok ${v === 'Y' ? 'on' : ''}" data-act="fsdv" data-c="${c.key}" data-k="${esc(it.k)}" data-v="Y">是</button><button class="x ${v === 'N' ? 'on' : ''}" data-act="fsdv" data-c="${c.key}" data-k="${esc(it.k)}" data-v="N">否</button><button class="na ${v === 'NA' ? 'on' : ''}" data-act="fsdv" data-c="${c.key}" data-k="${esc(it.k)}" data-v="NA">不適用</button></div>
     ${showNote ? `<div class="${v === 'N' ? 'why' : 'fnote'}"><label>${v === 'N' ? '備註（必填：列出不符合項目的位置）' : '備註'}</label><textarea class="${v === 'N' && !has((a.note || '').trim()) ? 'need' : ''}" data-bind="${bk}.note" data-kind="text" placeholder="例：12/F 2號梯消防喉轆">${esc(a.note || '')}</textarea>
       ${v === 'N' ? `<div class="row" style="margin-top:6px"><button class="btn sm" data-act="photo" data-src="cam" data-item="${c.key}:${esc(it.k)}">📷 影相</button><button class="btn sm" data-act="photo" data-src="gal" data-item="${c.key}:${esc(it.k)}">🖼 揀相</button></div>${ph.length ? `<div class="thumbs">${ph.map(thumbHtml).join('')}</div>` : ''}` : ''}</div>`
@@ -3160,11 +3182,14 @@ function stepFsd(r, key) {
     if (why === 'parent' || why === 'off' || why === 'notank') return;
     const H = dep === 0 ? 'h3' : 'h4';
     const skipOn = why === 'own' || why === 'q' || why === 'def';
-    const skipBtn = s.skip ? `<button class="fskip ${skipOn ? 'on' : ''}" data-act="fsdskip" data-c="${key}" data-s="${esc(s.id)}">${skipOn ? '☑' : '☐'} 不適用${s.skip_label ? '（' + esc(s.skip_label) + '）' : ''}</button>` : '';
+    /* v0.6.358：q_skip／def_skip 無 s.skip 旗都顯示掣，方便開返改 */
+    const showSkip = !!(s.skip || why === 'q' || why === 'def' || (d.force_on || {})[s.id]);
+    const skipBtn = showSkip ? `<button class="fskip ${skipOn ? 'on' : ''}" data-act="fsdskip" data-c="${key}" data-s="${esc(s.id)}">${skipOn ? '☑' : '☐'} 不適用${s.skip_label ? '（' + esc(s.skip_label) + '）' : ''}</button>` : '';
     const skipNote = why === 'own' ? '<div class="skipnote">已揀「不適用」，呢部分略過。</div>'
-      : why === 'q' ? `<div class="skipnote">問卷 ${esc(qSkipLabel(s))} → 自動不適用</div>`
-      : why === 'def' ? '<div class="skipnote">預設不適用</div>'
-      : why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」，本附錄略過。</div>` : '';
+      : why === 'q' ? `<div class="skipnote">問卷 ${esc(qSkipLabel(s))} → 自動不適用 · 可撳上面開返</div>`
+      : why === 'def' ? '<div class="skipnote">預設不適用 · 可撳上面開返</div>'
+      : why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」，本附錄略過。</div>`
+      : ((d.force_on || {})[s.id] ? '<div class="skipnote">已開返（問卷建議不適用 · 可再剔返）</div>' : '');
     /* v0.6.148：表一／表二 → 表格欄位放喺長註之前（避免淨見註唔見欄）；T1/T2 id 後備 table；items 防空 */
     const tab = s.table || (s.id === 'T1' ? 'spr_t1' : s.id === 'T2' ? 'spr_t2' : '');
     const isTab = !!tab;
@@ -3186,10 +3211,7 @@ function stepFsd(r, key) {
 async function fsdAct(act, el, r) {
   const key = el.dataset.c, c = FSD_BY[key]; if (!c || !r) return;
   if (act === 'fsdv') { const d = fsdRec(r, key), k = el.dataset.k, a = d.a[k] || {}, tap = el.dataset.v;
-    /* v0.6.221：q_untick lock → 唔准改 */
-    { let lockIt = null; fsdWalk(c, d, (s, dep, sk) => { if (sk || lockIt) return; (s.items || []).forEach(it => { if (it.k === k) lockIt = it; }); }, fsdIsOff(r, c), fsdHide(r, c), r);
-      if (lockIt && fsdDefault(r, c, null, lockIt).by === 'lock') return; }
-    /* v0.6.135：只有 by=technician 先當「撳返清除」；bulk／legacy 撳任何掣都寫成師傅揀 */
+    /* v0.6.358：已填／預設／禁剔都可改；寫 technician 覆寫並記住 */
     if (a.v === tap && a.by === 'technician') { delete a.v; delete a.by; if (!has(a.note)) delete d.a[k]; else d.a[k] = a; }
     else { a.v = tap; a.by = 'technician'; d.a[k] = a; }
     Store.touch(r); render(); if (tap === 'N' && (d.a[k] || {}).v === 'N') setTimeout(() => { const t = $(`#${fsdDom(key, k)} textarea`); if (t) t.focus(); }, 50); return; }
@@ -3197,9 +3219,11 @@ async function fsdAct(act, el, r) {
     const d = fsdRec(r, key), sid = el.dataset.s;
     const find = secs => { for (const s of secs || []) { if (s.id === sid) return s; const x = find(s.subs); if (x) return x; } return null; };
     const sec = find(c.sections);
-    if (sec && sec.def_skip) {
-      if (d.skip[sid]) delete d.skip[sid];
-      else if ((d.force_on || {})[sid]) { delete d.force_on[sid]; d.skip[sid] = true; }
+    const qAuto = !!(sec && qSkipMatch(sec, r));
+    /* v0.6.358：def_skip／q_skip 都可用 force_on 開返（表內已填／自動不適用可改） */
+    if (sec && (sec.def_skip || qAuto)) {
+      if (d.skip[sid]) { delete d.skip[sid]; if (qAuto || sec.def_skip) d.force_on[sid] = true; }
+      else if ((d.force_on || {})[sid]) { delete d.force_on[sid]; if (!qAuto) d.skip[sid] = true; }
       else { d.force_on[sid] = true; }
     } else {
       if (d.skip[sid]) delete d.skip[sid]; else d.skip[sid] = true;
@@ -4753,21 +4777,55 @@ function fsdLivePickApply(k) {
   }
   return true;
 }
-/* v0.6.356：問卷教對應——撳右欄 PDF 剔位 */
+/* v0.6.356：問卷教對應——撳右欄 PDF 剔位
+   v0.6.358：非教模式亦可撳 PDF 已填／空剔位 → 師傅覆寫（記住） */
+function fsdPdfApplyHit(hit) {
+  if (!hit || typeof fsdRec !== 'function') return false;
+  const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
+  if (!r) return false;
+  const d = fsdRec(r, hit.key);
+  const a = d.a[hit.ik] || {};
+  const lab = ({ Y: '是', N: '否', NA: '不適用', T: '✓' })[hit.v] || hit.v;
+  if (a.v === hit.v && a.by === 'technician') {
+    delete a.v; delete a.by;
+    if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
+    else d.a[hit.ik] = a;
+    Store.touch(r);
+    if (typeof toast === 'function') toast('已清 ' + hit.key + ' ' + hit.ik + '（返預設／空）', 1800);
+  } else {
+    a.v = hit.v; a.by = 'technician'; d.a[hit.ik] = a;
+    Store.touch(r);
+    if (typeof toast === 'function') toast('已改 ' + hit.key + ' ' + hit.ik + '＝' + lab + '（記住）', 1800);
+  }
+  if (typeof render === 'function') render();
+  else if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
+  return true;
+}
 document.addEventListener('click', e => {
-  if (!qTeachActive || !qTeachActive.cell || qTeachActive.ans == null || qTeachActive.ans === '') return;
-  if (typeof cur === 'undefined' || cur.step !== 'q') return;
   if (e.target && e.target.closest && e.target.closest('[data-act]')) return; /* 按鈕交俾 actions */
   const im = e.target && e.target.closest && e.target.closest('#fsdLive .halive-pg');
   if (!im) return;
-  const hit = qTeachHitTest(im, e.clientX, e.clientY);
-  if (!hit) {
-    if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
-    return; /* 唔 stop：跟頁／捲動照舊 */
+  const teaching = !!(qTeachActive && qTeachActive.cell && qTeachActive.ans != null && qTeachActive.ans !== '' && typeof cur !== 'undefined' && cur.step === 'q');
+  if (teaching) {
+    const hit = qTeachHitTest(im, e.clientX, e.clientY);
+    if (!hit) {
+      if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    qTeachApplyHit(hit);
+    return;
   }
+  /* 非教：FSD 步或問卷右欄 —— 撳剔位改寫已填／預設 */
+  if (typeof cur === 'undefined' || !cur.step) return;
+  const st = String(cur.step || '');
+  if (!(st.startsWith('FSD-') || st === 'q')) return;
+  const hit = qTeachHitTest(im, e.clientX, e.clientY);
+  if (!hit) return; /* 唔 toast，避免跟頁誤觸嘈 */
   e.preventDefault();
   e.stopPropagation();
-  qTeachApplyHit(hit);
+  fsdPdfApplyHit(hit);
 }, true);
 /* v0.6.348：撳答案／段即 pin 頁碼；render 期間唔俾 keep.p 蓋返舊 PDF 位（電話窄屏致命） */
 let fsdLiveFollowForceUntil = 0;
@@ -13764,6 +13822,10 @@ async function buildExport(r, when) {
       if (m === 'hidden') return;
       if (m === 'measure') items[it.id] = { result: null, measure: it.measure };
       else if (m === 'input') { const info = inInfo(r, k, it), n = info.n; items[it.id] = Object.assign({ result: null, input: it.input, unit: it.unit || '', value: has(n) ? n : null }, has(n) ? { set_by: info.by || 'technician' } : it.optional ? { optional: true, blank_means: 'NA' } : {}); } /* v0.4.9／0.6.245：數目 ndef → set_by=default */
+      else if (m === 'autona' && itemAutoEditable(it, r) && a.by === 'technician' && a.v) {
+        /* v0.6.358：師傅覆寫自動 NA → 跟手改值提交 */
+        items[it.id] = Object.assign({ result: a.v, set_by: 'technician', override_auto: true, reason: a.v === 'X' ? (a.note || '').trim() : '' });
+      }
       else if (m === 'autona' && it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) items[it.id] = { result: 'NA', auto: true, by: 'SPR_TANK', answer: r.q.SPR_TANK, write: true, why: NOTANK_HINT };
       else if (m === 'autona' && it.wna && !it.always_na && !(it.annual_only && isHalf(r)) && !it.na_if) items[it.id] = { result: 'NA', auto: true, by: it.na_unless || (it.na_lt && it.na_lt[0]) || '', answer: (it.na_unless ? r.q[it.na_unless] : (it.na_lt ? r.q[it.na_lt[0]] : '')) || '', write: true }; /* 範本係常數 √（CL-J／CL-K a）→ 自動 NA 要寫入；v0.6.143 na_lt */
       else if (m === 'autona') items[it.id] = (it.annual_only && isHalf(r)) ? { result: 'NA', auto: true, by: 'half_yearly', write: true, why: HALF_NA } : it.always_na ? { result: 'NA', auto: true, by: 'fixed', write: true, why: ALWAYS_NA } : it.na_if ? { result: 'NA', auto: true, by: it.na_if[0], answer: r.q[it.na_if[0]], write: true, why: ROOF_NA } : it.na_lt ? { result: 'NA', auto: true, by: it.na_lt[0], answer: r.q[it.na_lt[0]] || '', write: true } : { result: 'NA', auto: true, by: it.na_unless };
