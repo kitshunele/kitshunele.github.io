@@ -453,8 +453,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.336';
-/* v0.6.336：登入／批准後自動提示加到手機桌面（PWA）
+const APP_VERSION = '0.6.337';
+/* v0.6.337：設定加入「桌面安裝」
+   v0.6.336：登入／批准後自動提示加到手機桌面（PWA）
    v0.6.335：疊剔線寬幼啲
    v0.6.334：疊剔每剔自然微變（seed PRNG）
    v0.6.333：疊剔藍色大 V 字剔（#1565C0）
@@ -2810,6 +2811,7 @@ function settings() {
   ${UPLOAD_URL_BUILTIN ? `<div class="mut">已預設公司網址，一般唔使改。${upCfg().url !== UPLOAD_URL_BUILTIN ? ' <a class="jump" href="#" data-s="reset">還原公司網址</a>' : ''}</div>` : ''}
   <div class="cfgck" id="cfgck">👷 打卡名：<b>${esc(Store.prefs.ckName || '（未輸入）')}</b> <button class="lnk" data-s="ckname" type="button">${Store.prefs.ckName ? '換名' : '輸入名'}</button><div class="mut">換咗人／名打錯先改；新手機輸入返同一個名就得。</div></div>
   <div class="cfgck" id="cfgacc">🔐 <button class="lnk" data-s="accmgr" type="button">管理：批准手機</button> <span class="badge pend" id="accbadge" hidden></span><div class="mut">主管用：批准新手機（要 MANAGER_PIN）。</div></div>
+  <div class="cfgck" id="cfgpwa">📲 <button class="lnk" data-s="pwa" type="button">桌面安裝</button><div class="mut">將 KitShun 加到手機桌面捷徑（Chrome 直接安裝；iPhone 跟提示「加至主畫面」）。</div></div>
   <div id="cfgMsg" class="mut" style="margin-top:8px;min-height:1.2em"></div>
   <div class="acts"><button class="btn" data-s="close">關閉</button><button class="btn" data-s="test">測試連線</button><button class="btn pri" data-s="save">儲存</button></div></div>`;
   m.classList.add('show'); if (typeof accBadge === 'function') accBadge();
@@ -2825,6 +2827,7 @@ function settings() {
     if (s === 'close') { m.classList.remove('show'); m.onclick = null; return; }
     if (s === 'ckname') { m.classList.remove('show'); m.onclick = null; return ckChangeName(); } /* v0.6.13 換打卡名 */
     if (s === 'accmgr') { m.classList.remove('show'); m.onclick = null; return go('#/accmgr'); } /* v0.6.14 管理：批准手機（只喺設定入面） */
+    if (s === 'pwa') { m.classList.remove('show'); m.onclick = null; try { pwaInstallManual(); } catch (e) { toast('請用瀏覽器選單加到主畫面', 3500); } return; } /* v0.6.337 */
     if (s === 'eye') { const i = $('#cfgPin'); i.type = i.type === 'password' ? 'text' : 'password'; return; }
     if (s === 'reset') { e.preventDefault(); $('#cfgUrl').value = UPLOAD_URL_BUILTIN; msg('已還原公司網址，撳「儲存」。'); return; }
     if (s === 'save') { if (!save()) return; m.classList.remove('show'); m.onclick = null; toast('已儲存上傳設定 ✓'); render(); setTimeout(() => autoRetry(true), 300); return; }
@@ -7167,6 +7170,15 @@ function pwaShowBanner() {
     kill();
   };
 }
+async function pwaInstallManual() { /* v0.6.337：設定入面「桌面安裝」——唔理 offered，可重複撳 */
+  if (pwaInstalled()) { toast('已經喺手機桌面（獨立 App）', 2500); return; }
+  if (PWA_DP && typeof PWA_DP.prompt === 'function') {
+    try { await PWA_DP.prompt(); const c = await PWA_DP.userChoice; PWA_DP = null; if (c && c.outcome === 'accepted') { const s = pwaGet(); s.installed = 1; pwaPut(s); } return; }
+    catch (e) { /* fall through */ }
+  }
+  pwaShowBanner();
+}
+
 function accBoot() { /* start() 入面 Store.load() 之後、第一次 render 之前 */
   const a = accGet();
   if (!a.ok && !a.need && !a.lg) { a.lg = 1; if (Store.prefs.ckReg || (Array.isArray(Store.prefs.history) && Store.prefs.history.length)) a.ok = { at: new Date().toISOString(), src: 'legacy' }; accPut(a); }
