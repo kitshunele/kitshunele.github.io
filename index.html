@@ -471,19 +471,30 @@ main.liveopen .livepeek{position:fixed;top:10px;right:10px;left:auto;bottom:auto
 main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
 @media (min-width:1000px){
   .livepeek{display:none!important}
+  /* v0.6.352：闊屏＝兩個獨立畫面（左 liveform／右 livepane 各自 overflow:auto）；加闊用盡螢幕；唔再 sticky＋window 一齊捲 */
   main.haslive{
     display:grid;
-    grid-template-columns:minmax(260px,var(--ls-form-pct,48%)) 14px minmax(260px,1fr);
-    gap:0;align-items:start;
-    max-width:min(1480px,100%);
-    height:auto;max-height:none;overflow:visible;padding-bottom:120px;
+    grid-template-columns:minmax(280px,var(--ls-form-pct,42%)) 14px minmax(320px,1fr);
+    grid-template-rows:auto minmax(0,1fr);
+    gap:0 8px;align-items:stretch;
+    max-width:min(1760px,calc(100vw - 16px));
+    width:100%;
+    height:calc(100dvh - 118px - 76px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+    max-height:calc(100dvh - 118px - 76px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+    overflow:hidden;
+    padding:10px 10px 8px;
+    box-sizing:border-box;
   }
-  main.haslive > .revbar{grid-column:1/-1;order:unset;flex:unset}
-  main.haslive .liveform{grid-column:1;grid-row:2;min-width:0;order:unset;flex:unset;overflow:visible;max-height:none;min-height:0}
+  main.haslive > .revbar{grid-column:1/-1;grid-row:1;order:unset;flex:unset}
+  main.haslive .liveform{
+    grid-column:1;grid-row:2;min-width:0;min-height:0;order:unset;flex:unset;
+    overflow:auto;-webkit-overflow-scrolling:touch;max-height:none;
+    padding-right:6px;
+  }
   main.haslive .livesplit{
     grid-column:2;grid-row:2;order:unset;flex:unset;
-    width:14px;margin:0;height:calc(100vh - 96px);min-height:180px;
-    position:sticky;top:72px;align-self:start;
+    width:14px;margin:0;height:auto;min-height:0;align-self:stretch;
+    position:relative;top:auto;
     cursor:col-resize;
     background:linear-gradient(90deg,#e2e8f0,#94a3b8 45%,#e2e8f0);
   }
@@ -495,16 +506,16 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
   main.haslive .livepane,
   main.haslive:not(.liveopen) .livepane{
     grid-column:3;grid-row:2;
-    display:block;position:sticky;top:72px;order:unset;flex:unset;
-    height:auto;max-height:calc(100vh - 88px);min-height:0;
+    display:block;position:relative;top:auto;order:unset;flex:unset;
+    height:auto;max-height:none;min-height:0;min-width:0;align-self:stretch;
     overflow:auto;-webkit-overflow-scrolling:touch;
-    padding:0 0 24px;background:transparent;inset:auto;z-index:auto;
+    padding:0 0 12px;background:transparent;inset:auto;z-index:auto;
     margin:0;border:0;border-radius:0;box-shadow:none;
   }
   main.haslive .livepane .halive{margin:0;padding:10px 10px 20px;border:1px solid #cbd5e1;border-radius:14px;background:#f8fafc;border-top:1px solid #cbd5e1}
   main.haslive .livepane .halive-pg{max-width:100%}
   main.haslive .liveform .fsec{grid-template-columns:1fr} /* 左欄單欄填，右欄睇紙 */
-  body:has(main.haslive) .foot .in{max-width:min(1480px,100%)}
+  body:has(main.haslive) .foot .in{max-width:min(1760px,calc(100vw - 16px))}
 }
 @media (min-width:900px){
   .halive-pg{max-width:900px}
@@ -558,8 +569,10 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.350';
-/* v0.6.350：問卷（q）都掛 haslive＋.livepane——跟系統閘／題目顯示消防處原 blank PDF（預設偵測）；跟頁／切換系統
+const APP_VERSION = '0.6.352';
+/* v0.6.352：桌面闊屏 haslive＝兩獨立 pane（左捲唔跟 PDF）＋加闊；含 0.6.351 自動更新
+   v0.6.351：新 SW／版本偵測到 → skipWaiting+claim 後自動 reload（唔使撳「更新」）；sessionStorage 防迴圈＋靜音 toast
+   v0.6.350：問卷（q）都掛 haslive＋.livepane——跟系統閘／題目顯示消防處原 blank PDF（預設偵測）；跟頁／切換系統
    v0.6.349：問卷 tip 曾寫「冇 PDF」（本地；已被 350 取代）
    v0.6.348：電話跟頁——撳答案即 pin 頁；render 唔還原 livepane 蓋跟頁；窄屏即時 scroll＋touchend
    v0.6.347：PDF 跟頁修正（闊屏視口 scroll、img decode 後跟、同頁重跟、tickmaps 預載）
@@ -1543,7 +1556,8 @@ window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cu
    v0.6.346：render 後 bind 填表→PDF 跟頁（fsdLiveFollowBind）
    v0.6.347：scroll 還原後再 sync 跟頁（避免 keep.p 蓋過 PDF 跟頁）
    v0.6.348：force pin 期間唔還原 .livepane（電話跟頁唔再俾 keep.p 打贏）
-   v0.6.350：問卷 haslive＋消防處 blank 跟題 */
+   v0.6.350：問卷 haslive＋消防處 blank 跟題
+   v0.6.352：闊屏 liveform／livepane 各自 overflow（見 app_head）；scroll keep 繼續記 f／p */
 const LS_REC_SCROLL = 'fsapp20259005.recScroll.v1';
 let REC_SCROLL = {};
 try { REC_SCROLL = JSON.parse(localStorage.getItem(LS_REC_SCROLL) || '{}') || {}; } catch (e) { REC_SCROLL = {}; }
@@ -3858,7 +3872,7 @@ const LS_SPLIT_N = 'fsapp20259005.livesplit.n.v1', LS_SPLIT_W = 'fsapp20259005.l
 const LS_SPLIT_MIN = 0.22, LS_SPLIT_MAX = 0.78;
 let _lsDrag = null, _lsBound = false;
 function liveSplitWide() { return window.matchMedia('(min-width:1000px)').matches; }
-function liveSplitDefault() { return liveSplitWide() ? 0.48 : 0.55; }
+function liveSplitDefault() { return liveSplitWide() ? 0.42 : 0.55; } /* v0.6.352：闊屏預設左窄啲，PDF 欄更闊 */
 function liveSplitClamp(v) {
   v = Number(v);
   if (!Number.isFinite(v)) return liveSplitDefault();
@@ -4149,17 +4163,19 @@ async function haLiveRefresh(r) {
    v0.6.344：.livesplit 拖曳唔跳；v0.6.343 可拖調大細（窄上下／闊左右）
    v0.6.346：填表位置 → 即時 PDF 跟頁（section／item → overlay／spr／紙本頁）
    v0.6.347：跟頁修正——闊屏用視口／window scroll（唔靠 overflow:auto IO）；圖 decode 後再 scroll；同頁都重跟；tickmaps 預載
-   v0.6.350：問卷 step=q 同樣 fsdLiveMount（系統閘／題目揀 blank；未適用都顯示原 PDF） ----- */
+   v0.6.350：問卷 step=q 同樣 fsdLiveMount（系統閘／題目揀 blank；未適用都顯示原 PDF）
+   v0.6.352：闊屏兩獨立 pane（overflow:auto）；scroll 唔再驅 PDF 跟頁（只得撳／focus pin）；加闊 max≈1760 ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
 
 /* ----- v0.6.346／0.6.347：填緊邊 → PDF 顯示邊頁 -----
    overlay（fds／fa／fhhr／tank）：tickmaps.items[ik].page（0-based）
    spr：中文 Excel 手動分頁 → FSD_SPR_SEC_PAGE（段 id → 頁）
    ws 紙本回退：paintSec 時標 _liveSecs，組 bySec
-   觸發：focusin／click／liveform+window scroll（debounce 120ms）
+   觸發：focusin／click／pin；窄屏另加 liveform scroll（debounce）
+   v0.6.352：闊屏唔再 scroll-lock PDF（兩獨立畫面）；窄屏仍 scroll 跟頁
    v0.6.347 修正：
-   - 闊屏 .liveform overflow:visible → 唔再用 IntersectionObserver(root=form)（永遠全 intersect、window 捲唔觸發）
-   - 改用視口「閱讀帶」揀 .fitem／.fsec；兼聽 window／.liveform scroll
+   - （舊）闊屏 .liveform overflow:visible → 閱讀帶＋window scroll；352 起闊屏改獨立 pane、唔 scroll 跟
+   - 窄屏用視口「閱讀帶」揀 .fitem／.fsec；聽 .liveform scroll
    - PDF img decode／layout 完先 scroll；無頁時記 pending，paint 後補跟
    - 同頁（pi 不變）若未入視野仍要 scroll（唔 early-return）
    - bind 時預載 tickmaps，唔使等 refresh 完先有 maps ----- */
@@ -4462,8 +4478,10 @@ function fsdLiveFollowOnClick(ev) {
 }
 function fsdLiveFollowOnScroll(ev) {
   if (!document.querySelector('main.haslive .liveform')) return;
+  /* v0.6.352：闊屏兩獨立 pane——左捲唔驅 PDF；只得撳／focus pin 跟頁 */
+  if (!fsdLiveFollowNarrow()) return;
   const t = ev && ev.target;
-  /* window／document／.liveform 捲動先理；忽略 .livepane 自己滾（唔好反跟） */
+  /* 窄屏：.liveform 捲動先理；忽略 .livepane 自己滾（唔好反跟） */
   if (t && t !== document && t !== document.documentElement && t !== document.body
       && !(t.classList && t.classList.contains('liveform'))) {
     return;
@@ -4474,8 +4492,9 @@ function fsdLiveFollowOnScroll(ev) {
   fsdLiveFollowSyncT = setTimeout(() => fsdLiveFollowSync(true), 100);
 }
 function fsdLiveFollowOnTouchEnd(ev) {
-  /* iOS：momentum scroll 期間 scroll 事件稀疏；touchend 後再 sync 一次 */
+  /* iOS：momentum scroll 期間 scroll 事件稀疏；touchend 後再 sync 一次（只窄屏） */
   if (!document.querySelector('main.haslive .liveform')) return;
+  if (!fsdLiveFollowNarrow()) return;
   if (fsdLiveFollowForceActive()) return;
   const t = ev && ev.target;
   if (t && t.closest && t.closest('.livepane')) return;
@@ -13666,10 +13685,27 @@ async function importFile(f) {
   if (/^https?:$/.test(location.protocol) && 'serviceWorker' in navigator) {
     const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.webmanifest'; document.head.appendChild(l);
     const hadCtl = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.register('sw.js').then(reg => { document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => { }); }); }).catch(() => { });
-    /* v0.5.7：新版 service worker 接手 → 提示重新載入（唔自動 reload，免得打斷輸入／上傳） */
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtl || $('#updbar')) return;
-      const b = document.createElement('button'); b.id = 'updbar'; b.textContent = '有新版本 ⟳ 撳呢度重新載入'; b.onclick = () => location.reload(); document.body.appendChild(b); });
+    const SW_AUTO_KEY = 'fsapp20259005.swAuto';
+    try {
+      if (sessionStorage.getItem(SW_AUTO_KEY) === '1') {
+        sessionStorage.removeItem(SW_AUTO_KEY);
+        setTimeout(() => { try { toast('已自動更新到 v' + APP_VERSION, 2500); } catch (e) { } }, 500);
+      }
+    } catch (e) { }
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      const poke = () => { try { reg.update(); } catch (e) { } };
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poke(); });
+      setInterval(poke, 120000); /* v0.6.351：開住 App 亦定時問有冇新 SW（約 2 分鐘） */
+    }).catch(() => { });
+    /* v0.6.351：新 SW 接手（skipWaiting + clients.claim）→ 自動 reload；唔再要撳「更新」
+       防迴圈：同一頁只 reload 一次（refreshing）；reload 前寫 sessionStorage，新頁 toast 後清 */
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadCtl || refreshing) return;
+      refreshing = true;
+      try { sessionStorage.setItem(SW_AUTO_KEY, '1'); } catch (e) { }
+      location.reload();
+    });
   }
   parseHash(); accBoot(); await appDataBoot(); render(true); if (!accLocked() && APPD.ready) { lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); try { setTimeout(() => { try { pwaMaybeInstall(); } catch (e) {} }, 800); } catch (e) {} } /* v0.6.14.3 開 App 閘；v0.6.15 公司資料；v0.6.336 登入後加桌面 */
   setTimeout(autoRetry, 2500);
