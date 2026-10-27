@@ -558,8 +558,10 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.348';
-/* v0.6.348：電話跟頁——撳答案即 pin 頁；render 唔還原 livepane 蓋跟頁；窄屏即時 scroll＋touchend
+const APP_VERSION = '0.6.350';
+/* v0.6.350：問卷（q）都掛 haslive＋.livepane——跟系統閘／題目顯示消防處原 blank PDF（預設偵測）；跟頁／切換系統
+   v0.6.349：問卷 tip 曾寫「冇 PDF」（本地；已被 350 取代）
+   v0.6.348：電話跟頁——撳答案即 pin 頁；render 唔還原 livepane 蓋跟頁；窄屏即時 scroll＋touchend
    v0.6.347：PDF 跟頁修正（闊屏視口 scroll、img decode 後跟、同頁重跟、tickmaps 預載）
    v0.6.346：填表位置 → 即時 PDF 跟頁（section／item → overlay／spr／紙本頁）
    v0.6.345：揀答案後唔跳頂（haslive .liveform／.livepane scroll 跟住 render）
@@ -1540,7 +1542,8 @@ window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cu
    v0.6.345：haslive 表單捲喺 .liveform／.livepane（窄屏），唔係 window——揀答案 render() 要一齊 save/restore，唔好跳返頂
    v0.6.346：render 後 bind 填表→PDF 跟頁（fsdLiveFollowBind）
    v0.6.347：scroll 還原後再 sync 跟頁（避免 keep.p 蓋過 PDF 跟頁）
-   v0.6.348：force pin 期間唔還原 .livepane（電話跟頁唔再俾 keep.p 打贏） */
+   v0.6.348：force pin 期間唔還原 .livepane（電話跟頁唔再俾 keep.p 打贏）
+   v0.6.350：問卷 haslive＋消防處 blank 跟題 */
 const LS_REC_SCROLL = 'fsapp20259005.recScroll.v1';
 let REC_SCROLL = {};
 try { REC_SCROLL = JSON.parse(localStorage.getItem(LS_REC_SCROLL) || '{}') || {}; } catch (e) { REC_SCROLL = {}; }
@@ -1663,8 +1666,11 @@ function render(toTop) {
     /* v0.6.346／347：換步驟重置跟頁；同頁重畫保留 fsdLiveFollowPi；還原 scroll 後再 sync */
     if (typeof fsdLiveFollowBind === 'function') {
       const fk = (typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null;
-      if (toTop && typeof fsdLiveFollowKey !== 'undefined' && fk && fk !== fsdLiveFollowKey) {
-        try { fsdLiveFollowPi = 0; fsdLiveFollowPendingPi = null; } catch (e) {}
+      if (toTop) {
+        try { if (typeof fsdLiveQCell !== 'undefined') fsdLiveQCell = null; } catch (e0) {}
+        if (typeof fsdLiveFollowKey !== 'undefined' && fk && fk !== fsdLiveFollowKey) {
+          try { fsdLiveFollowPi = 0; fsdLiveFollowPendingPi = null; } catch (e) {}
+        }
       }
       fsdLiveFollowBind();
     }
@@ -1861,12 +1867,27 @@ function qInput(r, it) {
   return `<input class="inp ${has(v) ? 'filled' : ''}" data-bind="${b}" value="${esc(v || '')}" placeholder="例：G/F、5/F、R/F">`;
 }
 function stepQ(r) {
-  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺「問卷」隔離（頂欄 CL-A）；每份選擇表最底有該份實時 PDF。</div>` + QS.map(s => {
+  /* v0.6.350：問卷都掛 haslive（見 fsdLiveMountHtml／fsdKeyOf('q')）；下半／右欄跟系統顯示消防處原 blank PDF */
+  const qLiveAttrs = cell => {
+    if (typeof qLiveTargetOf !== 'function' && !(typeof FSD_GATE_KEY !== 'undefined' && FSD_GATE_KEY[cell])) return '';
+    const tg = (typeof qLiveTargetOf === 'function') ? qLiveTargetOf(cell) : null;
+    const key = (tg && tg.key) || ((typeof FSD_GATE_KEY !== 'undefined' && FSD_GATE_KEY[cell]) || '');
+    if (!key || key === 'spr') {
+      /* spr 無 fsd_blank：問卷跟頁主路徑唔掛 live（閘 AA6 有時仍可由 qLiveFsdKey 揀 spr Excel） */
+      if (key !== 'spr') return '';
+      if (!(r && r.q && r.q.AA6 === '有')) return '';
+      return ` data-live-qcell="${esc(cell)}" data-live-key="spr"`;
+    }
+    const ik = tg && tg.ik ? ` data-live-ik="${esc(tg.ik)}"` : '';
+    const sec = tg && tg.sec != null && tg.sec !== '' ? ` data-live-sec="${esc(tg.sec)}"` : '';
+    return ` data-live-qcell="${esc(cell)}" data-live-key="${esc(key)}"${ik}${sec}`;
+  };
+  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺頂欄「CL-A」。下半（電話）／右欄即時 PDF＝消防處年檢核對表原 blank（跟你填緊／已答「有」嘅系統；未答預設偵測）。撳題目會跟頁／切換系統。</div>` + QS.map(s => {
     const items = s.items.filter(it => qVisible(r, it, s)), OM = optMap(r);
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
     return `<div class="card" id="sec-${s.key}"><h3>${esc(s.title)} <span class="mut">${p}/${need}</span></h3>
-      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
+      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}"${qLiveAttrs(it.cell)}><div class="ql">${esc(it.label)}<span class="c">${it.cell}</span></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
 }
@@ -2143,7 +2164,76 @@ const qSkipLabel = s => {
   if (qs.length >= 3 && qs[1] === 'lt') return `${qs[0]}＜${qs[2]}`;
   return `${qs[0]}＝${qs[1]}`;
 };
-const fsdKeyOf = step => (step && String(step).startsWith('FSD-') && FSD_BY[step.slice(4)]) ? step.slice(4) : null;
+/* v0.6.350：問卷 live PDF——閘／題目 → 消防處 blank key（唔用自畫紙本主路徑） */
+const FSD_GATE_KEY = { F9: 'fds', F15: 'fa', F6: 'fhhr', F24: 'tank', M6: 'ws', AA6: 'spr' };
+const FSD_Q_LIVE_ORDER = ['fds', 'fa', 'fhhr', 'tank', 'ws']; /* 預設優先 blank；spr 有閘再考慮 */
+function fsdKeyFromChipShort(sh) {
+  const want = String(sh || '');
+  for (let i = 0; i < (FSD || []).length; i++) {
+    const c = FSD[i];
+    if (fsdChipShort(c.chip) === want) return c.key;
+  }
+  return null;
+}
+function qLiveIkClean(k) {
+  return String(k || '').replace(/\(同時\)$|\(且\)$|\(或\)$|\(禁剔\)$/g, '');
+}
+function qLiveTargetOf(cell) {
+  if (!cell) return null;
+  const gateKey = FSD_GATE_KEY[cell];
+  if (gateKey) {
+    if (gateKey === 'spr') return { key: 'spr', ik: null, sec: null };
+    if (typeof X_FSD_APP_ONLY !== 'undefined' ? X_FSD_APP_ONLY.has(gateKey) : true)
+      return { key: gateKey, ik: null, sec: null };
+  }
+  const e = (typeof qFsdMap === 'function' ? qFsdMap() : null) || {};
+  const ent = e[cell];
+  if (!ent) return null;
+  const blankOk = k => k && k !== 'spr' && (typeof X_FSD_APP_ONLY === 'undefined' || X_FSD_APP_ONLY.has(k));
+  for (let i = 0; i < (ent.defs || []).length; i++) {
+    const d = ent.defs[i];
+    const k = fsdKeyFromChipShort(d.sh);
+    if (!blankOk(k) && k !== 'spr') continue;
+    if (!blankOk(k) && k === 'spr') continue; /* 問卷跟頁主路徑：blank only；spr 只經閘 */
+    const raw = (d.keys && d.keys[0]) || '';
+    const ik = qLiveIkClean(raw);
+    if (k) return { key: k, ik: ik || null, sec: null };
+  }
+  for (let i = 0; i < (ent.skips || []).length; i++) {
+    const s = ent.skips[i];
+    const k = fsdKeyFromChipShort(s.sh);
+    if (blankOk(k)) return { key: k, ik: null, sec: s.id || null };
+  }
+  for (let i = 0; i < (ent.gates || []).length; i++) {
+    const k = fsdKeyFromChipShort(ent.gates[i]);
+    if (blankOk(k)) return { key: k, ik: null, sec: null };
+  }
+  return null;
+}
+function qLiveFsdKey(r, preferCell) {
+  const t = preferCell ? qLiveTargetOf(preferCell) : null;
+  if (t && t.key && t.key !== 'spr') return t.key;
+  if (t && t.key === 'spr') {
+    /* 題目只對花灑：若 AA6＝有 用 spr；否則仍預設偵測 blank */
+    if (r && r.q && r.q.AA6 === '有') return 'spr';
+  }
+  for (let i = 0; i < FSD_Q_LIVE_ORDER.length; i++) {
+    const k = FSD_Q_LIVE_ORDER[i];
+    const c = FSD_BY[k];
+    if (c && r && r.q && r.q[c.gate] === '有') return k;
+  }
+  if (r && r.q && r.q.AA6 === '有') return 'spr';
+  return 'fds'; /* 預設消防處·偵測 blank */
+}
+const fsdKeyOf = step => {
+  if (step && String(step).startsWith('FSD-') && FSD_BY[step.slice(4)]) return step.slice(4);
+  if (step === 'q') {
+    const r = (typeof Store !== 'undefined' && typeof cur !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
+    const prefer = (typeof fsdLiveQCell !== 'undefined') ? fsdLiveQCell : null;
+    return qLiveFsdKey(r, prefer);
+  }
+  return null;
+};
 const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：消防處年檢核對表只限年檢（CL-A B 部「FSD's Annual Inspection Checklists」半年檢係「-」）
 /* v0.4.8：問卷「有」→ 是/否/不適用 項目預設「是」（✓ 剔選項目唔預設；可留空嘅互斥部分唔預設）；師傅揀過先記 technician */
 /* v0.6.128：it.q_def = [問卷 cell, {答:Y/NA}] → 跟問卷預設；未答唔跌落通用「是」 */
@@ -4058,7 +4148,8 @@ async function haLiveRefresh(r) {
    v0.6.345：揀答案 render 保留 .liveform／.livepane scroll（見 app_2views）
    v0.6.344：.livesplit 拖曳唔跳；v0.6.343 可拖調大細（窄上下／闊左右）
    v0.6.346：填表位置 → 即時 PDF 跟頁（section／item → overlay／spr／紙本頁）
-   v0.6.347：跟頁修正——闊屏用視口／window scroll（唔靠 overflow:auto IO）；圖 decode 後再 scroll；同頁都重跟；tickmaps 預載 ----- */
+   v0.6.347：跟頁修正——闊屏用視口／window scroll（唔靠 overflow:auto IO）；圖 decode 後再 scroll；同頁都重跟；tickmaps 預載
+   v0.6.350：問卷 step=q 同樣 fsdLiveMount（系統閘／題目揀 blank；未適用都顯示原 PDF） ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
 
 /* ----- v0.6.346／0.6.347：填緊邊 → PDF 顯示邊頁 -----
@@ -4093,6 +4184,7 @@ let fsdLiveFollowPi = 0, fsdLiveFollowKey = '', fsdLiveFollowMaps = null;
 let fsdLiveFollowT = null, fsdLiveFollowBoundEl = null;
 let fsdLiveFollowPendingPi = null, fsdLiveFollowScrollListening = false;
 let fsdLiveFollowSyncT = null;
+let fsdLiveQCell = null; /* v0.6.350：問卷跟緊邊格 → 揀邊份 FSD blank */
 /* v0.6.348：撳答案／段即 pin 頁碼；render 期間唔俾 keep.p 蓋返舊 PDF 位（電話窄屏致命） */
 let fsdLiveFollowForceUntil = 0;
 const FSD_LIVE_FOLLOW_FORCE_MS = 900;
@@ -4171,18 +4263,27 @@ function fsdLiveFollowMapsOf(key) {
 
 function fsdLiveFollowResolve(el) {
   if (!el || !el.closest) return null;
-  const node = el.closest('[data-live-ik],[data-live-sec]');
+  const node = el.closest('[data-live-ik],[data-live-sec],[data-live-qcell],[data-live-key]');
   if (!node) return null;
-  const key = node.getAttribute('data-live-key') || fsdLiveFollowKey;
+  const qcell = node.getAttribute('data-live-qcell');
+  if (qcell) fsdLiveQCell = qcell;
+  let key = node.getAttribute('data-live-key') || fsdLiveFollowKey;
+  if (qcell && typeof qLiveTargetOf === 'function') {
+    const tg = qLiveTargetOf(qcell);
+    if (tg && tg.key) key = tg.key;
+  }
   const maps = fsdLiveFollowMapsOf(key) || fsdLiveFollowMaps;
-  if (!maps) return null;
-  const ik = node.getAttribute('data-live-ik');
-  const sec = node.getAttribute('data-live-sec');
+  const ik = node.getAttribute('data-live-ik') || (qcell && typeof qLiveTargetOf === 'function' && (qLiveTargetOf(qcell) || {}).ik) || null;
+  const sec = node.getAttribute('data-live-sec') || (qcell && typeof qLiveTargetOf === 'function' && (qLiveTargetOf(qcell) || {}).sec) || null;
   let pi = null;
-  if (ik && maps.byIk && maps.byIk[ik] != null) pi = maps.byIk[ik] | 0;
-  else if (sec && maps.bySec && maps.bySec[sec] != null) pi = maps.bySec[sec] | 0;
+  if (maps) {
+    if (ik && maps.byIk && maps.byIk[ik] != null) pi = maps.byIk[ik] | 0;
+    else if (sec && maps.bySec && maps.bySec[sec] != null) pi = maps.bySec[sec] | 0;
+  }
+  /* 問卷閘／未對到 item：跟第 1 頁；切換系統時仍要有 hit */
+  if (pi == null && key && (qcell || node.getAttribute('data-live-key'))) pi = 0;
   if (pi == null) return null;
-  return { key, pi, ik, sec };
+  return { key, pi, ik, sec, qcell };
 }
 
 function fsdLiveFollowPane() {
@@ -4270,6 +4371,22 @@ function fsdLiveFollowScroll(pi, soft) {
 function fsdLiveFollowGo(el, soft) {
   const hit = fsdLiveFollowResolve(el);
   if (!hit) return;
+  if (hit.qcell) fsdLiveQCell = hit.qcell;
+  /* v0.6.350：問卷換系統 → 換右欄 PDF（同 key 先跟頁） */
+  if (hit.key && hit.key !== fsdLiveFollowKey) {
+    fsdLiveFollowKey = hit.key;
+    const box = $('#fsdLive');
+    if (box && box.dataset.fsdKey !== hit.key) {
+      box.dataset.fsdKey = hit.key;
+      fsdLiveSnap = { key: '', html: '' };
+      fsdLiveFollowPendingPi = hit.pi | 0;
+      fsdLiveFollowForceUntil = Date.now() + FSD_LIVE_FOLLOW_FORCE_MS;
+      fsdLiveFollowLog('q switch key', hit.key, 'pi', hit.pi);
+      const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
+      if (r) fsdLiveRefresh(r);
+      return;
+    }
+  }
   if (hit.key) fsdLiveFollowKey = hit.key;
   /* force pin 期間唔俾 scroll-pick 搶去第二頁 */
   if (fsdLiveFollowForceActive() && (fsdLiveFollowPendingPi | 0) !== (hit.pi | 0)) {
@@ -4302,7 +4419,7 @@ function fsdLiveFollowPick() {
   const y1 = top + (bot - top) * 0.55;
   const mid = (y0 + y1) / 2;
   let best = null, bestD = Infinity, bestArea = -1;
-  form.querySelectorAll('.fitem[data-live-ik], .fsec[data-live-sec]').forEach(el => {
+  form.querySelectorAll('.fitem[data-live-ik], .fsec[data-live-sec], .q[data-live-qcell], .q[data-live-key]').forEach(el => {
     const r = el.getBoundingClientRect();
     if (r.bottom <= y0 || r.top >= y1) return;
     const overlap = Math.min(r.bottom, y1) - Math.max(r.top, y0);
@@ -4330,14 +4447,14 @@ function fsdLiveFollowOnFocus(ev) {
   const t = ev && ev.target;
   if (!t || !t.closest) return;
   if (!t.closest('.liveform') && !t.closest('.fsec') && !t.closest('.fitem')) return;
-  const node = t.closest('[data-live-ik],[data-live-sec]');
+  const node = t.closest('[data-live-ik],[data-live-sec],[data-live-qcell],[data-live-key]');
   if (node) fsdLiveFollowPin(node, false);
   else fsdLiveFollowSchedule(t);
 }
 function fsdLiveFollowOnClick(ev) {
   const t = ev && ev.target;
   if (!t || !t.closest) return;
-  const node = t.closest('[data-live-ik],[data-live-sec]');
+  const node = t.closest('[data-live-ik],[data-live-sec],[data-live-qcell],[data-live-key]');
   if (!node) return;
   if (!node.closest('.liveform') && !node.closest('main.haslive')) return;
   /* v0.6.348：同步 pin——render() 會拆舊 .liveform，120ms schedule 會被 Unbind 清走 */
@@ -4464,7 +4581,22 @@ async function fsdLiveRefresh(r) {
     const o = await buildExport(Object.assign({}, r, { photos: [] }), new Date());
     if (tok !== fsdLiveTok || !$('#fsdLive')) return;
     o.photos = [];
-    const cExp = (o.fsd_checklists || {})[key];
+    let cExp = (o.fsd_checklists || {})[key];
+    /* v0.6.350：問卷 tab 即使用戶未答「有」／半年檢，都顯示官方 blank 預覽（疊剔可空） */
+    if ((!cExp || !cExp.applicable) && cur.step === 'q' && key && key !== 'spr') {
+      const meta = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || {};
+      cExp = {
+        title: meta.title || meta.chip || key,
+        circular: meta.circular || '',
+        version: meta.version || '',
+        revision: meta.revision || '',
+        applicable: true,
+        whole_na: false,
+        items: {},
+        skipped_sections: [],
+        header: { contractor_ref: (typeof FSD_REF_DEFAULT !== 'undefined') ? FSD_REF_DEFAULT : '' }
+      };
+    }
     if (!cExp || !cExp.applicable) {
       fsdLiveRevoke();
       box.innerHTML = '<div class="halive-msg">呢份消防處核對表而家唔適用（睇下檢查類別／問卷）。</div>';
@@ -13478,7 +13610,7 @@ function help() {
   <li>主頁撳「＋ 新增一座」，揀屋邨、樓名（可以喺清單揀，或者直接打字）、日期。</li>
   <li>做完一座，下一座可以撳「📋 選擇樓宇」，喺「📱 呢部機」或者「☁️ 上傳紀錄」（公司 Drive，要網址＋PIN）揀返做過嘅一座 →「📋 複製樓宇」（問卷答案會照抄，記得逐條核對）或者「📄 查看 PDF」（睇返成套 check list）。</li>
   <li>「問卷」照公司 Excel 工作表2 答有／冇；答「冇」嘅系統會自動略過。</li>
-  <li>每份表逐項撳 ✓／X／NA。揀 X 一定要寫原因／建議，可以影相。「問卷」隔離有頂欄「CL-A」總表；每份選擇表（例 H1）最底有該份房署實時 PDF。CL-A 唔使師傅填（由問卷自動）。</li>
+  <li>每份表逐項撳 ✓／X／NA。揀 X 一定要寫原因／建議，可以影相。頂欄「CL-A」同問卷隔離；「問卷」下半／右欄有消防處年檢原 blank 即時 PDF（跟系統／題目）。房署選擇表（例 H1／CL-D）同「消防處·…」核對表都有各自實時 PDF（電話上下同屏）。CL-A 唔使師傅填（由問卷自動）。</li>
   <li>TR-C2、TR-H2 嘅讀數要自己輸入（一個小數位），App 唔會自動填。</li>
   <li>所有嘢自動儲存喺手機，冇網都用得。</li>
   <li>問卷答「有」嘅系統會多出「消防處·…」頁：消防處年檢核對表（照官方通函），逐項揀 是／否／不適用；「否」要寫備註（位置）。</li>
