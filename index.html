@@ -632,8 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.367';
-/* v0.6.367：清舊教對應——prefs.qTeachMap 改 {at,items}；開 App 只留今日 HKT（無日期／舊陣列一律清）；之後每次教寫入 at
+const APP_VERSION = '0.6.368';
+/* v0.6.368：消防年檢草稿跨機共用（GAS fsd_draft_*／Drive「消防年檢草稿」；LWW updated；相一齊同步上限內）
+   v0.6.367：清舊教對應——prefs.qTeachMap 改 {at,items}；開 App 只留今日 HKT（無日期／舊陣列一律清）；之後每次教寫入 at
    v0.6.366：① 單一／要齊2／要齊3 搬去右欄 livepick（問卷步）②「不適用」改名「預設不適用」③ 隔離加「預設是」（撳格強制 Y／剔選 T；同教對應／預設不適用互斥）④ 對表已教剔位——問答未揀都暗淡顯示；黃教 bar 只留進度／清除／完成
    v0.6.365：教對應可「要齊 2／3 個」問答答案（AND）先剔核對表——prefs.qTeachMap key「A|答+B|答」；單一照舊
    v0.6.364：核對表右欄 livepick 加「不適用」模式掣——開咗之後撳 PDF 是／否／不適用格一律剔為不適用（再撳取消）；段「如不適用／跳往…」跟 __skip__／d.skip；同教對應互斥
@@ -3547,7 +3548,7 @@ async function gasCall(body, ms, pinTry) { // pinTry：提交頁 PIN 框試緊�
 }
 const GAS_READS = new Set(['ping', 'access_status', 'app_data', 'ecall_reports', 'clock_status', 'clock_records', 'photo_search', 'photo_thumbs', 'photo_full', 'photo_places',
   'acc_list', 'acc_pending_count', 'list', 'get', 'photo', 'clock_staff', 'clock_today', 'clock_mine', 'data', 'wa_photos', 'wa_thumbs', 'wa_photo', 'bldg_list', 'bldg_thumbs', 'bldg_file', 'ecall_folder', 'ecall_thumbs', 'ecall_file',
-  'pending_confirms', 'pending_photo', 'ecall', 'svpe_data', 'kv_doc', 'bldg_notes', 'drive_doc', 'pe_list', 'pe_next_251', 'pe_building']);
+  'pending_confirms', 'pending_photo', 'ecall', 'svpe_data', 'kv_doc', 'bldg_notes', 'drive_doc', 'pe_list', 'pe_next_251', 'pe_building', 'fsd_draft_list', 'fsd_draft_get']);
 function upPending(r) { return !!(r && r.upload && r.updated <= r.upload.queuedAt); }
 function compactTs(d) { const p = hk(d); return `${p.y}${p.m}${p.d}${p.H}${p.M}${p.S}`; }
 function upProgress(r, msg) {
@@ -3615,7 +3616,8 @@ async function upDone(r, res, name, ui) {
   const edited = r.updated > r.upload.queuedAt; // 上傳途中又改過 → 保留新改動做草稿
   if (edited) { r.lastUploaded = at; delete r.upload; }
   else { for (const p of (r.photos || [])) { try { await PhotoDB.del(p.id); } catch (e) { } thumbs.delete(p.id); }
-    Store.recs = Store.recs.filter(x => x.id !== r.id); }
+    const _uid = r.id; Store.recs = Store.recs.filter(x => x.id !== r.id);
+    try { if (typeof fsddDeleteCloud === 'function') fsddDeleteCloud(_uid); } catch (e) {} }
   Store.flush();
   if (ui) { $('#modal').classList.remove('show');
     if (!edited) go('#/fire'); else render();
@@ -14318,6 +14320,226 @@ document.addEventListener('visibilitychange', () => { try { if (document.visibil
   } catch (e) {}
 })();
 
+'use strict';
+/* v0.6.368 消防年檢草稿跨機共用——Store.recs ↔ GAS fsd_draft_*（Drive「KitShun App／消防年檢草稿」）
+   LWW：updated ISO／updated_ms；提交／刪本地 → fsd_draft_delete。prefs／qTeachMap 唔上雲。
+   相片：跟草稿一齊（最多 15 張；單張／成包太大就淨同步剔位答案，相仍本機）。 */
+const FSDD = {
+  busy: false, pullBusy: false, timer: null, lastPull: 0,
+  pushed: Object.create(null), // id → updated_ms last successfully pushed
+  deleted: Object.create(null), // id → 1（剛刪／剛交，唔拉返）
+  toastOnce: false
+};
+const FSDD_PHOTO_MAX = 15;
+const FSDD_PUT_SOFT = 3.5 * 1024 * 1024; // 成個 put body 軟上限（GAS 25MB；留餘地）
+const FSDD_PULL_GAP = 8000;
+
+function fsddMs(r) {
+  if (!r) return 0;
+  if (Number(r._fsdd_ms) > 0) return Number(r._fsdd_ms);
+  const p = Date.parse(String(r.updated || ''));
+  return p > 0 ? p : 0;
+}
+function fsddEligible(r) {
+  if (!r || !r.id) return false;
+  if (FSDD.deleted[r.id]) return false;
+  if (r.upload && r.upload.state === 'uploading') return false;
+  // 已提交且未再改 → 唔當草稿
+  if (r.submittedAt && r.updated && r.updated <= r.submittedAt && !r.upload) return false;
+  return true;
+}
+function fsddCanNet() {
+  if (navigator.onLine === false) return false;
+  if (typeof accLocked === 'function' && accLocked()) return false;
+  const c = typeof upCfg === 'function' ? upCfg() : {};
+  return !!(c.url && c.pin);
+}
+function fsddCloneRec(r) {
+  const o = JSON.parse(JSON.stringify(r));
+  delete o.upload;
+  delete o._fsdd_ms;
+  delete o._fsdd_skip;
+  // photos：只留 meta
+  o.photos = (Array.isArray(o.photos) ? o.photos : []).map(p => ({
+    id: p.id, item: p.item || '', caption: p.caption || '', ts: p.ts || ''
+  }));
+  return o;
+}
+async function fsddCollectPhotos(r, budget) {
+  const out = [];
+  const list = Array.isArray(r.photos) ? r.photos : [];
+  let used = 0;
+  for (const p of list.slice(0, FSDD_PHOTO_MAX)) {
+    if (!p || !p.id) continue;
+    try {
+      const row = await PhotoDB.get(p.id);
+      const du = row && row.dataUrl;
+      if (!du || typeof du !== 'string') continue;
+      const m = du.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (!m) continue;
+      const b64 = m[2];
+      const approx = (b64.length * 3) / 4;
+      if (approx > 2.2 * 1024 * 1024) continue;
+      if (used + approx > budget) break;
+      out.push({ id: p.id, data_base64: b64, mime: m[1] || 'image/jpeg' });
+      used += approx;
+    } catch (e) {}
+  }
+  return out;
+}
+
+async function fsddPushOne(r, withPhotos) {
+  if (!fsddEligible(r) || !fsddCanNet()) return null;
+  const ms = fsddMs(r);
+  if (FSDD.pushed[r.id] === ms) return { ok: true, same: true };
+  const rec = fsddCloneRec(r);
+  const body = { action: 'fsd_draft_put', record: rec, updated_ms: ms, app_version: APP_VERSION, photos: [] };
+  if (withPhotos !== false) {
+    const head = JSON.stringify(body).length;
+    body.photos = await fsddCollectPhotos(r, Math.max(200000, FSDD_PUT_SOFT - head));
+  }
+  const o = await gasCall(body, 90000);
+  if (o && o.ok) {
+    if (o.skipped) {
+      // 雲端較新 → 稍後 pull 會蓋
+      return o;
+    }
+    FSDD.pushed[r.id] = Number(o.updated_ms) || ms;
+  }
+  return o;
+}
+
+async function fsddPushDirty() {
+  if (FSDD.busy || !fsddCanNet()) return;
+  FSDD.busy = true;
+  try {
+    const list = Store.recs.filter(fsddEligible);
+    for (const r of list) {
+      const ms = fsddMs(r);
+      if (FSDD.pushed[r.id] === ms) continue;
+      try { await fsddPushOne(r, true); } catch (e) { /* 離線／timeout：下輪再試 */ break; }
+    }
+  } finally { FSDD.busy = false; }
+}
+
+function fsddOnFlush() {
+  clearTimeout(FSDD.timer);
+  FSDD.timer = setTimeout(() => { fsddPushDirty().catch(() => {}); }, 1200);
+}
+
+async function fsddDeleteCloud(id) {
+  if (!id) return;
+  FSDD.deleted[id] = 1;
+  delete FSDD.pushed[id];
+  if (!fsddCanNet()) return;
+  try { await gasCall({ action: 'fsd_draft_delete', record_id: id }, 30000); } catch (e) {}
+}
+
+async function fsddApplyCloud(rec, photos, cloudMs) {
+  if (!rec || !rec.id) return false;
+  if (FSDD.deleted[rec.id]) return false;
+  const local = Store.get(rec.id);
+  const cms = Number(cloudMs) || Date.parse(String(rec.updated || '')) || 0;
+  if (local) {
+    const lms = fsddMs(local);
+    if (lms >= cms) return false; // 本地較新或同級
+  }
+  // 組本地紀錄
+  const r = local || blankRecord();
+  const keepId = rec.id;
+  // 覆蓋欄位（保留本地 upload 狀態如果仲 pending）
+  const keepUpload = local && local.upload ? Object.assign({}, local.upload) : null;
+  Object.keys(rec).forEach(k => { if (k !== 'upload' && k !== 'photos') r[k] = rec[k]; });
+  r.id = keepId;
+  r.photos = Array.isArray(rec.photos) ? rec.photos.map(p => ({
+    id: p.id, item: p.item || '', caption: p.caption || '', ts: p.ts || ''
+  })) : [];
+  if (keepUpload) r.upload = keepUpload;
+  r._fsdd_ms = cms;
+  // 相片 blob
+  if (Array.isArray(photos) && photos.length) {
+    for (const p of photos) {
+      if (!p || !p.id || !p.data_base64) continue;
+      try {
+        const dataUrl = String(p.data_base64).indexOf('data:') === 0
+          ? p.data_base64
+          : ('data:' + (p.mime || 'image/jpeg') + ';base64,' + p.data_base64);
+        await PhotoDB.put({ id: p.id, rec: r.id, dataUrl });
+        thumbs.set(p.id, dataUrl);
+      } catch (e) {}
+    }
+  }
+  if (!local) Store.recs.push(r);
+  try { syncNames(r); } catch (e) {}
+  FSDD.pushed[r.id] = cms;
+  return true;
+}
+
+async function fsddPull(force) {
+  if (FSDD.pullBusy) return;
+  if (!force && Date.now() - FSDD.lastPull < FSDD_PULL_GAP) return;
+  if (!fsddCanNet()) return;
+  FSDD.pullBusy = true;
+  FSDD.lastPull = Date.now();
+  let changed = false;
+  try {
+    const L = await gasCall({ action: 'fsd_draft_list', limit: 80 }, 60000);
+    if (!L || !L.ok) return;
+    const items = L.items || [];
+    for (const it of items) {
+      const rid = it.record_id || it.id;
+      if (!rid || FSDD.deleted[rid]) continue;
+      const cms = Number(it.updated_ms) || 0;
+      const local = Store.get(rid);
+      if (local && fsddMs(local) >= cms) continue;
+      try {
+        const g = await gasCall({ action: 'fsd_draft_get', record_id: rid, include_photos: true }, 90000);
+        if (!g || !g.ok || !g.record) continue;
+        if (await fsddApplyCloud(g.record, g.photos || [], Number(g.updated_ms) || cms)) changed = true;
+      } catch (e) { break; }
+    }
+    // 本地有、雲端冇 → 推上去（另一機刪咗嘅話 deleted 會擋）
+    if (changed) {
+      Store.flush(); // 會再排 push；先標 pushed 避免即刻覆寫雲
+      try { render(); } catch (e) {}
+      if (!FSDD.toastOnce) {
+        FSDD.toastOnce = true;
+        try { toast('已同步其他裝置嘅年檢草稿', 2800); } catch (e) {}
+      }
+    }
+    // 推本地較新
+    await fsddPushDirty();
+  } catch (e) {
+  } finally { FSDD.pullBusy = false; }
+}
+
+function fsddBoot() {
+  // wrap Store.flush once
+  if (!Store._fsddWrapped) {
+    const orig = Store.flush.bind(Store);
+    Store.flush = function () {
+      orig();
+      try { fsddOnFlush(); } catch (e) {}
+    };
+    Store._fsddWrapped = true;
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') fsddPull(false).catch(() => {});
+  });
+  window.addEventListener('online', () => { fsddPull(true).catch(() => {}); });
+  // 開 App 稍遲拉（等 acc／PIN）
+  setTimeout(() => { fsddPull(true).catch(() => {}); }, 3500);
+  setInterval(() => { fsddPull(false).catch(() => {}); }, 120000);
+}
+
+// 加 GAS_READS
+try {
+  if (typeof GAS_READS !== 'undefined' && GAS_READS && GAS_READS.add) {
+    GAS_READS.add('fsd_draft_list');
+    GAS_READS.add('fsd_draft_get');
+  }
+} catch (e) {}
+
 /* ---------- 樓層 /F ---------- */
 function floorSync(r) { // 記錄 + 畫面上嘅樓層欄位一齊整理（下一頁／提交前）
   if (r) { if (typeof qMigrateF30 === 'function') qMigrateF30(r); normRecFloors(r); }
@@ -14756,7 +14978,7 @@ document.addEventListener('click', async e => {
     case 'photo': photoTarget = el.dataset.item || null; $(el.dataset.src === 'cam' ? '#fCam' : '#fGal').click(); return;
     case 'delphoto': { if (!(await ask('刪除相片？', '', '刪除', '取消'))) return; const id = el.dataset.id; r.photos = (r.photos || []).filter(p => p.id !== id); await PhotoDB.del(id); thumbs.delete(id); Store.touch(r); return render(); }
     case 'delrec': { if (!(await ask('刪除呢個紀錄？', `「${esc(recTitle(r))}」嘅所有資料同相片會喺呢部手機刪走，冇得救返。`, '刪除', '取消'))) return;
-      for (const p of (r.photos || [])) await PhotoDB.del(p.id); Store.recs = Store.recs.filter(x => x.id !== r.id); Store.flush(); return go('#/fire'); }
+      for (const p of (r.photos || [])) await PhotoDB.del(p.id); const _did = r.id; Store.recs = Store.recs.filter(x => x.id !== r.id); Store.flush(); try { if (typeof fsddDeleteCloud === 'function') fsddDeleteCloud(_did); } catch (e) {} return go('#/fire'); }
     case 'canceledit': return cancelEdit(r);
     case 'submit': return doSubmit(r);
     case 'retryup': if (r && r.upload) { r.upload.state = 'pending'; return navigator.onLine === false ? (r.upload.err = 'offline', Store.flush(), render(), upFailBox(r)) : uploadRec(r, true); } return;
@@ -14988,6 +15210,7 @@ async function importFile(f) {
     }
   } catch (e) {}
   await PhotoDB.open();
+  try { if (typeof fsddBoot === 'function') fsddBoot(); } catch (e) {}
   if (navigator.storage && navigator.storage.persist) { try { navigator.storage.persist(); } catch (e) { } }
   if (/^https?:$/.test(location.protocol) && 'serviceWorker' in navigator) {
     const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.webmanifest'; document.head.appendChild(l);
@@ -15026,7 +15249,8 @@ async function cancelEdit(r) {
   if (!(await ask('確定取消修改？', `改咗嘅嘢會唔記（手機上呢份修改草稿會刪走）。<br>已上傳嗰份（第 ${esc(String(r.rev.prev_revision || 1))} 版）唔會變，亦唔會上傳任何嘢。`, '取消修改', '繼續改'))) return;
   const keep = new Set(); Store.recs.forEach(x => { if (x.id !== r.id) (x.photos || []).forEach(p => keep.add(p.id)); });
   for (const p of (r.photos || [])) if (!keep.has(p.id)) await PhotoDB.del(p.id);
-  const of = r.rev.of; Store.recs = Store.recs.filter(x => x.id !== r.id); Store.flush();
+  const of = r.rev.of; const _cid = r.id; Store.recs = Store.recs.filter(x => x.id !== r.id); Store.flush();
+  try { if (typeof fsddDeleteCloud === 'function') fsddDeleteCloud(_cid); } catch (e) {}
   toast('已取消修改；已上傳嗰份冇改過', 3000);
   return of ? go('#/records/' + encodeURIComponent(of)) : go('#/fire');
 }
