@@ -558,8 +558,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.346';
-/* v0.6.346：填表位置 → 即時 PDF 跟頁（section／item → overlay／spr／紙本頁）
+const APP_VERSION = '0.6.347';
+/* v0.6.347：PDF 跟頁修正（闊屏視口 scroll、img decode 後跟、同頁重跟、tickmaps 預載）
+   v0.6.346：填表位置 → 即時 PDF 跟頁（section／item → overlay／spr／紙本頁）
    v0.6.345：揀答案後唔跳頂（haslive .liveform／.livepane scroll 跟住 render）
    v0.6.344：分隔撳下唔跳（實測起點＋唔用 pointer-events:none）
    v0.6.343：中間分隔可拖——窄上下／闊左右；localStorage 記住比例
@@ -1536,7 +1537,8 @@ window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cu
 /* ---------- render ---------- */
 /* v0.6.133：消防檢查核對表（view=rec）每頁記住 scroll；key = 紀錄id|步驟（含 FSD-…）
    v0.6.345：haslive 表單捲喺 .liveform／.livepane（窄屏），唔係 window——揀答案 render() 要一齊 save/restore，唔好跳返頂
-   v0.6.346：render 後 bind 填表→PDF 跟頁（fsdLiveFollowBind） */
+   v0.6.346：render 後 bind 填表→PDF 跟頁（fsdLiveFollowBind）
+   v0.6.347：scroll 還原後再 sync 跟頁（避免 keep.p 蓋過 PDF 跟頁） */
 const LS_REC_SCROLL = 'fsapp20259005.recScroll.v1';
 let REC_SCROLL = {};
 try { REC_SCROLL = JSON.parse(localStorage.getItem(LS_REC_SCROLL) || '{}') || {}; } catch (e) { REC_SCROLL = {}; }
@@ -1649,17 +1651,21 @@ function render(toTop) {
     if (typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id));
     if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(Store.get(cur.id));
     if (typeof liveSplitInit === 'function') liveSplitInit();
-    /* v0.6.346：換步驟重置跟頁；同頁重畫保留 fsdLiveFollowPi */
+    /* v0.6.346／347：換步驟重置跟頁；同頁重畫保留 fsdLiveFollowPi；還原 scroll 後再 sync */
     if (typeof fsdLiveFollowBind === 'function') {
       const fk = (typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null;
       if (toTop && typeof fsdLiveFollowKey !== 'undefined' && fk && fk !== fsdLiveFollowKey) {
-        try { fsdLiveFollowPi = 0; } catch (e) {}
+        try { fsdLiveFollowPi = 0; fsdLiveFollowPendingPi = null; } catch (e) {}
       }
       fsdLiveFollowBind();
     }
     /* liveSplitApply 改 flex／grid 後再還原一次（同頁重畫／換頁還原） */
     if (!toTop && keep) recScrollApply(keep);
     else if (toTop) { const stored = recScrollRestorePos(); if (stored) recScrollApply(stored); }
+    /* v0.6.347：form scroll 還原完，用視口段再跟一次 PDF（唔好俾 keep.p 永遠停喺舊頁） */
+    if (typeof fsdLiveFollowSync === 'function') {
+      requestAnimationFrame(() => requestAnimationFrame(() => fsdLiveFollowSync(false)));
+    }
   }
   const c = $('.chip.cur'), nav = $('.steps');
   if (c && nav) nav.scrollLeft = c.offsetLeft - nav.clientWidth / 2 + c.clientWidth / 2;
@@ -4035,14 +4041,21 @@ async function haLiveRefresh(r) {
    v0.6.342：窄屏上下同屏永遠見 livepane；peek＝放大
    v0.6.345：揀答案 render 保留 .liveform／.livepane scroll（見 app_2views）
    v0.6.344：.livesplit 拖曳唔跳；v0.6.343 可拖調大細（窄上下／闊左右）
-   v0.6.346：填表位置 → 即時 PDF 跟頁（section／item → overlay／spr／紙本頁） ----- */
+   v0.6.346：填表位置 → 即時 PDF 跟頁（section／item → overlay／spr／紙本頁）
+   v0.6.347：跟頁修正——闊屏用視口／window scroll（唔靠 overflow:auto IO）；圖 decode 後再 scroll；同頁都重跟；tickmaps 預載 ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
 
-/* ----- v0.6.346：填緊邊 → PDF 顯示邊頁 -----
+/* ----- v0.6.346／0.6.347：填緊邊 → PDF 顯示邊頁 -----
    overlay（fds／fa／fhhr／tank）：tickmaps.items[ik].page（0-based）
    spr：中文 Excel 手動分頁 → FSD_SPR_SEC_PAGE（段 id → 頁）
    ws 紙本回退：paintSec 時標 _liveSecs，組 bySec
-   觸發：focusin／click／IntersectionObserver（.liveform）；debounce 120ms；永遠跟表（Fan 要求） */
+   觸發：focusin／click／liveform+window scroll（debounce 120ms）
+   v0.6.347 修正：
+   - 闊屏 .liveform overflow:visible → 唔再用 IntersectionObserver(root=form)（永遠全 intersect、window 捲唔觸發）
+   - 改用視口「閱讀帶」揀 .fitem／.fsec；兼聽 window／.liveform scroll
+   - PDF img decode／layout 完先 scroll；無頁時記 pending，paint 後補跟
+   - 同頁（pi 不變）若未入視野仍要 scroll（唔 early-return）
+   - bind 時預載 tickmaps，唔使等 refresh 完先有 maps ----- */
 const FSD_SPR_SEC_PAGE = {
   '1': 0, '2': 0, '3': 0, '4': 0, '5': 2,
   '6': 2, '6.1': 2, '6.2': 2, '6.3': 3, '6.4': 3, '6.5': 3, '6.6': 3,
@@ -4061,11 +4074,13 @@ const FSD_SPR_SEC_PAGE = {
   'AXV': 30, 'A15': 30
 };
 let fsdLiveFollowPi = 0, fsdLiveFollowKey = '', fsdLiveFollowMaps = null;
-let fsdLiveFollowObs = null, fsdLiveFollowT = null, fsdLiveFollowBoundEl = null;
+let fsdLiveFollowT = null, fsdLiveFollowBoundEl = null;
+let fsdLiveFollowPendingPi = null, fsdLiveFollowScrollListening = false;
+let fsdLiveFollowSyncT = null;
 
 function fsdLiveFollowMapsOf(key) {
   if (!key) return null;
-  if (key === 'spr') return { byIk: {}, bySec: Object.assign({}, FSD_SPR_SEC_PAGE), n: 32, kind: 'spr' };
+  if (key === 'spr') return { byIk: {}, bySec: Object.assign({}, FSD_SPR_SEC_PAGE), n: 32, kind: 'spr', key };
   const tm = FSD_TICKMAPS && FSD_TICKMAPS[key];
   if (!tm || !tm.items) return fsdLiveFollowMaps; /* 可能係紙本 bySec（refresh 後寫入） */
   const byIk = {}, bySec = {};
@@ -4109,38 +4124,90 @@ function fsdLiveFollowResolve(el) {
   return { key, pi, ik, sec };
 }
 
+function fsdLiveFollowPane() {
+  return document.querySelector('main.haslive .livepane') || (($('#fsdLive') && $('#fsdLive').parentElement) || null);
+}
+
+function fsdLiveFollowPageInView(i) {
+  const box = $('#fsdLive'); if (!box) return false;
+  const pages = box.querySelectorAll('.halive-pg');
+  const target = pages[i];
+  const pane = fsdLiveFollowPane();
+  if (!target || !pane) return false;
+  const pr = pane.getBoundingClientRect();
+  const tr = target.getBoundingClientRect();
+  /* 至少有一截頁面喺 pane 可見 */
+  return tr.bottom > pr.top + 24 && tr.top < pr.bottom - 24;
+}
+
+function fsdLiveFollowEnsureImgs(pages) {
+  const list = Array.prototype.slice.call(pages || []);
+  return Promise.all(list.map(im => {
+    if (!im) return Promise.resolve();
+    if (im.complete && im.naturalHeight > 0) return Promise.resolve();
+    if (typeof im.decode === 'function') {
+      return im.decode().catch(() => new Promise(res => {
+        const done = () => { im.removeEventListener('load', done); im.removeEventListener('error', done); res(); };
+        im.addEventListener('load', done); im.addEventListener('error', done);
+      }));
+    }
+    return new Promise(res => {
+      const done = () => { im.removeEventListener('load', done); im.removeEventListener('error', done); res(); };
+      im.addEventListener('load', done); im.addEventListener('error', done);
+    });
+  }));
+}
+
 function fsdLiveFollowScroll(pi, soft) {
   const box = $('#fsdLive'); if (!box) return;
   const pages = box.querySelectorAll('.halive-pg');
-  if (!pages.length) return;
+  if (!pages.length) {
+    fsdLiveFollowPendingPi = pi | 0;
+    return;
+  }
   const n = pages.length;
   const i = Math.max(0, Math.min(n - 1, pi | 0));
   fsdLiveFollowPi = i;
+  fsdLiveFollowPendingPi = null;
   pages.forEach((im, j) => { im.classList.toggle('live-on', j === i); });
   const target = pages[i];
-  const pane = document.querySelector('main.haslive .livepane') || box.parentElement;
-  if (!target) return;
-  try {
-    const pr = (pane && pane.getBoundingClientRect) ? pane.getBoundingClientRect() : null;
-    const tr = target.getBoundingClientRect();
-    if (pane && pr && typeof pane.scrollTop === 'number') {
+  const pane = fsdLiveFollowPane();
+  if (!target || !pane) return;
+
+  const apply = () => {
+    try {
+      const pr = pane.getBoundingClientRect();
+      const tr = target.getBoundingClientRect();
+      /* 圖未 layout（高 0）→ 稍後再試（最多 ~1s） */
+      if (tr.height < 8) {
+        fsdLiveFollowPendingPi = i;
+        const tries = (fsdLiveFollowScroll._tries || 0) + 1;
+        fsdLiveFollowScroll._tries = tries;
+        if (tries <= 12) setTimeout(() => { if (fsdLiveFollowPendingPi === i) fsdLiveFollowScroll(i, false); }, 80);
+        else fsdLiveFollowScroll._tries = 0;
+        return;
+      }
+      fsdLiveFollowScroll._tries = 0;
       const next = pane.scrollTop + (tr.top - pr.top) - 8;
       if (soft) pane.scrollTo({ top: next, behavior: 'smooth' });
       else pane.scrollTop = next;
-    } else {
-      target.scrollIntoView({ block: 'start', behavior: soft ? 'smooth' : 'auto' });
+    } catch (e) {
+      try { target.scrollIntoView({ block: 'start', behavior: soft ? 'smooth' : 'auto' }); } catch (e2) {}
     }
-  } catch (e) {
-    try { target.scrollIntoView({ block: 'nearest' }); } catch (e2) {}
-  }
+  };
+
+  fsdLiveFollowEnsureImgs([target]).then(() => {
+    requestAnimationFrame(() => requestAnimationFrame(apply));
+  });
 }
 
 function fsdLiveFollowGo(el, soft) {
   const hit = fsdLiveFollowResolve(el);
   if (!hit) return;
   if (hit.key) fsdLiveFollowKey = hit.key;
-  if (hit.pi === fsdLiveFollowPi) {
-    /* 仍 highlight */
+  const same = hit.pi === fsdLiveFollowPi;
+  /* v0.6.347：同頁都要確保藍框＋捲到視野（之前 early-return 令 refresh／scroll-restore 後卡住頂） */
+  if (same && fsdLiveFollowPageInView(hit.pi)) {
     const box = $('#fsdLive');
     if (box) box.querySelectorAll('.halive-pg').forEach((im, j) => im.classList.toggle('live-on', j === hit.pi));
     return;
@@ -4151,6 +4218,37 @@ function fsdLiveFollowGo(el, soft) {
 function fsdLiveFollowSchedule(el) {
   clearTimeout(fsdLiveFollowT);
   fsdLiveFollowT = setTimeout(() => fsdLiveFollowGo(el, true), 120);
+}
+
+/* 視口閱讀帶：form 可見區上 12%–45%（窄屏＝.liveform 視窗；闊屏＝form∩viewport） */
+function fsdLiveFollowPick() {
+  const form = document.querySelector('main.haslive .liveform');
+  if (!form) return null;
+  const fr = form.getBoundingClientRect();
+  const top = Math.max(fr.top, 0);
+  const bot = Math.min(fr.bottom, window.innerHeight || document.documentElement.clientHeight || 0);
+  if (bot - top < 40) return null;
+  const y0 = top + (bot - top) * 0.12;
+  const y1 = top + (bot - top) * 0.48;
+  const mid = (y0 + y1) / 2;
+  let best = null, bestD = Infinity, bestArea = -1;
+  form.querySelectorAll('.fitem[data-live-ik], .fsec[data-live-sec]').forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.bottom <= y0 || r.top >= y1) return;
+    const overlap = Math.min(r.bottom, y1) - Math.max(r.top, y0);
+    if (overlap <= 0) return;
+    const d = Math.abs((r.top + r.bottom) / 2 - mid);
+    /* 優先距離閱讀帶中心近；同分取 overlap 大 */
+    if (d < bestD - 0.5 || (Math.abs(d - bestD) <= 0.5 && overlap > bestArea)) {
+      bestD = d; bestArea = overlap; best = el;
+    }
+  });
+  return best;
+}
+
+function fsdLiveFollowSync(soft) {
+  const el = fsdLiveFollowPick();
+  if (el) fsdLiveFollowGo(el, soft !== false);
 }
 
 function fsdLiveFollowOnFocus(ev) {
@@ -4167,16 +4265,42 @@ function fsdLiveFollowOnClick(ev) {
   if (!node.closest('.liveform') && !node.closest('main.haslive')) return;
   fsdLiveFollowSchedule(node);
 }
+function fsdLiveFollowOnScroll(ev) {
+  if (!document.querySelector('main.haslive .liveform')) return;
+  const t = ev && ev.target;
+  /* window／document／.liveform 捲動先理；忽略 .livepane 自己滾（唔好反跟） */
+  if (t && t !== document && t !== document.documentElement && t !== document.body
+      && !(t.classList && t.classList.contains('liveform'))) {
+    return;
+  }
+  clearTimeout(fsdLiveFollowSyncT);
+  fsdLiveFollowSyncT = setTimeout(() => fsdLiveFollowSync(true), 120);
+}
 
 function fsdLiveFollowUnbind() {
-  if (fsdLiveFollowObs) { try { fsdLiveFollowObs.disconnect(); } catch (e) {} fsdLiveFollowObs = null; }
   if (fsdLiveFollowBoundEl) {
     try {
       fsdLiveFollowBoundEl.removeEventListener('focusin', fsdLiveFollowOnFocus, true);
       fsdLiveFollowBoundEl.removeEventListener('click', fsdLiveFollowOnClick, true);
-    } catch (e) {}
+      fsdLiveFollowBoundEl.removeEventListener('scroll', fsdLiveFollowOnScroll, { capture: true, passive: true });
+    } catch (e) {
+      try {
+        fsdLiveFollowBoundEl.removeEventListener('focusin', fsdLiveFollowOnFocus, true);
+        fsdLiveFollowBoundEl.removeEventListener('click', fsdLiveFollowOnClick, true);
+        fsdLiveFollowBoundEl.removeEventListener('scroll', fsdLiveFollowOnScroll, true);
+      } catch (e2) {}
+    }
     fsdLiveFollowBoundEl = null;
   }
+  if (fsdLiveFollowScrollListening) {
+    try {
+      window.removeEventListener('scroll', fsdLiveFollowOnScroll, true);
+      document.removeEventListener('scroll', fsdLiveFollowOnScroll, true);
+    } catch (e) {}
+    fsdLiveFollowScrollListening = false;
+  }
+  clearTimeout(fsdLiveFollowT);
+  clearTimeout(fsdLiveFollowSyncT);
 }
 
 function fsdLiveFollowBind() {
@@ -4188,29 +4312,33 @@ function fsdLiveFollowBind() {
   /* maps：overlay 要 tickmaps；spr 用靜態；紙本用 refresh 寫入 */
   if (key === 'spr') fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
   else if (FSD_TICKMAPS && FSD_TICKMAPS[key]) fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
+  else if (key !== 'spr' && typeof fsdLoadTickmaps === 'function') {
+    /* v0.6.347：預載 tickmaps，唔使等 PDF refresh 完先跟得 */
+    fsdLoadTickmaps().then(() => {
+      if (fsdLiveFollowKey !== key) return;
+      fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
+      fsdLiveFollowSync(false);
+    }).catch(() => {});
+  }
   /* rebind listeners once per form node */
   if (fsdLiveFollowBoundEl !== form) {
     fsdLiveFollowUnbind();
     fsdLiveFollowBoundEl = form;
     form.addEventListener('focusin', fsdLiveFollowOnFocus, true);
     form.addEventListener('click', fsdLiveFollowOnClick, true);
+    form.addEventListener('scroll', fsdLiveFollowOnScroll, { capture: true, passive: true });
   }
-  if (fsdLiveFollowObs) { try { fsdLiveFollowObs.disconnect(); } catch (e) {} fsdLiveFollowObs = null; }
-  const root = form;
-  const opts = { root: root, rootMargin: '-12% 0px -55% 0px', threshold: [0, 0.15, 0.4] };
-  try {
-    fsdLiveFollowObs = new IntersectionObserver(entries => {
-      let best = null, bestR = -1;
-      entries.forEach(en => {
-        if (!en.isIntersecting) return;
-        if (en.intersectionRatio >= bestR) { bestR = en.intersectionRatio; best = en.target; }
-      });
-      if (best) fsdLiveFollowSchedule(best);
-    }, opts);
-    form.querySelectorAll('.fitem[data-live-ik], .fsec[data-live-sec]').forEach(el => fsdLiveFollowObs.observe(el));
-  } catch (e) { fsdLiveFollowObs = null; }
-  /* 初入／refresh 後跟返目前跟頁 */
-  requestAnimationFrame(() => fsdLiveFollowScroll(fsdLiveFollowPi, false));
+  if (!fsdLiveFollowScrollListening) {
+    window.addEventListener('scroll', fsdLiveFollowOnScroll, { capture: true, passive: true });
+    document.addEventListener('scroll', fsdLiveFollowOnScroll, { capture: true, passive: true });
+    fsdLiveFollowScrollListening = true;
+  }
+  /* 初入／refresh／render 後：還原跟頁，再跟表單視口 */
+  const want = (fsdLiveFollowPendingPi != null) ? fsdLiveFollowPendingPi : fsdLiveFollowPi;
+  requestAnimationFrame(() => {
+    fsdLiveFollowScroll(want, false);
+    requestAnimationFrame(() => fsdLiveFollowSync(false));
+  });
 }
 
 function fsdLiveMountHtml(step) {
