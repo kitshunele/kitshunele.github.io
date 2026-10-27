@@ -512,6 +512,8 @@ main.haslive .livepane .halive-pg{max-width:100%}
 .qteach-mark.v-N{border-color:var(--ans, #dc2626);box-shadow:0 0 0 2px color-mix(in srgb, var(--ans, #dc2626) 35%, transparent);background:color-mix(in srgb, var(--ans, #dc2626) 12%, transparent)}
 .qteach-mark.v-NA{border-color:var(--ans, #64748b);box-shadow:0 0 0 2px color-mix(in srgb, var(--ans, #64748b) 35%, transparent);background:color-mix(in srgb, var(--ans, #64748b) 12%, transparent)}
 .qteach-mark.locked{border-style:dashed;opacity:.55;filter:grayscale(.35)}
+/* v0.6.366：已教但問答未揀——暗淡提示（對表仍見教過邊度） */
+.qteach-mark.ghost{border-style:dashed;opacity:.42;filter:grayscale(.45)}
 @media (min-width:1000px){
   .livepick{margin:0 0 10px;padding:10px 10px 12px;border-radius:14px}
   .livepick .lpk{min-height:40px;font-size:14px;padding:0 12px}
@@ -631,7 +633,7 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
 const APP_VERSION = '0.6.366';
-/* v0.6.366：① 單一／要齊2／要齊3 搬去右欄 livepick（問卷步）②「不適用」改名「預設不適用」③ 隔離加「預設是」（撳格強制 Y／剔選 T；同教對應／預設不適用互斥）；黃教 bar 只留進度／清除／完成
+/* v0.6.366：① 單一／要齊2／要齊3 搬去右欄 livepick（問卷步）②「不適用」改名「預設不適用」③ 隔離加「預設是」（撳格強制 Y／剔選 T；同教對應／預設不適用互斥）④ 對表已教剔位——問答未揀都暗淡顯示；黃教 bar 只留進度／清除／完成
    v0.6.365：教對應可「要齊 2／3 個」問答答案（AND）先剔核對表——prefs.qTeachMap key「A|答+B|答」；單一照舊
    v0.6.364：核對表右欄 livepick 加「不適用」模式掣——開咗之後撳 PDF 是／否／不適用格一律剔為不適用（再撳取消）；段「如不適用／跳往…」跟 __skip__／d.skip；同教對應互斥
    v0.6.363：① 唔同問答題用唔同色——穩定按 Q cell id 著色（答案掣＋教標記＋疊剔同色；唔再跟有／冇／是／否共用色）② 冇／不適用／跳往… 路徑——左欄是／否／不適用（同表一欄）仍可揀；段「如不適用，跳往…」NA 可教／剔（所有 Q／所有 skip 段）
@@ -4954,13 +4956,9 @@ function qTeachDeactivate() {
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
   if (box) box.classList.remove('qteach-mode');
   document.querySelectorAll('.qteach').forEach(n => n.remove());
-  document.querySelectorAll('.qteach-layer').forEach(n => n.remove());
-  /* unwrap holders keep imgs */
-  document.querySelectorAll('.qteach-hold').forEach(h => {
-    const im = h.querySelector('.halive-pg');
-    if (im && h.parentNode) { h.parentNode.insertBefore(im, h); h.remove(); }
-  });
   if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns();
+  /* v0.6.366：關教模式後仍暗淡顯示已教剔位（問答未揀都見） */
+  if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers();
 }
 function qTeachRefreshNeedBtns() {
   /* v0.6.366：同步 livepick「單一／要齊2／要齊3」亮燈 */
@@ -5043,73 +5041,90 @@ function qTeachHitTest(im, clientX, clientY) {
   return best;
 }
 function qTeachPaintMarkers() {
+  /* v0.6.366：右欄 PDF——已教對應一律暗淡顯示（就算問答未揀）；教模式中當前組亮、其他鎖 */
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
   if (!box) return;
   box.querySelectorAll('.qteach-layer').forEach(n => n.remove());
-  /* unwrap empty holders from prior paints if no active */
-  if (!qTeachActive || !qTeachActive.parts || !qTeachActive.parts.length) {
+  const key = box.dataset.fsdKey || '';
+  const tm = (typeof FSD_TICKMAPS !== 'undefined' && FSD_TICKMAPS[key]) || null;
+  const teachOn = !!(qTeachActive && qTeachActive.parts && qTeachActive.parts.length);
+  if (!tm || !tm.items) {
+    if (!teachOn) {
+      box.querySelectorAll('.qteach-hold').forEach(h => {
+        const im = h.querySelector('.halive-pg');
+        if (im && h.parentNode) { h.parentNode.insertBefore(im, h); h.remove(); }
+      });
+    }
+    return;
+  }
+  const parts = teachOn ? qTeachActive.parts : [];
+  const prim = parts.length ? parts[parts.length - 1] : null;
+  const cell = prim ? prim.cell : '';
+  const ans = prim ? prim.ans : '';
+  const activeKa = (teachOn && typeof qTeachActiveKey === 'function') ? qTeachActiveKey() : null;
+  const L = (activeKa && typeof qTeachListKey === 'function') ? qTeachListKey(activeKa) : [];
+  const ansCol = (prim && typeof qAnsColor === 'function') ? qAnsColor(ans, cell) : '#f59e0b';
+  const byPi = {};
+  const pushMark = (pi, b, v, ik, locked, title, col, ghost) => {
+    (byPi[pi] = byPi[pi] || []).push({ b, v, ik, locked: !!locked, ghost: !!ghost, title: title || (ik + '=' + v), col: col || ansCol });
+  };
+  const skipMapPaint = (typeof fsdOvSkipMap === 'function') ? fsdOvSkipMap(key, tm) : {};
+  const rec = (typeof Store !== 'undefined' && typeof cur !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
+  /* 教模式：當前組已齊 → 亮標記 */
+  L.filter(e => e && e.key === key).forEach(e => {
+    const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(e.ik) : null;
+    if (sid != null) {
+      const sk = skipMapPaint[sid];
+      if (!sk || !sk.na) return;
+      pushMark(sk.page, sk.na, e.v || 'NA', e.ik, false, '不適用／跳過 §' + sid, ansCol, false);
+      return;
+    }
+    const m = tm.items[e.ik]; if (!m) return;
+    const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
+    if (!b) return;
+    pushMark(m.page, b, e.v, e.ik, false, e.ik + '=' + e.v, ansCol, false);
+  });
+  /* 全部已教：問答未齊／未揀 → 暗淡；教模式其他組 → 鎖；問答已齊（canvas 已有實剔）→ 跳過（除非教模式當前組已畫） */
+  if (typeof qTeachMapGet === 'function') {
+    const map = qTeachMapGet();
+    Object.keys(map).forEach(ka => {
+      if (activeKa && ka === activeKa) return; /* 而家呢組已喺上面亮畫 */
+      const ps = (typeof qTeachParseKey === 'function') ? qTeachParseKey(ka) : [];
+      if (!ps.length) return;
+      /* 教模式單一題：同一 cell 唔同答可各自教，唔鎖亮組 cell */
+      if (teachOn && ps.length === 1 && parts.length === 1 && ps[0].cell === cell) return;
+      const matched = !!(rec && typeof qTeachPartsMatch === 'function' && qTeachPartsMatch(rec, ps));
+      /* 問答已揀齊 → 右欄 canvas 已有實剔；非教模式唔再疊暗框；教模式仍鎖顯示獨佔 */
+      if (matched && !teachOn) return;
+      const oCell = ps[0].cell, oAns = ps[0].ans;
+      const oLab = (typeof qTeachLabel === 'function') ? qTeachLabel(ps) : (oCell + '＝' + oAns);
+      const oCol = (typeof qAnsColor === 'function') ? qAnsColor(oAns, oCell) : '#94a3b8';
+      const ghost = !matched; /* 問答未揀／未齊 → 暗淡提示已教位 */
+      const locked = teachOn && matched; /* 教模式＋已生效＝鎖（唔好再教） */
+      (map[ka] || []).forEach(e => {
+        if (!e || e.key !== key || !e.ik) return;
+        const sidO = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(e.ik) : null;
+        const tip = (ghost ? '已教（問答未揀）：' : '已教：') + oLab;
+        if (sidO != null) {
+          const sk = skipMapPaint[sidO];
+          if (!sk || !sk.na) return;
+          pushMark(sk.page, sk.na, e.v || 'NA', e.ik, locked || ghost, tip + ' · 跳過§' + sidO, oCol, ghost);
+          return;
+        }
+        const m = tm.items[e.ik]; if (!m) return;
+        const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
+        if (!b) return;
+        pushMark(m.page, b, e.v, e.ik, locked || ghost, tip + ' · ' + e.ik, oCol, ghost);
+      });
+    });
+  }
+  if (!Object.keys(byPi).length) {
     box.querySelectorAll('.qteach-hold').forEach(h => {
       const im = h.querySelector('.halive-pg');
       if (im && h.parentNode) { h.parentNode.insertBefore(im, h); h.remove(); }
     });
     return;
   }
-  const parts = qTeachActive.parts;
-  const prim = parts[parts.length - 1];
-  const cell = prim.cell, ans = prim.ans;
-  const activeKa = (typeof qTeachActiveKey === 'function') ? qTeachActiveKey() : null;
-  const L = (activeKa && typeof qTeachListKey === 'function') ? qTeachListKey(activeKa) : [];
-  const key = box.dataset.fsdKey || '';
-  const tm = (typeof FSD_TICKMAPS !== 'undefined' && FSD_TICKMAPS[key]) || null;
-  if (!tm || !tm.items) return;
-  const ansCol = (typeof qAnsColor === 'function') ? qAnsColor(ans, cell) : '#f59e0b';
-  const byPi = {};
-  const pushMark = (pi, b, v, ik, locked, title, col) => {
-    (byPi[pi] = byPi[pi] || []).push({ b, v, ik, locked: !!locked, title: title || (ik + '=' + v), col: col || ansCol });
-  };
-  const skipMapPaint = (typeof fsdOvSkipMap === 'function') ? fsdOvSkipMap(key, tm) : {};
-  L.filter(e => e && e.key === key).forEach(e => {
-    const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(e.ik) : null;
-    if (sid != null) {
-      const sk = skipMapPaint[sid];
-      if (!sk || !sk.na) return;
-      pushMark(sk.page, sk.na, e.v || 'NA', e.ik, false, '不適用／跳過 §' + sid, ansCol);
-      return;
-    }
-    const m = tm.items[e.ik]; if (!m) return;
-    const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
-    if (!b) return;
-    pushMark(m.page, b, e.v, e.ik, false, e.ik + '=' + e.v, ansCol);
-  });
-  /* 其他題已教過嘅剔位：鎖住顯示，第二表唔可以再撳 */
-  if (typeof qTeachMapGet === 'function') {
-    const map = qTeachMapGet();
-    Object.keys(map).forEach(ka => {
-      if (activeKa && ka === activeKa) return; /* 而家呢組已喺上面畫 */
-      const ps = (typeof qTeachParseKey === 'function') ? qTeachParseKey(ka) : [];
-      if (!ps.length) return;
-      /* v0.6.362／0.6.365：單一題——同一 cell 唔同答可各自教，唔鎖；AND／其他 key 先鎖 */
-      if (ps.length === 1 && parts.length === 1 && ps[0].cell === cell) return;
-      const oCell = ps[0].cell, oAns = ps[0].ans;
-      const oLab = (typeof qTeachLabel === 'function') ? qTeachLabel(ps) : (oCell + '＝' + oAns);
-      const oCol = (typeof qAnsColor === 'function') ? qAnsColor(oAns, oCell) : '#94a3b8';
-      (map[ka] || []).forEach(e => {
-        if (!e || e.key !== key || !e.ik) return;
-        const sidO = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(e.ik) : null;
-        if (sidO != null) {
-          const sk = skipMapPaint[sidO];
-          if (!sk || !sk.na) return;
-          pushMark(sk.page, sk.na, e.v || 'NA', e.ik, true, '已教：' + oLab + ' · 跳過§' + sidO, oCol);
-          return;
-        }
-        const m = tm.items[e.ik]; if (!m) return;
-        const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
-        if (!b) return;
-        pushMark(m.page, b, e.v, e.ik, true, '已教：' + oLab + ' · ' + e.ik, oCol);
-      });
-    });
-  }
-  if (!Object.keys(byPi).length) return;
   Object.keys(byPi).forEach(pi => {
     let im = box.querySelector('.halive-pg[data-pi="' + pi + '"]');
     if (!im) return;
@@ -5128,14 +5143,16 @@ function qTeachPaintMarkers() {
     }
     const nw = im.naturalWidth || 1, nh = im.naturalHeight || 1;
     const pageW = nw / PDF_K, pageH = nh / PDF_K;
-    layer.innerHTML = byPi[pi].map(({ b, v, ik, locked, title, col }) => {
+    layer.innerHTML = byPi[pi].map(({ b, v, ik, locked, ghost, title, col }) => {
       const left = (b.x / pageW) * 100;
       const top = (b.y / pageH) * 100;
       const w = Math.max(1.2, ((b.s || 9.5) * 2.4 / pageW) * 100);
-      return `<span class="qteach-mark v-${esc(v)}${locked ? ' locked' : ''}" style="--ans:${esc(col)};left:${left}%;top:${top}%;width:${w}%;padding-top:${w}%" title="${esc(title)}"></span>`;
+      const cls = 'qteach-mark v-' + esc(v) + (locked ? ' locked' : '') + (ghost ? ' ghost' : '');
+      return `<span class="${cls}" style="--ans:${esc(col)};left:${left}%;top:${top}%;width:${w}%;padding-top:${w}%" title="${esc(title)}"></span>`;
     }).join('');
   });
 }
+
 function qTeachApplyHit(hit) {
   if (!qTeachActive || !hit) return;
   const need = qTeachActive.need || 1;
@@ -5854,7 +5871,9 @@ async function fsdLiveRefresh(r) {
     }
     fsdLiveFollowBind();
     fsdLivePaneScrollApplyKeep(keepPane, wantKeep);
-    if (typeof qTeachActive !== 'undefined' && qTeachActive) { const b = $('#fsdLive'); if (b) b.classList.add('qteach-mode'); setTimeout(() => { if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers(); }, 30); }
+    if (typeof qTeachActive !== 'undefined' && qTeachActive) { const b = $('#fsdLive'); if (b) b.classList.add('qteach-mode'); }
+    /* v0.6.366：每次刷新右欄都畫已教暗淡標記（問答未揀都見） */
+    setTimeout(() => { if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers(); }, 30);
     if (typeof fsdNaMode !== 'undefined' && fsdNaMode) { const b2 = $('#fsdLive'); if (b2) { b2.classList.add('fsdna-mode'); b2.classList.remove('fsdyes-mode'); } }
     if (typeof fsdYesMode !== 'undefined' && fsdYesMode) { const b3 = $('#fsdLive'); if (b3) { b3.classList.add('fsdyes-mode'); b3.classList.remove('fsdna-mode'); } }
   } catch (e) {
