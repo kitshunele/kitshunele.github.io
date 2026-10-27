@@ -178,11 +178,10 @@ body.q-reorder-on .liveform{touch-action:none}
 .seg button.on.v-no{background:var(--ans, #b45309);border-color:var(--ans, #b45309)}
 .seg button.on.v-bad{background:var(--ans, var(--x));border-color:var(--ans, var(--x))}
 .seg button.on.v-opt{background:var(--ans, var(--pri));border-color:var(--ans, var(--pri))}
-/* v0.6.360：已教對應嘅答鎖住（跨表唔可以再撳） */
-.seg button.q-taught{opacity:.92;cursor:not-allowed;position:relative}
+/* v0.6.361：已教對應仍顯示「已對」／色；唔再鎖住（可再撳改選）· v0.6.360 曾 disabled */
+.seg button.q-taught{opacity:.92;cursor:pointer;position:relative}
 .seg button.q-taught:not(.on){background:color-mix(in srgb, var(--ans, #94a3b8) 18%, #fff);border-color:var(--ans, #94a3b8);color:var(--ans, #334155)}
 .seg button.q-taught-tag,.seg button .q-taught-tag{display:block;font-size:10px;font-weight:700;letter-spacing:.02em;line-height:1.1;margin-top:2px;opacity:.9}
-.seg button.q-taught:disabled{pointer-events:none}
 .q.unans .ql::before{content:"● ";color:#f59e0b}
 .skipnote{color:var(--mut);font-size:15px;padding:8px 0}
 .item{border-left:6px solid #cbd5e1;padding:12px;margin:10px 0;background:#fff;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.08)}
@@ -609,8 +608,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.360';
-/* v0.6.360：花灑官方 fsd_blank/spr.pdf＋tickmap 疊剔（通函 5/2023）；修 FA 第一頁§2「不適用」位；問答答案色＝核對表疊剔同色；已教對應嘅答喺問答鎖住唔可以再撳（要清先）；跨第二表剔位獨佔（已教過嘅框唔可以再教）
+const APP_VERSION = '0.6.361';
+/* v0.6.361：解除問答入面已教／已對鎖定——Q 揀選永遠可撳（保留「已對」標＋色聯動＋教對應 map；跨表剔位獨佔仍在）
+   v0.6.360：花灑官方 fsd_blank/spr.pdf＋tickmap 疊剔（通函 5/2023）；修 FA 第一頁§2「不適用」位；問答答案色＝核對表疊剔同色；已教對應嘅答曾鎖住（0.6.361 解除）；跨第二表剔位獨佔（已教過嘅框唔可以再教）
    v0.6.359：取消全部舊預設預填（左表 ✓／tdef／ndef／問卷自動 NA；FSD q_def*／def_v／ynn→Y／def_skip／q_skip 自動不適用；表一‧3）；空白直至師傅揀；教對應／用戶跳過／可改覆寫保留
    v0.6.358：表內已填（預設／自動 NA／禁剔／q_skip）都可改寫並記住；右欄 PDF 撳剔覆寫；教對應保留
    v0.6.357：問答選擇→核對表硬編碼對齊（T8→6.j＋6.l＋§3 skip；AA25 唔跟 6.1.h／9.g；7.6.5.l 只 FD_DOOR；7.6.5.h←F14）；教對應保留
@@ -1922,15 +1922,15 @@ function stepCla(r) {
 function qInput(r, it) {
   const v = r.q[it.cell], b = 'q.' + it.cell;
   /* v0.6.137：還原有／冇（是／否／OH）掣；撤銷 0.6.136／137 打剔 UI
-     v0.6.360：每答獨色（--ans）；已教對應嘅答 disabled（唔可以再撳；要清先） */
+     v0.6.360：每答獨色（--ans）；曾 disabled 已教答
+     v0.6.361：解除鎖定——已教仍標「已對」／色，但可再撳改選 */
   const segBtn = (val, cls) => {
     const col = (typeof qAnsColor === 'function') ? qAnsColor(val) : '';
     const taught = (typeof qTeachCellHas === 'function') && qTeachCellHas(it.cell, val);
     const on = v === val ? ' on' : '';
-    const lock = taught ? ' q-taught' : '';
-    const dis = taught ? ' disabled aria-disabled="true" title="已教對應·要改請撳「清除呢題教過」或改選其他答案"' : '';
+    const mark = taught ? ' q-taught' : '';
     const st = col ? ` style="--ans:${col}"` : '';
-    return `<button class="v-${cls}${on}${lock}" data-act="ans" data-bind="${b}" data-v="${esc(val)}"${st}${dis}>${esc(val)}${taught ? '<small class="q-taught-tag">已對</small>' : ''}</button>`;
+    return `<button class="v-${cls}${on}${mark}" data-act="ans" data-bind="${b}" data-v="${esc(val)}"${st}${taught ? ' title="已教對應（仍可改選）"' : ''}>${esc(val)}${taught ? '<small class="q-taught-tag">已對</small>' : ''}</button>`;
   };
   if (it.type === 'yn') return `<div class="seg">${segBtn('有', 'yes')}${segBtn('冇', 'no')}</div>`;
   if (it.type === 'sf') return `<div class="seg">${segBtn('是', 'yes')}${segBtn('否', 'no')}</div>`;
