@@ -173,11 +173,16 @@ body.q-reorder-on .liveform{touch-action:none}
 .q .note{font-size:13px;color:var(--mut);margin:-4px 0 8px}
 .seg{display:flex;gap:8px;flex-wrap:wrap}
 .seg button{flex:1;min-width:64px;min-height:54px;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:19px;font-weight:800}
-.seg button.on{color:#fff}
-.seg button.on.v-yes{background:var(--ok);border-color:var(--ok)}
-.seg button.on.v-no{background:#334155;border-color:#334155}
-.seg button.on.v-bad{background:var(--x);border-color:var(--x)}
-.seg button.on.v-opt{background:var(--pri);border-color:var(--pri)}
+.seg button.on{color:#fff;background:var(--ans, var(--pri));border-color:var(--ans, var(--pri))}
+.seg button.on.v-yes{background:var(--ans, var(--ok));border-color:var(--ans, var(--ok))}
+.seg button.on.v-no{background:var(--ans, #b45309);border-color:var(--ans, #b45309)}
+.seg button.on.v-bad{background:var(--ans, var(--x));border-color:var(--ans, var(--x))}
+.seg button.on.v-opt{background:var(--ans, var(--pri));border-color:var(--ans, var(--pri))}
+/* v0.6.360：已教對應嘅答鎖住（跨表唔可以再撳） */
+.seg button.q-taught{opacity:.92;cursor:not-allowed;position:relative}
+.seg button.q-taught:not(.on){background:color-mix(in srgb, var(--ans, #94a3b8) 18%, #fff);border-color:var(--ans, #94a3b8);color:var(--ans, #334155)}
+.seg button.q-taught-tag,.seg button .q-taught-tag{display:block;font-size:10px;font-weight:700;letter-spacing:.02em;line-height:1.1;margin-top:2px;opacity:.9}
+.seg button.q-taught:disabled{pointer-events:none}
 .q.unans .ql::before{content:"● ";color:#f59e0b}
 .skipnote{color:var(--mut);font-size:15px;padding:8px 0}
 .item{border-left:6px solid #cbd5e1;padding:12px;margin:10px 0;background:#fff;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.08)}
@@ -481,10 +486,11 @@ main.haslive .livepane .halive-pg{max-width:100%}
 .qteach-hold{position:relative;display:block;width:100%;max-width:100%;margin:0 auto 10px}
 .qteach-hold .halive-pg{margin-bottom:0;max-width:100%}
 .qteach-layer{position:absolute;inset:0;pointer-events:none;z-index:2}
-.qteach-mark{position:absolute;transform:translate(-50%,-50%);box-sizing:border-box;border:3px solid #f59e0b;border-radius:5px;box-shadow:0 0 0 2px rgba(245,158,11,.4);background:rgba(245,158,11,.18)}
-.qteach-mark.v-Y,.qteach-mark.v-T{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.35);background:rgba(37,99,235,.15)}
-.qteach-mark.v-N{border-color:#dc2626;box-shadow:0 0 0 2px rgba(220,38,38,.35);background:rgba(220,38,38,.12)}
-.qteach-mark.v-NA{border-color:#64748b;box-shadow:0 0 0 2px rgba(100,116,139,.35);background:rgba(100,116,139,.12)}
+.qteach-mark{position:absolute;transform:translate(-50%,-50%);box-sizing:border-box;border:3px solid var(--ans, #f59e0b);border-radius:5px;box-shadow:0 0 0 2px color-mix(in srgb, var(--ans, #f59e0b) 40%, transparent);background:color-mix(in srgb, var(--ans, #f59e0b) 18%, transparent)}
+.qteach-mark.v-Y,.qteach-mark.v-T{border-color:var(--ans, #2563eb);box-shadow:0 0 0 2px color-mix(in srgb, var(--ans, #2563eb) 35%, transparent);background:color-mix(in srgb, var(--ans, #2563eb) 15%, transparent)}
+.qteach-mark.v-N{border-color:var(--ans, #dc2626);box-shadow:0 0 0 2px color-mix(in srgb, var(--ans, #dc2626) 35%, transparent);background:color-mix(in srgb, var(--ans, #dc2626) 12%, transparent)}
+.qteach-mark.v-NA{border-color:var(--ans, #64748b);box-shadow:0 0 0 2px color-mix(in srgb, var(--ans, #64748b) 35%, transparent);background:color-mix(in srgb, var(--ans, #64748b) 12%, transparent)}
+.qteach-mark.locked{border-style:dashed;opacity:.55;filter:grayscale(.35)}
 @media (min-width:1000px){
   .livepick{margin:0 0 10px;padding:10px 10px 12px;border-radius:14px}
   .livepick .lpk{min-height:40px;font-size:14px;padding:0 12px}
@@ -603,8 +609,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.359';
-/* v0.6.359：取消全部舊預設預填（左表 ✓／tdef／ndef／問卷自動 NA；FSD q_def*／def_v／ynn→Y／def_skip／q_skip 自動不適用；表一‧3）；空白直至師傅揀；教對應／用戶跳過／可改覆寫保留
+const APP_VERSION = '0.6.360';
+/* v0.6.360：花灑官方 fsd_blank/spr.pdf＋tickmap 疊剔（通函 5/2023）；修 FA 第一頁§2「不適用」位；問答答案色＝核對表疊剔同色；已教對應嘅答喺問答鎖住唔可以再撳（要清先）；跨第二表剔位獨佔（已教過嘅框唔可以再教）
+   v0.6.359：取消全部舊預設預填（左表 ✓／tdef／ndef／問卷自動 NA；FSD q_def*／def_v／ynn→Y／def_skip／q_skip 自動不適用；表一‧3）；空白直至師傅揀；教對應／用戶跳過／可改覆寫保留
    v0.6.358：表內已填（預設／自動 NA／禁剔／q_skip）都可改寫並記住；右欄 PDF 撳剔覆寫；教對應保留
    v0.6.357：問答選擇→核對表硬編碼對齊（T8→6.j＋6.l＋§3 skip；AA25 唔跟 6.1.h／9.g；7.6.5.l 只 FD_DOOR；7.6.5.h←F14）；教對應保留
    v0.6.356：問卷揀完答案 → 右欄撳剔位教 Q→核對表對應；prefs.qTeachMap 自動儲存（如 qOrder）；修 T8≠6.i、FD_DOOR≠7.6.4.b
@@ -1914,8 +1921,17 @@ function stepCla(r) {
 /* v0.6.239：問卷唔放 CL-A；CL-A 喺頂欄「問卷」隔離獨立 tab；PDF 各自喺選擇表／CL-A tab 下面 */
 function qInput(r, it) {
   const v = r.q[it.cell], b = 'q.' + it.cell;
-  /* v0.6.137：還原有／冇（是／否／OH）掣；撤銷 0.6.136／137 打剔 UI */
-  const segBtn = (val, cls) => `<button class="v-${cls} ${v === val ? 'on' : ''}" data-act="ans" data-bind="${b}" data-v="${esc(val)}">${esc(val)}</button>`;
+  /* v0.6.137：還原有／冇（是／否／OH）掣；撤銷 0.6.136／137 打剔 UI
+     v0.6.360：每答獨色（--ans）；已教對應嘅答 disabled（唔可以再撳；要清先） */
+  const segBtn = (val, cls) => {
+    const col = (typeof qAnsColor === 'function') ? qAnsColor(val) : '';
+    const taught = (typeof qTeachCellHas === 'function') && qTeachCellHas(it.cell, val);
+    const on = v === val ? ' on' : '';
+    const lock = taught ? ' q-taught' : '';
+    const dis = taught ? ' disabled aria-disabled="true" title="已教對應·要改請撳「清除呢題教過」或改選其他答案"' : '';
+    const st = col ? ` style="--ans:${col}"` : '';
+    return `<button class="v-${cls}${on}${lock}" data-act="ans" data-bind="${b}" data-v="${esc(val)}"${st}${dis}>${esc(val)}${taught ? '<small class="q-taught-tag">已對</small>' : ''}</button>`;
+  };
   if (it.type === 'yn') return `<div class="seg">${segBtn('有', 'yes')}${segBtn('冇', 'no')}</div>`;
   if (it.type === 'sf') return `<div class="seg">${segBtn('是', 'yes')}${segBtn('否', 'no')}</div>`;
   /* v0.6.192：it.opts 自訂 .seg（例 AA40 水／電／泵） */
@@ -2378,6 +2394,78 @@ function qTeachMapGet() {
   return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
 }
 function qTeachKey(cell, ans) { return String(cell || '') + '|' + String(ans == null ? '' : ans); }
+/* v0.6.360：問答答案色＝核對表疊剔同色（左揀右對得上） */
+const Q_ANS_COLOR = {
+  '有': '#15803d', '是': '#15803d',
+  '冇': '#b45309', '否': '#b91c1c',
+  '不適用': '#64748b', 'NA': '#64748b',
+  'LH': '#1d4ed8', 'OH1': '#0d9488', 'OH2': '#7c3aed', 'OH3': '#db2777', 'OH4': '#ea580c',
+  '水': '#0284c7', '電': '#ca8a04', '泵': '#9333ea'
+};
+function qAnsColor(ans) {
+  const s = String(ans == null ? '' : ans);
+  if (Q_ANS_COLOR[s]) return Q_ANS_COLOR[s];
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  const hue = (h >>> 0) % 360;
+  return 'hsl(' + hue + ' 62% 36%)';
+}
+function qAnsColorRgb(ans) {
+  const c = qAnsColor(ans);
+  if (c.charAt(0) === '#' && c.length === 7) {
+    const n = parseInt(c.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = /^hsl\((\d+)/.exec(c);
+  if (m) {
+    const h = Number(m[1]) / 60, x = 1 - Math.abs(h % 2 - 1), a = [0, 0, 0];
+    const c0 = 0.45, m0 = 0.18;
+    let r = 0, g = 0, b = 0;
+    if (h < 1) { r = c0; g = x * c0; }
+    else if (h < 2) { r = x * c0; g = c0; }
+    else if (h < 3) { g = c0; b = x * c0; }
+    else if (h < 4) { g = x * c0; b = c0; }
+    else if (h < 5) { r = x * c0; b = c0; }
+    else { r = c0; b = x * c0; }
+    return [Math.round((r + m0) * 255), Math.round((g + m0) * 255), Math.round((b + m0) * 255)];
+  }
+  return [21, 101, 192];
+}
+/* v0.6.360：核對表 item 已教畀邊條 Q|答（跨表獨佔；第二表唔可以再撳同一格） */
+function qTeachClaimOwner(fsdKey, ik) {
+  if (!fsdKey || ik == null || ik === '') return null;
+  const map = qTeachMapGet();
+  const keys = Object.keys(map);
+  for (let i = 0; i < keys.length; i++) {
+    const ka = keys[i], pipe = ka.lastIndexOf('|');
+    if (pipe < 0) continue;
+    const arr = map[ka] || [];
+    for (let j = 0; j < arr.length; j++) {
+      const e = arr[j];
+      if (e && e.key === fsdKey && e.ik === ik && e.v) {
+        return { cell: ka.slice(0, pipe), ans: ka.slice(pipe + 1), v: e.v };
+      }
+    }
+  }
+  return null;
+}
+function qTeachSource(r, fsdKey, ik) {
+  if (!r || !r.q || !fsdKey || ik == null || ik === '') return null;
+  const map = qTeachMapGet();
+  const keys = Object.keys(map);
+  for (let i = 0; i < keys.length; i++) {
+    const ka = keys[i], pipe = ka.lastIndexOf('|');
+    if (pipe < 0) continue;
+    const cell = ka.slice(0, pipe), ans = ka.slice(pipe + 1);
+    if (r.q[cell] !== ans) continue;
+    const arr = map[ka] || [];
+    for (let j = 0; j < arr.length; j++) {
+      const e = arr[j];
+      if (e && e.key === fsdKey && e.ik === ik && e.v) return { cell: cell, ans: ans, v: e.v };
+    }
+  }
+  return null;
+}
 function qTeachList(cell, ans) {
   const L = qTeachMapGet()[qTeachKey(cell, ans)];
   return Array.isArray(L) ? L : [];
@@ -2515,12 +2603,11 @@ function qLiveTargetOf(cell) {
   const e = (typeof qFsdMap === 'function' ? qFsdMap() : null) || {};
   const ent = e[cell];
   if (!ent) return null;
-  const blankOk = k => k && k !== 'spr' && (typeof X_FSD_APP_ONLY === 'undefined' || X_FSD_APP_ONLY.has(k));
+  const blankOk = k => k && (typeof X_FSD_APP_ONLY === 'undefined' || X_FSD_APP_ONLY.has(k));
   for (let i = 0; i < (ent.defs || []).length; i++) {
     const d = ent.defs[i];
     const k = fsdKeyFromChipShort(d.sh);
-    if (!blankOk(k) && k !== 'spr') continue;
-    if (!blankOk(k) && k === 'spr') continue; /* 問卷跟頁主路徑：blank only；spr 只經閘 */
+    if (!blankOk(k)) continue;
     const raw = (d.keys && d.keys[0]) || '';
     const ik = qLiveIkClean(raw);
     if (k) return { key: k, ik: ik || null, sec: null };
@@ -4104,15 +4191,16 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
 /* ----- 5. 揀邊啲工作表（同 Excel 輸出一樣隱藏另一類檢查；問卷「冇」嘅系統列做 NA） ----- */
 const X_ANNUAL = ['A-1', 'A-2', 'F', 'H1', 'H2-1', 'H2-2', 'K', 'N', 'O', 'Fire Hydrant Hose Reel Systems', 'Supply Tanks', 'Annex A', 'Annex B', 'Sprinkler checklist（修訂 01 )', 'Checklist for Water Supplies', 'Annual Inspection Checklist for'];
 const X_NOPRINT = ['工作表2', '工作表3', 'Sprinkler checklist（修訂 01 ) (2)']; /* v0.6.326 Fan：HA 範本 (2) 標題偵測、內文花灑 → 永遠唔印；偵測用 App fds */
-const X_FSD_APP_ONLY = new Set(['fds', 'fa', 'fhhr', 'tank', 'ws']); /* v0.6.328：fds／fa；v0.6.330：+fhhr／tank／ws（英文 Excel ≠ 中文紙本）；spr 留中文 Excel（唔入呢個 Set） */
-const X_FSD_SPR_SHEET = 'Sprinkler checklist（修訂 01 )'; /* v0.6.341：花灑 live／提交中文 Excel 名 */
-function fsdLiveOk(key) { /* livepane 覆蓋：App overlay 五份 ＋ spr Excel */
-  return !!(key && (X_FSD_APP_ONLY.has(key) || key === 'spr'));
+const X_FSD_APP_ONLY = new Set(['fds', 'fa', 'fhhr', 'tank', 'ws', 'spr']); /* v0.6.328–330：fds／fa／fhhr／tank／ws；v0.6.360：+spr 官方 fsd_blank PDF＋tickmap（通函 5/2023） */
+const X_FSD_SPR_SHEET = 'Sprinkler checklist（修訂 01 )'; /* v0.6.341：舊 Excel 名；v0.6.360 匯出跳過改走 overlay */
+function fsdLiveOk(key) { /* livepane：全部走官方 blank＋tickmap */
+  return !!(key && X_FSD_APP_ONLY.has(key));
 }
-const X_FSD_APP_SKIP_SHEETS = { /* App 中文紙本頁已畫 → 唔再印對應英文 X_FSD Excel（HA Appendix C 英文短表仍經 CL-D／E 等） */
+const X_FSD_APP_SKIP_SHEETS = { /* App 中文紙本／overlay 已畫 → 唔再印對應 Excel */
   fhhr: ['Fire Hydrant Hose Reel Systems', 'Annex A'],
   tank: ['Supply Tanks', 'Annex B'],
-  ws: ['Checklist for Water Supplies', 'Annual Inspection Checklist for']
+  ws: ['Checklist for Water Supplies', 'Annual Inspection Checklist for'],
+  spr: ['Sprinkler checklist（修訂 01 )']
 };
 function xGateOf(n) { /* → [類別, 問卷格 或 表格 key] */
   if (/FS Pump/.test(n)) return ['f', 'C1', 'B', 'T6']; if (/Upfeed Pump/.test(n)) return ['f', 'C1U', 'BU', 'M6']; if (/Sprinkler Pump/.test(n)) return ['f', 'C1S', 'BS', 'AA6'];
@@ -4524,7 +4612,8 @@ function qTeachBarHtml() {
     const vv = e.v === 'Y' ? '是' : e.v === 'N' ? '否' : e.v === 'NA' ? 'NA' : e.v === 'T' ? '✓' : (e.v || '');
     return (e.key || '') + ' ' + e.ik + '＝' + vv;
   }).join('、');
-  return `<div class="qteach" id="qteach" role="status"><div class="qteach-lab">教對應中：<b>${esc(cell)}</b>＝<b>${esc(ans)}</b> · 撳右欄剔位（是／否／不適用）記住 · 再撳同一格取消</div><div class="qteach-row"><span class="qteach-n">已記 ${n} 項${items ? '：' + esc(items) : ''} · 自動儲存</span><button type="button" class="lpk" data-act="qteachclear">清除呢題教過</button><button type="button" class="lpk" data-act="qteachdone">完成</button></div></div>`;
+  const col = (typeof qAnsColor === 'function') ? qAnsColor(ans) : '#b45309';
+  return `<div class="qteach" id="qteach" role="status" style="--ans:${esc(col)}"><div class="qteach-lab">教對應中：<b style="color:${esc(col)}">${esc(cell)}</b>＝<b style="color:${esc(col)}">${esc(ans)}</b> · 撳右欄剔位記住（同色）· 已教過嘅格唔可以再撳 · 再撳自己嘅取消</div><div class="qteach-row"><span class="qteach-n">已記 ${n} 項${items ? '：' + esc(items) : ''} · 自動儲存</span><button type="button" class="lpk" data-act="qteachclear">清除呢題教過</button><button type="button" class="lpk" data-act="qteachdone">完成</button></div></div>`;
 }
 function fsdLivePickBarHtml(step) {
   const key = fsdLivePaneKey(step);
@@ -4581,7 +4670,7 @@ function qTeachRefreshBar() {
 }
 function qTeachHitTest(im, clientX, clientY) {
   const key = im && im.dataset && im.dataset.liveKey;
-  if (!key || key === 'spr') return null;
+  if (!key) return null;
   const tmAll = (typeof FSD_TICKMAPS !== 'undefined') ? FSD_TICKMAPS : null;
   const tm = tmAll && tmAll[key];
   if (!tm || !tm.items || tm.overlay_ok === false) return null;
@@ -4625,17 +4714,41 @@ function qTeachPaintMarkers() {
     });
     return;
   }
-  const L = (typeof qTeachList === 'function') ? qTeachList(qTeachActive.cell, qTeachActive.ans) : [];
+  const cell = qTeachActive.cell, ans = qTeachActive.ans;
+  const L = (typeof qTeachList === 'function') ? qTeachList(cell, ans) : [];
   const key = box.dataset.fsdKey || '';
   const tm = (typeof FSD_TICKMAPS !== 'undefined' && FSD_TICKMAPS[key]) || null;
-  if (!tm || !tm.items || !L.length) return;
+  if (!tm || !tm.items) return;
+  const ansCol = (typeof qAnsColor === 'function') ? qAnsColor(ans) : '#f59e0b';
   const byPi = {};
+  const pushMark = (pi, b, v, ik, locked, title, col) => {
+    (byPi[pi] = byPi[pi] || []).push({ b, v, ik, locked: !!locked, title: title || (ik + '=' + v), col: col || ansCol });
+  };
   L.filter(e => e && e.key === key).forEach(e => {
     const m = tm.items[e.ik]; if (!m) return;
     const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
     if (!b) return;
-    (byPi[m.page] = byPi[m.page] || []).push({ b: b, v: e.v, ik: e.ik });
+    pushMark(m.page, b, e.v, e.ik, false, e.ik + '=' + e.v, ansCol);
   });
+  /* 其他題已教過嘅剔位：鎖住顯示，第二表唔可以再撳 */
+  if (typeof qTeachMapGet === 'function') {
+    const map = qTeachMapGet();
+    Object.keys(map).forEach(ka => {
+      const pipe = ka.lastIndexOf('|');
+      if (pipe < 0) return;
+      const oCell = ka.slice(0, pipe), oAns = ka.slice(pipe + 1);
+      if (oCell === cell && oAns === ans) return;
+      const oCol = (typeof qAnsColor === 'function') ? qAnsColor(oAns) : '#94a3b8';
+      (map[ka] || []).forEach(e => {
+        if (!e || e.key !== key || !e.ik) return;
+        const m = tm.items[e.ik]; if (!m) return;
+        const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
+        if (!b) return;
+        pushMark(m.page, b, e.v, e.ik, true, '已教：' + oCell + '＝' + oAns + ' · ' + e.ik, oCol);
+      });
+    });
+  }
+  if (!Object.keys(byPi).length) return;
   Object.keys(byPi).forEach(pi => {
     let im = box.querySelector('.halive-pg[data-pi="' + pi + '"]');
     if (!im) return;
@@ -4654,17 +4767,25 @@ function qTeachPaintMarkers() {
     }
     const nw = im.naturalWidth || 1, nh = im.naturalHeight || 1;
     const pageW = nw / PDF_K, pageH = nh / PDF_K;
-    layer.innerHTML = byPi[pi].map(({ b, v, ik }) => {
+    layer.innerHTML = byPi[pi].map(({ b, v, ik, locked, title, col }) => {
       const left = (b.x / pageW) * 100;
       const top = (b.y / pageH) * 100;
       const w = Math.max(1.2, ((b.s || 9.5) * 2.4 / pageW) * 100);
-      return `<span class="qteach-mark v-${esc(v)}" style="left:${left}%;top:${top}%;width:${w}%;padding-top:${w}%" title="${esc(ik + '=' + v)}"></span>`;
+      return `<span class="qteach-mark v-${esc(v)}${locked ? ' locked' : ''}" style="--ans:${esc(col)};left:${left}%;top:${top}%;width:${w}%;padding-top:${w}%" title="${esc(title)}"></span>`;
     }).join('');
   });
 }
 function qTeachApplyHit(hit) {
   if (!qTeachActive || !hit) return;
   const cell = qTeachActive.cell, ans = qTeachActive.ans;
+  /* v0.6.360：跨表獨佔——第二表／另一題唔可以再撳已教過嘅剔位 */
+  if (typeof qTeachClaimOwner === 'function') {
+    const own = qTeachClaimOwner(hit.key, hit.ik);
+    if (own && (own.cell !== cell || own.ans !== ans)) {
+      if (typeof toast === 'function') toast('已教過畀 ' + own.cell + '＝' + own.ans + '（要改請先清除嗰題教過）', 2600);
+      return;
+    }
+  }
   const list = qTeachToggle(cell, ans, hit.key, hit.ik, hit.v);
   const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
   if (r && typeof fsdRec === 'function') {
@@ -4815,9 +4936,12 @@ function fsdLiveFollowPin(elOrPi, soft, opts) {
 
 function fsdLiveFollowMapsOf(key) {
   if (!key) return null;
-  if (key === 'spr') return { byIk: {}, bySec: Object.assign({}, FSD_SPR_SEC_PAGE), n: 32, kind: 'spr', key };
   const tm = FSD_TICKMAPS && FSD_TICKMAPS[key];
-  if (!tm || !tm.items) return fsdLiveFollowMaps; /* 可能係紙本 bySec（refresh 後寫入） */
+  if (!tm || !tm.items) {
+    /* tickmaps 未載：spr 暫用舊段頁；其他保持原 maps */
+    if (key === 'spr') return { byIk: {}, bySec: Object.assign({}, FSD_SPR_SEC_PAGE), n: 32, kind: 'spr', key };
+    return fsdLiveFollowMaps; /* 可能係紙本 bySec（refresh 後寫入） */
+  }
   const byIk = {}, bySec = {};
   Object.keys(tm.items).forEach(ik => {
     const p = tm.items[ik].page;
@@ -5123,10 +5247,9 @@ function fsdLiveFollowBind() {
   const key = (typeof fsdLivePaneKey === 'function') ? fsdLivePaneKey(cur.step) : ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null);
   if (!fsdLiveOk(key)) { fsdLiveFollowUnbind(); return; }
   fsdLiveFollowKey = key;
-  /* maps：overlay 要 tickmaps；spr 用靜態；紙本用 refresh 寫入 */
-  if (key === 'spr') fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
-  else if (FSD_TICKMAPS && FSD_TICKMAPS[key]) fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
-  else if (key !== 'spr' && typeof fsdLoadTickmaps === 'function') {
+  /* maps：overlay tickmaps（含 spr）；紙本用 refresh 寫入 */
+  if (FSD_TICKMAPS && FSD_TICKMAPS[key]) fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
+  else if (typeof fsdLoadTickmaps === 'function') {
     fsdLoadTickmaps().then(() => {
       if (fsdLiveFollowKey !== key) return;
       fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
@@ -5226,7 +5349,7 @@ async function fsdLiveRefresh(r) {
     let cExp = (o.fsd_checklists || {})[key];
     /* v0.6.350：問卷 tab 即使用戶未答「有」／半年檢，都顯示官方 blank 預覽（疊剔可空）
        v0.6.353：手動揀另一份時同樣顯示 blank（唔逼適用） */
-    if ((!cExp || !cExp.applicable) && (cur.step === 'q' || fsdLiveManualKey) && key && key !== 'spr') {
+    if ((!cExp || !cExp.applicable) && (cur.step === 'q' || fsdLiveManualKey) && key) {
       const meta = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || {};
       cExp = {
         title: meta.title || meta.chip || key,
@@ -5249,58 +5372,8 @@ async function fsdLiveRefresh(r) {
     fsdLiveRevoke();
     await xHwLoad();
 
-    /* v0.6.341：花灑無 fsd_blank／tickmap → 右欄跟提交：中文 Excel → xSheetPages */
-    if (key === 'spr') {
-      if (!XLS || !XLS.sheets || !XLS.sheets.length) {
-        box.innerHTML = '<div class="halive-msg">未載入範本版面，花灑實時預覽暫時唔得。</div>';
-        return;
-      }
-      const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov }, plan = xPlan(o);
-      const sheets = plan.inc.filter(n => n === X_FSD_SPR_SHEET);
-      if (!sheets.length) {
-        box.innerHTML = '<div class="halive-msg">呢份花灑中文 Excel 而家冇印出（睇下年檢／問卷 AA6）。</div>';
-        fsdLiveSnap = { key: '', html: '' };
-        return;
-      }
-      const head = document.createElement('div'); head.className = 'halive-h';
-      head.innerHTML = `<b>${esc(cExp.title || '花灑系統年檢核對表')} 即時核對</b><span class="mut">中文 Excel · 左填右睇 · 跟提交預覽</span>`;
-      box.innerHTML = ''; box.appendChild(head);
-      const liveK = Math.max(1, PDF_K * 0.55);
-      let pageN = 0;
-      for (let i = 0; i < sheets.length; i++) {
-        if (tok !== fsdLiveTok || !$('#fsdLive')) return;
-        const n = sheets[i]; const S = XL_BY[n]; if (!S) continue;
-        const st = document.createElement('div'); st.className = 'halive-st'; st.textContent = `畫緊 ${n}（${i + 1}/${sheets.length}）…`; box.appendChild(st);
-        await new Promise(res => setTimeout(res, 0));
-        const pages = await xSheetPages(S, B, { dateText: o.inspection_date || '', K: liveK });
-        if (tok !== fsdLiveTok || !$('#fsdLive')) { pages.forEach(p => { if (p.cv) { p.cv.width = 1; p.cv.height = 1; } }); return; }
-        st.remove();
-        pageN += pages.length;
-        const blk = document.createElement('div'); blk.className = 'halive-blk';
-        blk.innerHTML = `<div class="halive-t">${esc(n)}${pages.length > 1 ? ` <span class="mut">· ${pages.length} 頁</span>` : ''}</div>`;
-        pages.forEach((p, pi) => {
-          const u = p.cv.toDataURL('image/jpeg', 0.72); p.cv.width = 1; p.cv.height = 1; p.cv = null;
-          const im = document.createElement('img'); im.className = 'halive-pg' + (p.land ? ' land' : ''); im.alt = `${n} 第 ${pi + 1} 頁`; im.src = u;
-          im.dataset.pi = String(pi); im.dataset.liveKey = key;
-          blk.appendChild(im);
-        });
-        box.appendChild(blk);
-      }
-      if (tok === fsdLiveTok) {
-        const foot = document.createElement('div'); foot.className = 'halive-msg';
-        foot.textContent = `已畫 ${pageN} 頁（中文 Excel「${X_FSD_SPR_SHEET}」· 正式版以 Excel 為準）`;
-        box.appendChild(foot);
-        fsdLiveSnap = { key, html: box.innerHTML };
-        fsdLiveFollowKey = key;
-        fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
-        fsdLiveFollowBind();
-        fsdLivePaneScrollApplyKeep(keepPane, wantKeep);
-        if (typeof qTeachActive !== 'undefined' && qTeachActive) { const b = $('#fsdLive'); if (b) b.classList.add('qteach-mode'); setTimeout(() => { if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers(); }, 30); }
-      }
-      return;
-    }
-
-    /* fds／fa／fhhr／tank／ws：原 PDF 疊剔（或 ws 紙本回退） */
+    /* v0.6.360：spr 亦走官方 fsd_blank／tickmap（同 fds／fa／…）；撤銷 Excel live */
+    /* fds／fa／fhhr／tank／ws／spr：原 PDF 疊剔（或 ws 紙本回退） */
     let ovOk = false;
     try {
       const tmAll = await fsdLoadTickmaps();
@@ -5834,8 +5907,8 @@ async function fsdLoadBlankPdf(key, rel) {
   FSD_BLANK_PDF[key] = pdf;
   return pdf;
 }
-function fsdDrawTickOv(ctx, box, scale, seed) {
-  /* v0.6.338 Fan：藍 V 再似手寫——角度／臂長／弧度／位移加大；墨色微變；偶發起筆勾（跟 xHwTick） */
+function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
+  /* v0.6.338 Fan：藍 V 再似手寫；v0.6.360：可傳 inkRgb＝問答答案同色 */
   if (!box) return;
   const rnd = (typeof xHwRng === 'function')
     ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ov:' + box.x + ':' + box.y))) : xHwSeed(String(seed || box.x)))
@@ -5863,11 +5936,19 @@ function fsdDrawTickOv(ctx, box, scale, seed) {
   };
   const c1 = mid(A, Vpt, bendL), c2 = mid(Vpt, E, bendR);
   const wd = Math.max(1.2, s * (0.055 + rnd() * 0.045));
-  /* 藍墨微變（唔齊色） */
-  const inkK = 0.88 + rnd() * 0.28;
-  const rC = Math.round(Math.min(255, 21 * inkK + u() * 12));
-  const gC = Math.round(Math.min(255, 101 * inkK + u() * 18));
-  const bC = Math.round(Math.min(255, 192 * inkK + u() * 10));
+  /* 墨色：教對應跟問答答案色；否則藍墨微變 */
+  let rC, gC, bC;
+  if (inkRgb && inkRgb.length >= 3) {
+    const inkK = 0.92 + rnd() * 0.14;
+    rC = Math.round(Math.min(255, Math.max(0, inkRgb[0] * inkK + u() * 10)));
+    gC = Math.round(Math.min(255, Math.max(0, inkRgb[1] * inkK + u() * 10)));
+    bC = Math.round(Math.min(255, Math.max(0, inkRgb[2] * inkK + u() * 10)));
+  } else {
+    const inkK = 0.88 + rnd() * 0.28;
+    rC = Math.round(Math.min(255, 21 * inkK + u() * 12));
+    gC = Math.round(Math.min(255, 101 * inkK + u() * 18));
+    bC = Math.round(Math.min(255, 192 * inkK + u() * 10));
+  }
   ctx.save();
   ctx.strokeStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
   ctx.lineWidth = wd;
@@ -5990,12 +6071,25 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
       const onY = r === '是' || r === '✓';
       const onN = r === '否';
       const onNa = r === '不適用';
+      let ink = null;
+      if (typeof qTeachSource === 'function' && typeof Store !== 'undefined' && cur && cur.id) {
+        const rec = Store.get(cur.id);
+        const src = qTeachSource(rec, key, ik);
+        if (src && src.ans && typeof qAnsColorRgb === 'function') ink = qAnsColorRgb(src.ans);
+      }
+      if (!ink && a && a.q_ans && typeof qAnsColorRgb === 'function') ink = qAnsColorRgb(a.q_ans);
+      if (!ink && typeof qAnsColorRgb === 'function') {
+        /* 無教來源：是／否／不適用跟問答同色板 */
+        if (onY) ink = qAnsColorRgb('是');
+        else if (onN) ink = qAnsColorRgb('否');
+        else if (onNa) ink = qAnsColorRgb('不適用');
+      }
       if (m.mode === 'y') {
-        if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y');
+        if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y', ink);
       } else {
-        if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y');
-        if (onN) fsdDrawTickOv(ctx, m.no, scale, key + ':' + ik + ':n');
-        if (onNa) fsdDrawTickOv(ctx, m.na, scale, key + ':' + ik + ':na');
+        if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y', ink);
+        if (onN) fsdDrawTickOv(ctx, m.no, scale, key + ':' + ik + ':n', ink);
+        if (onNa) fsdDrawTickOv(ctx, m.na, scale, key + ':' + ik + ':na', ink);
       }
       const rem = (a && (a.remark || a.optional)) || '';
       if (rem && m.na) {
