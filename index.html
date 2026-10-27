@@ -402,11 +402,27 @@ a.jump{color:var(--pri);font-weight:700}
 .halive-pg{display:block;width:100%;max-width:720px;margin:0 auto 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.08)}
 .halive-pg.land{max-width:100%}
 .halive.halive-upd{opacity:.72;transition:opacity .15s}
-/* v0.6.342：haslive 永遠同時見表單＋即時 PDF（窄＝上下同屏；闊＝左右 sticky）；「即時預覽」＝可選放大全屏，唔再係先睇到嘅門檻 */
+/* v0.6.343：haslive 永遠同時見表單＋即時 PDF；中間 .livesplit 可拖調大細（窄上下／闊左右）；比例存 localStorage */
 .liveform{min-width:0}
 .livepane{min-width:0}
 .livepeek{display:block;width:100%;margin:6px 0 4px;z-index:6;box-shadow:none}
-/* 窄屏：上表單／下即時 PDF 同屏可見（唔使撳 peek） */
+.livesplit{
+  flex:0 0 18px;order:2;position:relative;z-index:5;
+  display:flex;align-items:center;justify-content:center;
+  margin:2px 18%;padding:0;border:0;border-radius:999px;
+  background:linear-gradient(180deg,#e2e8f0,#94a3b8 45%,#e2e8f0);
+  box-shadow:0 1px 2px rgba(15,23,42,.12);
+  cursor:row-resize;touch-action:none;user-select:none;-webkit-user-select:none;
+}
+.livesplit::before{
+  content:"";display:block;width:42px;height:4px;border-radius:999px;background:#475569;
+  box-shadow:0 -5px 0 #64748b,0 5px 0 #64748b;opacity:.9;
+}
+.livesplit:focus{outline:2px solid #2563eb;outline-offset:2px}
+main.haslive.ls-dragging{cursor:row-resize;user-select:none;-webkit-user-select:none}
+main.haslive.ls-dragging *{pointer-events:none!important}
+main.haslive.ls-dragging .livesplit{pointer-events:auto!important}
+/* 窄屏：上表單／下即時 PDF 同屏可見（唔使撳 peek）；高度跟 --ls-pane-h */
 main.haslive{
   display:flex;flex-direction:column;
   height:calc(100dvh - 118px - 76px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
@@ -417,14 +433,18 @@ main.haslive{
 }
 main.haslive > .revbar{flex:0 0 auto;order:0}
 main.haslive .liveform{
-  order:1;flex:1 1 52%;min-height:120px;min-width:0;
+  order:1;flex:var(--ls-form-grow,55) 1 0;min-height:20%;min-width:0;
   overflow:auto;-webkit-overflow-scrolling:touch;
 }
-main.haslive .livepeek{order:2;flex:0 0 auto;position:relative;bottom:auto;left:auto;right:auto;width:100%;margin:8px 0 4px}
+main.haslive .livepeek{
+  order:2;flex:0 0 auto;position:relative;bottom:auto;left:auto;right:auto;
+  width:auto;align-self:center;margin:4px 0 0;padding:5px 12px;font-size:12px;
+}
+main.haslive .livesplit{order:3}
 main.haslive .livepane,
 main.haslive:not(.liveopen) .livepane{
-  order:3;display:block;flex:0 0 auto;
-  height:42vh;max-height:min(48vh,420px);min-height:150px;
+  order:4;display:block;flex:var(--ls-pane-grow,45) 1 0;
+  height:auto;max-height:none;min-height:20%;
   overflow:auto;-webkit-overflow-scrolling:touch;
   margin:0;padding:8px 8px 10px;
   background:#f8fafc;border:1px solid #cbd5e1;border-radius:14px;
@@ -438,25 +458,41 @@ main.liveopen{
   display:block;height:auto;max-height:none;overflow:visible;padding-bottom:120px;
 }
 main.liveopen .liveform{overflow:visible;max-height:none;flex:unset}
+main.liveopen .livesplit{display:none!important}
 main.liveopen .livepane{
   display:block;position:fixed;inset:0;z-index:45;
   height:auto;max-height:none;min-height:0;order:unset;flex:unset;
   background:#f1f5f9;overflow:auto;-webkit-overflow-scrolling:touch;
   padding:56px 12px 28px;border:0;margin:0;border-radius:0;box-shadow:none;
 }
-main.liveopen .livepeek{position:fixed;top:10px;right:10px;left:auto;bottom:auto;width:auto;z-index:50;margin:0;order:unset}
+main.liveopen .livepeek{position:fixed;top:10px;right:10px;left:auto;bottom:auto;width:auto;z-index:50;margin:0;order:unset;align-self:auto}
 main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
 @media (min-width:1000px){
   .livepeek{display:none!important}
   main.haslive{
-    display:grid;grid-template-columns:minmax(320px,1fr) minmax(340px,1.08fr);gap:0 16px;align-items:start;
+    display:grid;
+    grid-template-columns:minmax(260px,var(--ls-form-pct,48%)) 14px minmax(260px,1fr);
+    gap:0;align-items:start;
     max-width:min(1480px,100%);
     height:auto;max-height:none;overflow:visible;padding-bottom:120px;
   }
   main.haslive > .revbar{grid-column:1/-1;order:unset;flex:unset}
-  main.haslive .liveform{min-width:0;order:unset;flex:unset;overflow:visible;max-height:none}
+  main.haslive .liveform{grid-column:1;grid-row:2;min-width:0;order:unset;flex:unset;overflow:visible;max-height:none;min-height:0}
+  main.haslive .livesplit{
+    grid-column:2;grid-row:2;order:unset;flex:unset;
+    width:14px;margin:0;height:calc(100vh - 96px);min-height:180px;
+    position:sticky;top:72px;align-self:start;
+    cursor:col-resize;
+    background:linear-gradient(90deg,#e2e8f0,#94a3b8 45%,#e2e8f0);
+  }
+  main.haslive .livesplit::before{
+    width:4px;height:42px;
+    box-shadow:-5px 0 0 #64748b,5px 0 0 #64748b;
+  }
+  main.haslive.ls-dragging{cursor:col-resize}
   main.haslive .livepane,
   main.haslive:not(.liveopen) .livepane{
+    grid-column:3;grid-row:2;
     display:block;position:sticky;top:72px;order:unset;flex:unset;
     height:auto;max-height:calc(100vh - 88px);min-height:0;
     overflow:auto;-webkit-overflow-scrolling:touch;
@@ -520,8 +556,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.342';
-/* v0.6.342：haslive 窄屏都永遠上下同屏見即時 PDF（唔使撳 peek）；peek＝可選放大全屏
+const APP_VERSION = '0.6.343';
+/* v0.6.343：中間分隔可拖——窄上下／闊左右調大細；localStorage 記住比例
+   v0.6.342：haslive 窄屏都永遠上下同屏見即時 PDF（唔使撳 peek）；peek＝可選放大全屏
    v0.6.341：消防處·花灑（spr）左填右睇；右欄中文 Excel→xSheetPages（同提交；無 fake blank）
    v0.6.340：消防處填表左欄／右欄即時原 PDF 疊剔（闊螢幕分欄；手機「即時預覽」）
    v0.6.339：跳過此項打剔；子項唔填是／否／不適用
@@ -1542,7 +1579,7 @@ function render(toTop) {
   recScrollAt = recScrollKey();
   if (LK || LD) return;
   hydrateThumbs();
-  if (cur.view === 'rec') { markMiss(Store.get(cur.id)); paintOpt(Store.get(cur.id)); if (typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id)); if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(Store.get(cur.id)); }
+  if (cur.view === 'rec') { markMiss(Store.get(cur.id)); paintOpt(Store.get(cur.id)); if (typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id)); if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(Store.get(cur.id)); if (typeof liveSplitInit === 'function') liveSplitInit(); }
   const c = $('.chip.cur'), nav = $('.steps');
   if (c && nav) nav.scrollLeft = c.offsetLeft - nav.clientWidth / 2 + c.clientWidth / 2;
 }
@@ -1608,8 +1645,9 @@ function viewRec(r) {
   const prev = steps[i - 1], next = steps[i + 1];
   const rev = r.rev ? `<div class="revbar">✏️ 修改中：原上傳 ${esc(r.rev.prev_uploaded_hkt || '')} HKT（第 ${r.rev.prev_revision} 版）· 提交後係第 ${r.rev.revision} 版${r.rev.photos_kept ? ` · ${r.rev.photos_kept} 張原有相喺 Drive` : ''}</div>` : '';
   const peek = liveSlot ? `<button type="button" class="btn sm livepeek" data-act="livepeek">${liveOpen ? '✕ 關閉放大' : '📄 即時預覽'}</button>` : '';
+  const split = liveSlot ? `<div class="livesplit" id="livesplit" role="separator" aria-orientation="horizontal" aria-label="拉住調整表單同 PDF 大細" tabindex="0"></div>` : '';
   const mainInner = liveSlot
-    ? `${rev}<div class="liveform">${html}</div><aside class="livepane" id="livepane" aria-label="即時 PDF 預覽">${haSlot}${fsdSlot}</aside>${peek}`
+    ? `${rev}<div class="liveform">${html}</div>${peek}${split}<aside class="livepane" id="livepane" aria-label="即時 PDF 預覽">${haSlot}${fsdSlot}</aside>`
     : `${rev}${html}`;
   return `<div class="top"><div class="bar"><button data-act="home" aria-label="返消防檢查核對表">‹ 返回</button><div class="ttl">${esc(recTitle(r))} <span class="badge ${st}" style="font-size:12px;vertical-align:middle">${BADGE[st]}</span><small>${esc(r.date || '')} · <span id="saved">✓ 已自動儲存</span></small></div>${canEditCancel(r) ? '<button class="cxe" data-act="canceledit" aria-label="取消修改">✕ 取消修改</button>' : ''}</div>
   <nav class="steps">${chips}</nav></div>
@@ -3622,6 +3660,127 @@ function xPlan(o) {
 const HA_LIVE_STEPS = new Set(['CL-A', 'C1U', 'TR-C2U', 'C1', 'TR-C2', 'C1S', 'TR-C2S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'CL-F', 'H1', 'TR-H2', 'G1', 'CL-I', 'CL-J', 'CL-K', 'CL-L', 'CL-M', 'CL-N', 'CL-O', 'CL-P']);
 function haLiveStepOk(step) { return HA_LIVE_STEPS.has(step); }
 let LIVE_PEEK = false, LIVE_PEEK_STEP = ''; /* v0.6.340／342：可選放大全屏；換步驟關；窄屏 pane 永遠可見唔靠呢個 */
+/* v0.6.343：中間分隔拖曳——窄上下／闊左右；分開記窄／闊比例 */
+const LS_SPLIT_N = 'fsapp20259005.livesplit.n.v1', LS_SPLIT_W = 'fsapp20259005.livesplit.w.v1';
+const LS_SPLIT_MIN = 0.22, LS_SPLIT_MAX = 0.78;
+let _lsDrag = null, _lsBound = false;
+function liveSplitWide() { return window.matchMedia('(min-width:1000px)').matches; }
+function liveSplitDefault() { return liveSplitWide() ? 0.48 : 0.55; }
+function liveSplitClamp(v) {
+  v = Number(v);
+  if (!Number.isFinite(v)) return liveSplitDefault();
+  return Math.min(LS_SPLIT_MAX, Math.max(LS_SPLIT_MIN, v));
+}
+function liveSplitRead() {
+  try {
+    const raw = localStorage.getItem(liveSplitWide() ? LS_SPLIT_W : LS_SPLIT_N);
+    if (raw == null || raw === '') return liveSplitDefault();
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n)) return liveSplitDefault();
+    return liveSplitClamp(n);
+  } catch (e) { return liveSplitDefault(); }
+}
+function liveSplitSave(formFrac) {
+  const v = liveSplitClamp(formFrac);
+  try { localStorage.setItem(liveSplitWide() ? LS_SPLIT_W : LS_SPLIT_N, String(Math.round(v * 1000) / 1000)); } catch (e) {}
+  return v;
+}
+function liveSplitPaint(main, formFrac, wide) {
+  if (wide) {
+    main.style.setProperty('--ls-form-pct', (formFrac * 100).toFixed(2) + '%');
+    main.style.removeProperty('--ls-form-grow');
+    main.style.removeProperty('--ls-pane-grow');
+  } else {
+    const fg = Math.max(1, Math.round(formFrac * 100));
+    const pg = Math.max(1, Math.round((1 - formFrac) * 100));
+    main.style.setProperty('--ls-form-grow', String(fg));
+    main.style.setProperty('--ls-pane-grow', String(pg));
+    main.style.removeProperty('--ls-form-pct');
+  }
+}
+function liveSplitApply() {
+  const main = document.querySelector('main.haslive');
+  if (!main) return;
+  const split = main.querySelector('.livesplit');
+  if (main.classList.contains('liveopen')) {
+    main.style.removeProperty('--ls-form-pct');
+    main.style.removeProperty('--ls-form-grow');
+    main.style.removeProperty('--ls-pane-grow');
+    return;
+  }
+  const formFrac = liveSplitRead();
+  const wide = liveSplitWide();
+  liveSplitPaint(main, formFrac, wide);
+  if (split) split.setAttribute('aria-orientation', wide ? 'vertical' : 'horizontal');
+}
+function liveSplitOnPointerDown(ev) {
+  if (ev.button != null && ev.button !== 0) return;
+  const main = document.querySelector('main.haslive');
+  const split = ev.currentTarget;
+  if (!main || !split || main.classList.contains('liveopen')) return;
+  const formEl = main.querySelector('.liveform');
+  const paneEl = main.querySelector('.livepane');
+  if (!formEl || !paneEl) return;
+  ev.preventDefault();
+  const wide = liveSplitWide();
+  const fr = formEl.getBoundingClientRect();
+  const pr = paneEl.getBoundingClientRect();
+  const total = wide ? (fr.width + pr.width) : (fr.height + pr.height);
+  if (!(total > 0)) return;
+  _lsDrag = {
+    wide, main, split,
+    startPos: wide ? ev.clientX : ev.clientY,
+    startFrac: liveSplitRead(),
+    total
+  };
+  main.classList.add('ls-dragging');
+  try { split.setPointerCapture(ev.pointerId); } catch (e) {}
+}
+function liveSplitOnPointerMove(ev) {
+  if (!_lsDrag) return;
+  ev.preventDefault();
+  const { wide, main, startPos, startFrac, total } = _lsDrag;
+  const pos = wide ? ev.clientX : ev.clientY;
+  const formFrac = liveSplitSave(startFrac + (pos - startPos) / total);
+  liveSplitPaint(main, formFrac, wide);
+}
+function liveSplitOnPointerUp(ev) {
+  if (!_lsDrag) return;
+  try { _lsDrag.split.releasePointerCapture(ev.pointerId); } catch (e) {}
+  _lsDrag.main.classList.remove('ls-dragging');
+  _lsDrag = null;
+}
+function liveSplitOnKey(ev) {
+  const main = document.querySelector('main.haslive');
+  if (!main || main.classList.contains('liveopen')) return;
+  const wide = liveSplitWide();
+  const step = (ev.shiftKey ? 0.05 : 0.02) * (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp' ? -1 : 1);
+  const want = wide
+    ? (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')
+    : (ev.key === 'ArrowUp' || ev.key === 'ArrowDown');
+  if (!want) return;
+  ev.preventDefault();
+  const formFrac = liveSplitSave(liveSplitRead() + step);
+  liveSplitPaint(main, formFrac, wide);
+}
+function liveSplitInit() {
+  liveSplitApply();
+  const split = $('#livesplit');
+  if (!split) return;
+  split.addEventListener('pointerdown', liveSplitOnPointerDown);
+  split.addEventListener('pointermove', liveSplitOnPointerMove);
+  split.addEventListener('pointerup', liveSplitOnPointerUp);
+  split.addEventListener('pointercancel', liveSplitOnPointerUp);
+  split.addEventListener('keydown', liveSplitOnKey);
+  if (!_lsBound) {
+    _lsBound = true;
+    try {
+      window.matchMedia('(min-width:1000px)').addEventListener('change', () => { liveSplitApply(); });
+    } catch (e) {
+      window.addEventListener('resize', () => { liveSplitApply(); });
+    }
+  }
+}
 let haLiveSnap = { step: '', html: '' }, fsdLiveSnap = { key: '', html: '' };
 function haLiveRemember() {
   const box = $('#haLive'); if (!box) return;
@@ -3736,7 +3895,8 @@ async function haLiveRefresh(r) {
 /* ----- v0.6.328：消防處·偵測／火警鐘步驟實時 PDF（App 結構頁；唔用英文 HA D／E）
    v0.6.340：闊屏左填右睇（#livepane）；窄屏「即時預覽」；X_FSD_APP_ONLY 走 xFsdChiPages＝原 PDF 疊剔
    v0.6.341：spr 同樣左右；右欄中文 Excel「Sprinkler checklist」→ xSheetPages（同提交；無 fake blank PDF）
-   v0.6.342：窄屏上下同屏永遠見 livepane；peek＝放大 ----- */
+   v0.6.342：窄屏上下同屏永遠見 livepane；peek＝放大
+   v0.6.343：.livesplit 可拖調大細（窄上下／闊左右） ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
 function fsdLiveMountHtml(step) {
   const key = (typeof fsdKeyOf === 'function') ? fsdKeyOf(step) : null;
@@ -12481,13 +12641,14 @@ document.addEventListener('click', async e => {
     case 'new': return newRecord(false);
     case 'copyprev': return copyPicker();
     case 'pdfview': return pdfDraft(r);
-    case 'livepeek': { /* v0.6.342：可選放大全屏（窄屏 pane 已永遠可見；闊屏 CSS 隱藏掣） */
+    case 'livepeek': { /* v0.6.342／343：可選放大全屏；關返要還原 livesplit 比例 */
       LIVE_PEEK = !LIVE_PEEK; LIVE_PEEK_STEP = cur.step || LIVE_PEEK_STEP;
       const main = document.querySelector('main.haslive');
       if (main) {
         main.classList.toggle('liveopen', !!LIVE_PEEK);
         const b = main.querySelector('.livepeek');
         if (b) b.textContent = LIVE_PEEK ? '✕ 關閉放大' : '📄 即時預覽';
+        if (!LIVE_PEEK && typeof liveSplitApply === 'function') liveSplitApply();
       } else if (r) render();
       if (r) {
         if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(r);
