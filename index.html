@@ -603,8 +603,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.356';
-/* v0.6.356：問卷揀完答案 → 右欄撳剔位教 Q→核對表對應；prefs.qTeachMap 自動儲存（如 qOrder）；修 T8≠6.i、FD_DOOR≠7.6.4.b
+const APP_VERSION = '0.6.357';
+/* v0.6.357：問答選擇→核對表硬編碼對齊（T8→6.j＋6.l＋§3 skip；AA25 唔跟 6.1.h／9.g；7.6.5.l 只 FD_DOOR；7.6.5.h←F14）；教對應保留
+   v0.6.356：問卷揀完答案 → 右欄撳剔位教 Q→核對表對應；prefs.qTeachMap 自動儲存（如 qOrder）；修 T8≠6.i、FD_DOOR≠7.6.4.b
    v0.6.355：問卷題目可撳住／≡ 拉上拉下調次序；鬆手自動存 Store.prefs.qOrder（唔使另撳儲存）
    v0.6.354：揀答案後右欄 .livepane 唔跳頂（save/restore；闊屏唔俾 pin／refresh 蓋位置；窄屏仍 force 跟頁）
    v0.6.353：右欄揀睇邊份消防處 checklist（跟問卷／手動）；官方 fsd_blank／spr Excel
