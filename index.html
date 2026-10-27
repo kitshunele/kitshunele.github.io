@@ -178,7 +178,7 @@ body.q-reorder-on .liveform{touch-action:none}
 .seg button.on.v-no{background:var(--ans, #b45309);border-color:var(--ans, #b45309)}
 .seg button.on.v-bad{background:var(--ans, var(--x));border-color:var(--ans, var(--x))}
 .seg button.on.v-opt{background:var(--ans, var(--pri));border-color:var(--ans, var(--pri))}
-/* v0.6.361：已教對應仍顯示「已對」／色；唔再鎖住（可再撳改選）· v0.6.360 曾 disabled */
+/* v0.6.360／0.6.361：已教標「已對」；361 起可再撳改選 */
 .seg button.q-taught{opacity:.92;cursor:pointer;position:relative}
 .seg button.q-taught:not(.on){background:color-mix(in srgb, var(--ans, #94a3b8) 18%, #fff);border-color:var(--ans, #94a3b8);color:var(--ans, #334155)}
 .seg button.q-taught-tag,.seg button .q-taught-tag{display:block;font-size:10px;font-weight:700;letter-spacing:.02em;line-height:1.1;margin-top:2px;opacity:.9}
@@ -608,8 +608,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.361';
-/* v0.6.361：解除問答入面已教／已對鎖定——Q 揀選永遠可撳（保留「已對」標＋色聯動＋教對應 map；跨表剔位獨佔仍在）
+const APP_VERSION = '0.6.362';
+/* v0.6.362：同一題有／冇／不適用可各自教右欄剔位（claim 只跨題）；揀答案唔 pin／唔跳右欄 PDF；§2 不適用／其他框 hit 略闊；含 0.6.361 問答解鎖
+   v0.6.361：解除問答入面已教／已對鎖定——Q 揀選永遠可撳（保留「已對」標＋色聯動＋教對應 map；跨表剔位獨佔仍在）
    v0.6.360：花灑官方 fsd_blank/spr.pdf＋tickmap 疊剔（通函 5/2023）；修 FA 第一頁§2「不適用」位；問答答案色＝核對表疊剔同色；已教對應嘅答曾鎖住（0.6.361 解除）；跨第二表剔位獨佔（已教過嘅框唔可以再教）
    v0.6.359：取消全部舊預設預填（左表 ✓／tdef／ndef／問卷自動 NA；FSD q_def*／def_v／ynn→Y／def_skip／q_skip 自動不適用；表一‧3）；空白直至師傅揀；教對應／用戶跳過／可改覆寫保留
    v0.6.358：表內已填（預設／自動 NA／禁剔／q_skip）都可改寫並記住；右欄 PDF 撳剔覆寫；教對應保留
@@ -2431,7 +2432,7 @@ function qAnsColorRgb(ans) {
   }
   return [21, 101, 192];
 }
-/* v0.6.360：核對表 item 已教畀邊條 Q|答（跨表獨佔；第二表唔可以再撳同一格） */
+/* v0.6.360／0.6.362：核對表 item 已教畀邊條 Q|答（跨題獨佔；同一題有／冇／不適用可各自教；另一題唔可以再撳同一格） */
 function qTeachClaimOwner(fsdKey, ik) {
   if (!fsdKey || ik == null || ik === '') return null;
   const map = qTeachMapGet();
@@ -4690,7 +4691,7 @@ function qTeachHitTest(im, clientX, clientY) {
     if ((m.page | 0) !== (pi | 0)) return;
     const tryBox = (box, v) => {
       if (!box) return;
-      const s = (box.s || 9.5) * 1.75;
+      const s = (box.s || 9.5) * 2.25; /* v0.6.362：略闊 hit，§2 不適用／其他框易撳中 */
       const dx = xPt - box.x, dy = yPt - box.y;
       if (Math.abs(dx) <= s && Math.abs(dy) <= s) {
         const d = dx * dx + dy * dy;
@@ -4737,7 +4738,7 @@ function qTeachPaintMarkers() {
       const pipe = ka.lastIndexOf('|');
       if (pipe < 0) return;
       const oCell = ka.slice(0, pipe), oAns = ka.slice(pipe + 1);
-      if (oCell === cell && oAns === ans) return;
+      if (oCell === cell) return; /* v0.6.362：同一題有／冇／不適用可各自教；只鎖其他題 */
       const oCol = (typeof qAnsColor === 'function') ? qAnsColor(oAns) : '#94a3b8';
       (map[ka] || []).forEach(e => {
         if (!e || e.key !== key || !e.ik) return;
@@ -4778,10 +4779,10 @@ function qTeachPaintMarkers() {
 function qTeachApplyHit(hit) {
   if (!qTeachActive || !hit) return;
   const cell = qTeachActive.cell, ans = qTeachActive.ans;
-  /* v0.6.360：跨表獨佔——第二表／另一題唔可以再撳已教過嘅剔位 */
+  /* v0.6.360／0.6.362：跨題獨佔——另一題唔可以再撳已教過嘅剔位；同一題有／冇／不適用可各自教同一格 */
   if (typeof qTeachClaimOwner === 'function') {
     const own = qTeachClaimOwner(hit.key, hit.ik);
-    if (own && (own.cell !== cell || own.ans !== ans)) {
+    if (own && own.cell !== cell) {
       if (typeof toast === 'function') toast('已教過畀 ' + own.cell + '＝' + own.ans + '（要改請先清除嗰題教過）', 2600);
       return;
     }
@@ -5169,8 +5170,10 @@ function fsdLiveFollowOnFocus(ev) {
   const t = ev && ev.target;
   if (!t || !t.closest) return;
   if (!t.closest('.liveform') && !t.closest('.fsec') && !t.closest('.fitem')) return;
+  /* v0.6.362：揀答案 focus 唔 pin／唔捲右欄（否則 pointerdown noScroll 之後 focusin 仍會跳 PDF） */
+  if (t.closest && t.closest('[data-act="ans"],[data-act="inc"]')) return;
   const node = t.closest('[data-live-ik],[data-live-sec],[data-live-qcell],[data-live-key]');
-  if (node) fsdLiveFollowPin(node, false);
+  if (node) fsdLiveFollowPin(node, false, { noScroll: true });
   else fsdLiveFollowSchedule(t);
 }
 function fsdLiveFollowOnClick(ev) {
@@ -5178,6 +5181,8 @@ function fsdLiveFollowOnClick(ev) {
   if (!t || !t.closest) return;
   if (typeof _qDrag !== 'undefined' && _qDrag) return; /* v0.6.355：拖問卷次序期間唔 pin PDF */
   if (t.closest && t.closest('.qdrag')) return;
+  /* v0.6.362：左欄揀答案／加減唔 pin、唔 force——右欄 PDF／list 留原位（連 focusin 都唔跟） */
+  if (t.closest && t.closest('[data-act="ans"],[data-act="inc"]')) return;
   const node = t.closest('[data-live-ik],[data-live-sec],[data-live-qcell],[data-live-key]');
   if (!node) return;
   if (!node.closest('.liveform') && !node.closest('main.haslive')) return;
