@@ -580,8 +580,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.353';
-/* v0.6.353：右欄揀睇邊份消防處 checklist（跟問卷／手動）；官方 fsd_blank／spr Excel
+const APP_VERSION = '0.6.354';
+/* v0.6.354：揀答案後右欄 .livepane 唔跳頂（save/restore；闊屏唔俾 pin／refresh 蓋位置；窄屏仍 force 跟頁）
+   v0.6.353：右欄揀睇邊份消防處 checklist（跟問卷／手動）；官方 fsd_blank／spr Excel
    v0.6.352：桌面闊屏 haslive＝兩獨立 pane（左捲唔跟 PDF）＋加闊；含 0.6.351 自動更新
    v0.6.351：新 SW／版本偵測到 → skipWaiting+claim 後自動 reload（唔使撳「更新」）；sessionStorage 防迴圈＋靜音 toast
    v0.6.350：問卷（q）都掛 haslive＋.livepane——跟系統閘／題目顯示消防處原 blank PDF（預設偵測）；跟頁／切換系統
@@ -1570,7 +1571,8 @@ window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cu
    v0.6.348：force pin 期間唔還原 .livepane（電話跟頁唔再俾 keep.p 打贏）
    v0.6.350：問卷 haslive＋消防處 blank 跟題
    v0.6.352：闊屏 liveform／livepane 各自 overflow（見 app_head）；scroll keep 繼續記 f／p
-   v0.6.353：右欄 livepick 揀邊份消防處 PDF */
+   v0.6.353：右欄 livepick 揀邊份消防處 PDF
+   v0.6.354：闊屏揀答案後一定還原 .livepane（唔 skip）；窄屏先 skip＋force 跟頁 */
 const LS_REC_SCROLL = 'fsapp20259005.recScroll.v1';
 let REC_SCROLL = {};
 try { REC_SCROLL = JSON.parse(localStorage.getItem(LS_REC_SCROLL) || '{}') || {}; } catch (e) { REC_SCROLL = {}; }
@@ -1599,8 +1601,11 @@ function recScrollCapture() {
 function recScrollApply(pos) {
   const n = recScrollNorm(pos);
   if (!n) return;
-  /* v0.6.348：跟頁 force pin（剛撳答案）期間唔還原 livepane——否則電話 PDF 永遠停舊頁 */
-  const skipPane = (typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive());
+  /* v0.6.348：電話 force pin 期間唔還原 livepane（跟頁）
+     v0.6.354：只窄屏先 skip；闊屏一定還原 keep.p（揀答案唔彈右欄去頂） */
+  const forceOn = (typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive());
+  const narrow = (typeof fsdLiveFollowNarrow === 'function' && fsdLiveFollowNarrow());
+  const skipPane = forceOn && narrow;
   window.scrollTo(0, n.w);
   const form = document.querySelector('main.haslive .liveform');
   const pane = document.querySelector('main.haslive .livepane');
@@ -1608,13 +1613,15 @@ function recScrollApply(pos) {
   if (pane && !skipPane) pane.scrollTop = n.p;
   /* flex／grid 比例套完先再寫一次，避免 layout 後被重置 */
   requestAnimationFrame(() => {
-    const skip2 = (typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive());
+    const force2 = (typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive());
+    const narrow2 = (typeof fsdLiveFollowNarrow === 'function' && fsdLiveFollowNarrow());
+    const skip2 = force2 && narrow2;
     window.scrollTo(0, n.w);
     const f2 = document.querySelector('main.haslive .liveform');
     const p2 = document.querySelector('main.haslive .livepane');
     if (f2) f2.scrollTop = n.f;
     if (p2 && !skip2) p2.scrollTop = n.p;
-    /* 還原完 form 後，若有 pin 就強制跟一次 PDF（贏過一切 rAF restore） */
+    /* 窄屏：還原完 form 後 force pin 跟 PDF（贏過 rAF restore） */
     if (skip2 && typeof fsdLiveFollowScroll === 'function' && typeof fsdLiveFollowPendingPi !== 'undefined' && fsdLiveFollowPendingPi != null) {
       fsdLiveFollowScroll(fsdLiveFollowPendingPi | 0, false);
     }
@@ -1704,15 +1711,18 @@ function render(toTop) {
     /* liveSplitApply 改 flex／grid 後再還原一次（同頁重畫／換頁還原） */
     if (!toTop && keep) recScrollApply(keep);
     else if (toTop) { const stored = recScrollRestorePos(); if (stored) recScrollApply(stored); }
-    /* v0.6.347／348：還原完再跟；force pin 優先（電話撳答案） */
+    /* v0.6.347／348：還原完再跟；force pin 優先（電話撳答案）
+       v0.6.354：闊屏唔 force 捲右欄——keep.p 已還原，留喺原位 */
     if (typeof fsdLiveFollowSync === 'function') {
       requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive()
+        const narrow = (typeof fsdLiveFollowNarrow === 'function' && fsdLiveFollowNarrow());
+        if (narrow && typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive()
             && typeof fsdLiveFollowScroll === 'function' && fsdLiveFollowPendingPi != null) {
           fsdLiveFollowScroll(fsdLiveFollowPendingPi | 0, false);
-        } else {
+        } else if (narrow) {
           fsdLiveFollowSync(false);
         }
+        /* 闊屏：唔 sync／force 捲 .livepane（獨立畫面；highlight 由 bind 處理） */
       }));
     }
   }
@@ -4122,6 +4132,8 @@ async function haLiveRefresh(r) {
   const box = $('#haLive'); if (!box) return;
   const step = box.dataset.haStep || cur.step;
   if (!XLS || !XLS.sheets || !XLS.sheets.length) { box.innerHTML = '<div class="halive-msg">未載入範本版面，實時 PDF 暫時唔得。</div>'; return; }
+  const paneHa = document.querySelector('main.haslive .livepane');
+  const keepHa = paneHa ? (paneHa.scrollTop | 0) : 0;
   const tok = ++haLiveTok;
   const hadPg = !!box.querySelector('.halive-pg');
   if (!hadPg) box.innerHTML = '<div class="halive-msg">畫緊實時 PDF…</div>';
@@ -4160,6 +4172,15 @@ async function haLiveRefresh(r) {
       foot.textContent = `已畫 ${sheets.length} 份：` + sheets.join('、');
       box.appendChild(foot);
       haLiveSnap = { step, html: box.innerHTML };
+      /* v0.6.354：房署 live PDF rebuild 後右欄留原位 */
+      const p = document.querySelector('main.haslive .livepane');
+      if (p) {
+        p.scrollTop = keepHa;
+        requestAnimationFrame(() => {
+          const p2 = document.querySelector('main.haslive .livepane');
+          if (p2) p2.scrollTop = keepHa;
+        });
+      }
     }
   } catch (e) {
     if (tok !== haLiveTok) return;
@@ -4179,8 +4200,10 @@ async function haLiveRefresh(r) {
    v0.6.347：跟頁修正——闊屏用視口／window scroll（唔靠 overflow:auto IO）；圖 decode 後再 scroll；同頁都重跟；tickmaps 預載
    v0.6.350：問卷 step=q 同樣 fsdLiveMount（系統閘／題目揀 blank；未適用都顯示原 PDF）
    v0.6.352：闊屏兩獨立 pane（overflow:auto）；scroll 唔再驅 PDF 跟頁（只得撳／focus pin）；加闊 max≈1760
-   v0.6.353：右欄 .livepick 揀邊份消防處 checklist（跟問卷／手動蓋 Q_FSD_MAP）；官方 blank／spr Excel ----- */
+   v0.6.353：右欄 .livepick 揀邊份消防處 checklist（跟問卷／手動蓋 Q_FSD_MAP）；官方 blank／spr Excel
+   v0.6.354：揀答案／live refresh 後右欄 scroll 留原位（闊屏）；窄屏仍 force 跟頁 ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
+let fsdLivePaneKeepAfterRefresh = true; /* v0.6.354：false＝換咗另一份 PDF（livepick）→ 跟頁／去頂 */
 
 /* ----- v0.6.346／0.6.347：填緊邊 → PDF 顯示邊頁 -----
    overlay（fds／fa／fhhr／tank）：tickmaps.items[ik].page（0-based）
@@ -4188,6 +4211,7 @@ let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
    ws 紙本回退：paintSec 時標 _liveSecs，組 bySec
    觸發：focusin／click／pin；窄屏另加 liveform scroll（debounce）
    v0.6.352：闊屏唔再 scroll-lock PDF（兩獨立畫面）；窄屏仍 scroll 跟頁
+   v0.6.354：click pin 唔即刻捲（等 render capture）；闊屏 refresh 還原 pane scroll
    v0.6.347 修正：
    - （舊）闊屏 .liveform overflow:visible → 閱讀帶＋window scroll；352 起闊屏改獨立 pane、唔 scroll 跟
    - 窄屏用視口「閱讀帶」揀 .fitem／.fsec；聽 .liveform scroll
@@ -4248,6 +4272,7 @@ function fsdLivePickApply(k) {
   fsdLiveManualKey = next;
   fsdLiveFollowPendingPi = 0;
   fsdLiveFollowForceUntil = Date.now() + FSD_LIVE_FOLLOW_FORCE_MS;
+  fsdLivePaneKeepAfterRefresh = false; /* 換份 PDF：唔保留舊 scroll */
   fsdLiveSnap = { key: '', html: '' };
   const paneKey = fsdLivePaneKey(cur.step);
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
@@ -4293,7 +4318,7 @@ function fsdLiveFollowSoftOk(soft) {
 function fsdLiveFollowForceActive() {
   return fsdLiveFollowForceUntil > Date.now() && fsdLiveFollowPendingPi != null;
 }
-function fsdLiveFollowPin(elOrPi, soft) {
+function fsdLiveFollowPin(elOrPi, soft, opts) {
   let pi = null, key = fsdLiveFollowKey;
   if (typeof elOrPi === 'number' && isFinite(elOrPi)) {
     pi = elOrPi | 0;
@@ -4307,8 +4332,10 @@ function fsdLiveFollowPin(elOrPi, soft) {
   fsdLiveFollowPi = pi;
   fsdLiveFollowPendingPi = pi;
   fsdLiveFollowForceUntil = Date.now() + FSD_LIVE_FOLLOW_FORCE_MS;
-  fsdLiveFollowLog('pin', pi, 'key', fsdLiveFollowKey, 'soft', soft);
-  fsdLiveFollowScroll(pi, soft === true); /* 預設即時 */
+  const noScroll = !!(opts && opts.noScroll);
+  fsdLiveFollowLog('pin', pi, 'key', fsdLiveFollowKey, 'soft', soft, 'noScroll', noScroll);
+  /* v0.6.354：click 路徑 noScroll——等 render() capture 到用戶原本右欄位，唔好未 capture 就捲去頂／跟頁 */
+  if (!noScroll) fsdLiveFollowScroll(pi, soft === true);
   return pi;
 }
 
@@ -4467,6 +4494,7 @@ function fsdLiveFollowGo(el, soft) {
       fsdLiveSnap = { key: '', html: '' };
       fsdLiveFollowPendingPi = hit.pi | 0;
       fsdLiveFollowForceUntil = Date.now() + FSD_LIVE_FOLLOW_FORCE_MS;
+      fsdLivePaneKeepAfterRefresh = false; /* 換系統 PDF：去跟頁，唔留舊 scroll */
       fsdLiveFollowLog('q switch key', hit.key, 'pi', hit.pi);
       const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
       if (r) fsdLiveRefresh(r);
@@ -4543,8 +4571,9 @@ function fsdLiveFollowOnClick(ev) {
   const node = t.closest('[data-live-ik],[data-live-sec],[data-live-qcell],[data-live-key]');
   if (!node) return;
   if (!node.closest('.liveform') && !node.closest('main.haslive')) return;
-  /* v0.6.348：同步 pin——render() 會拆舊 .liveform，120ms schedule 會被 Unbind 清走 */
-  fsdLiveFollowPin(node, false);
+  /* v0.6.348：同步 pin——render() 會拆舊 .liveform，120ms schedule 會被 Unbind 清走
+     v0.6.354：noScroll——唔喺 pointerdown 即捲右欄（否則 keep.p 已係跳後位；闊屏彈頂） */
+  fsdLiveFollowPin(node, false, { noScroll: true });
 }
 function fsdLiveFollowOnScroll(ev) {
   if (!document.querySelector('main.haslive .liveform')) return;
@@ -4635,6 +4664,19 @@ function fsdLiveFollowBind() {
   }
   const want = (fsdLiveFollowPendingPi != null) ? fsdLiveFollowPendingPi : fsdLiveFollowPi;
   requestAnimationFrame(() => {
+    /* v0.6.354：闊屏 bind 只更新 live-on highlight，唔強迫捲 .livepane（保留用戶／keep 位） */
+    if (!fsdLiveFollowNarrow()) {
+      const box = $('#fsdLive');
+      if (box) {
+        const pages = box.querySelectorAll('.halive-pg');
+        if (pages.length) {
+          const i = Math.max(0, Math.min(pages.length - 1, want | 0));
+          fsdLiveFollowPi = i;
+          pages.forEach((im, j) => { im.classList.toggle('live-on', j === i); });
+        }
+      }
+      return;
+    }
     fsdLiveFollowScroll(want, false);
     requestAnimationFrame(() => {
       if (fsdLiveFollowForceActive()) fsdLiveFollowScroll(fsdLiveFollowPendingPi | 0, false);
@@ -4658,10 +4700,35 @@ function fsdLiveSchedule(r) {
   fsdLiveT = setTimeout(() => { fsdLiveRefresh(r); }, 450);
 }
 function fsdLiveRevoke() { fsdLiveUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); fsdLiveUrls = []; }
+function fsdLivePaneScrollApplyKeep(keepPane, wantKeep) {
+  /* v0.6.354：PDF rebuild 後還原右欄 scroll；窄屏 force 跟頁優先；換份 PDF（wantKeep=false）跟 pin */
+  const pane = fsdLiveFollowPane();
+  const narrow = fsdLiveFollowNarrow();
+  const force = fsdLiveFollowForceActive();
+  if (!wantKeep) {
+    fsdLiveFollowScroll(fsdLiveFollowPendingPi != null ? fsdLiveFollowPendingPi : (fsdLiveFollowPi | 0), false);
+    return;
+  }
+  if (narrow && force) {
+    fsdLiveFollowScroll(fsdLiveFollowPendingPi != null ? fsdLiveFollowPendingPi : (fsdLiveFollowPi | 0), false);
+    return;
+  }
+  if (pane) {
+    pane.scrollTop = keepPane | 0;
+    requestAnimationFrame(() => {
+      const p2 = fsdLiveFollowPane();
+      if (p2) p2.scrollTop = keepPane | 0;
+    });
+  }
+}
 async function fsdLiveRefresh(r) {
   const box = $('#fsdLive'); if (!box) return;
   const key = box.dataset.fsdKey || ((typeof fsdLivePaneKey === 'function') ? fsdLivePaneKey(cur.step) : ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null));
   if (!fsdLiveOk(key)) return;
+  const pane0 = fsdLiveFollowPane();
+  const keepPane = pane0 ? (pane0.scrollTop | 0) : 0;
+  const wantKeep = fsdLivePaneKeepAfterRefresh !== false;
+  fsdLivePaneKeepAfterRefresh = true;
   const tok = ++fsdLiveTok;
   const hadPg = !!box.querySelector('.halive-pg');
   if (!hadPg) box.innerHTML = '<div class="halive-msg">畫緊消防處核對表實時 PDF…</div>';
@@ -4741,7 +4808,7 @@ async function fsdLiveRefresh(r) {
         fsdLiveFollowKey = key;
         fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
         fsdLiveFollowBind();
-        fsdLiveFollowScroll(fsdLiveFollowPi, false);
+        fsdLivePaneScrollApplyKeep(keepPane, wantKeep);
       }
       return;
     }
@@ -4800,7 +4867,7 @@ async function fsdLiveRefresh(r) {
       }
     }
     fsdLiveFollowBind();
-    fsdLiveFollowScroll(fsdLiveFollowPi, false);
+    fsdLivePaneScrollApplyKeep(keepPane, wantKeep);
   } catch (e) {
     if (tok !== fsdLiveTok) return;
     box.innerHTML = `<div class="halive-msg" style="color:#b91c1c">實時 PDF 出錯：${esc(e.message || e)}</div>`;
