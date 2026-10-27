@@ -632,8 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.366';
-/* v0.6.366：① 單一／要齊2／要齊3 搬去右欄 livepick（問卷步）②「不適用」改名「預設不適用」③ 隔離加「預設是」（撳格強制 Y／剔選 T；同教對應／預設不適用互斥）④ 對表已教剔位——問答未揀都暗淡顯示；黃教 bar 只留進度／清除／完成
+const APP_VERSION = '0.6.367';
+/* v0.6.367：清舊教對應——prefs.qTeachMap 改 {at,items}；開 App 只留今日 HKT（無日期／舊陣列一律清）；之後每次教寫入 at
+   v0.6.366：① 單一／要齊2／要齊3 搬去右欄 livepick（問卷步）②「不適用」改名「預設不適用」③ 隔離加「預設是」（撳格強制 Y／剔選 T；同教對應／預設不適用互斥）④ 對表已教剔位——問答未揀都暗淡顯示；黃教 bar 只留進度／清除／完成
    v0.6.365：教對應可「要齊 2／3 個」問答答案（AND）先剔核對表——prefs.qTeachMap key「A|答+B|答」；單一照舊
    v0.6.364：核對表右欄 livepick 加「不適用」模式掣——開咗之後撳 PDF 是／否／不適用格一律剔為不適用（再撳取消）；段「如不適用／跳往…」跟 __skip__／d.skip；同教對應互斥
    v0.6.363：① 唔同問答題用唔同色——穩定按 Q cell id 著色（答案掣＋教標記＋疊剔同色；唔再跟有／冇／是／否共用色）② 冇／不適用／跳往… 路徑——左欄是／否／不適用（同表一欄）仍可揀；段「如不適用，跳往…」NA 可教／剔（所有 Q／所有 skip 段）
@@ -2406,7 +2407,7 @@ function qFsdHintHtml(cell) {
     Object.keys(tm || {}).forEach(ka => {
       const ps = (typeof qTeachParseKey === 'function') ? qTeachParseKey(ka) : null;
       if (!ps || !ps.length || !ps.some(p => p.cell === cell)) return;
-      const L = tm[ka] || [];
+      const L = (typeof qTeachBucket === 'function') ? qTeachBucket(tm[ka]).items : (tm[ka] || []);
       if (!L.length) return;
       const lab = (typeof qTeachLabel === 'function') ? qTeachLabel(ps) : ka;
       parts.push('教過' + lab + '→' + L.map(x => ((x.key || '') + ' ' + x.ik + '=' + (x.v || ''))).join('／'));
@@ -2420,10 +2421,63 @@ function qFsdHintHtml(cell) {
   return `<div class="qfsd">${esc(parts.join(' · '))}</div>`;
 }
 /* v0.6.356：可教 Q→核對表對應 —— Store.prefs.qTeachMap["CELL|答"] = [{key,ik,v},…]；自動 saveSoon 如 qOrder
-   v0.6.365：多答 AND —— key「CELL1|答1+CELL2|答2」（可再＋第三）；要齊晒先套用剔；單一「CELL|答」照舊 */
+   v0.6.365：多答 AND —— key「CELL1|答1+CELL2|答2」（可再＋第三）；要齊晒先套用剔；單一「CELL|答」照舊
+   v0.6.367：每 key 改存 { at:HKT-ISO, items:[{key,ik,v}…] }；開 App 清走冇日期／唔係今日 HKT 嘅教對應（舊陣列＝無日期→清） */
 function qTeachMapGet() {
   const m = Store.prefs && Store.prefs.qTeachMap;
   return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
+}
+function qTeachBucket(val) {
+  if (Array.isArray(val)) return { at: null, items: val.filter(e => e && e.key != null) };
+  if (val && typeof val === 'object' && Array.isArray(val.items))
+    return { at: val.at || null, items: val.items.filter(e => e && e.key != null) };
+  return { at: null, items: [] };
+}
+function qTeachDayOf(at) {
+  if (!at) return null;
+  try {
+    const d = new Date(at);
+    if (isNaN(d.getTime())) return null;
+    return (typeof hkDate === 'function') ? hkDate(d) : null;
+  } catch (e) { return null; }
+}
+/* v0.6.367 一次過清舊：無 at／舊陣列／早過 minDay（預設 2026-10-28）→丟；
+   有 at 且日 ≥ minDay →保留（唔會日日清走「今日」）。已跑過用 prefs.qTeachPurgeV 記。 */
+function qTeachPurgeOld(minDay) {
+  const floor = minDay || '2026-10-28';
+  if (!Store.prefs) Store.prefs = {};
+  if (Store.prefs.qTeachPurgeV === '0.6.367') {
+    const prev = Store.prefs.qTeachPurge || {};
+    return { day: floor, kept: prev.kept || Object.keys(qTeachMapGet()), dropped: [], skipped: true };
+  }
+  const map = qTeachMapGet();
+  const next = {};
+  const kept = [];
+  const dropped = [];
+  Object.keys(map).forEach(ka => {
+    const b = qTeachBucket(map[ka]);
+    const d = qTeachDayOf(b.at);
+    if (d && d >= floor && b.items.length) {
+      next[ka] = { at: b.at, items: b.items.map(e => ({ key: e.key, ik: e.ik, v: e.v })) };
+      kept.push(ka);
+    } else {
+      dropped.push(ka);
+    }
+  });
+  const before = Object.keys(map).length;
+  Store.prefs.qTeachMap = next;
+  Store.prefs.qTeachPurgeV = '0.6.367';
+  Store.prefs.qTeachPurge = {
+    day: floor,
+    policy: 'drop no-at / day<' + floor + '; keep day>=' + floor,
+    kept: kept.slice(),
+    dropped: dropped.length,
+    droppedKeys: dropped.slice(0, 80),
+    before: before,
+    at: (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString()
+  };
+  try { Store.saveSoon(); } catch (e) {}
+  return { day: floor, kept: kept, dropped: dropped };
 }
 function qTeachKey(cell, ans) { return String(cell || '') + '|' + String(ans == null ? '' : ans); }
 function qTeachParseKey(ka) {
@@ -2516,7 +2570,7 @@ function qTeachClaimOwner(fsdKey, ik) {
     const ka = keys[i];
     const parts = qTeachParseKey(ka);
     if (!parts.length) continue;
-    const arr = map[ka] || [];
+    const arr = qTeachBucket(map[ka]).items;
     for (let j = 0; j < arr.length; j++) {
       const e = arr[j];
       if (e && e.key === fsdKey && e.ik === ik && e.v) {
@@ -2534,7 +2588,7 @@ function qTeachSource(r, fsdKey, ik) {
     const ka = keys[i];
     const parts = qTeachParseKey(ka);
     if (!parts.length || !qTeachPartsMatch(r, parts)) continue;
-    const arr = map[ka] || [];
+    const arr = qTeachBucket(map[ka]).items;
     for (let j = 0; j < arr.length; j++) {
       const e = arr[j];
       if (e && e.key === fsdKey && e.ik === ik && e.v)
@@ -2544,8 +2598,7 @@ function qTeachSource(r, fsdKey, ik) {
   return null;
 }
 function qTeachListKey(ka) {
-  const L = qTeachMapGet()[ka];
-  return Array.isArray(L) ? L : [];
+  return qTeachBucket(qTeachMapGet()[ka]).items;
 }
 function qTeachList(cell, ans) {
   return qTeachListKey(qTeachKey(cell, ans));
@@ -2559,7 +2612,7 @@ function qTeachForItem(r, fsdKey, ik) {
     const ka = keys[i];
     const parts = qTeachParseKey(ka);
     if (!parts.length || !qTeachPartsMatch(r, parts)) continue;
-    const arr = map[ka] || [];
+    const arr = qTeachBucket(map[ka]).items;
     for (let j = 0; j < arr.length; j++) {
       const e = arr[j];
       if (e && e.key === fsdKey && e.ik === ik && e.v) return e.v;
@@ -2572,7 +2625,10 @@ function qTeachSaveKey(ka, entries) {
   if (!Store.prefs) Store.prefs = {};
   const map = Object.assign({}, qTeachMapGet());
   if (!entries || !entries.length) delete map[ka];
-  else map[ka] = entries.map(e => ({ key: e.key, ik: e.ik, v: e.v }));
+  else {
+    const at = (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString();
+    map[ka] = { at: at, items: entries.map(e => ({ key: e.key, ik: e.ik, v: e.v })) };
+  }
   Store.prefs.qTeachMap = map;
   Store.saveSoon(); /* 自動紀錄；跟 qOrder／其他 prefs 同一套 */
 }
@@ -2627,8 +2683,9 @@ function qTeachApplyToRec(r, cell, ans, prevAns) {
     if (!parts.length || !parts.some(p => p.cell === cell)) return;
     const wasOn = (prevAns != null && prevAns !== '') ? qTeachPartsMatch(r, parts, cell, prevAns) : false;
     const nowOn = (ans != null && ans !== '') ? qTeachPartsMatch(r, parts, cell, ans) : false;
-    if (wasOn && !nowOn) qTeachClearEntries(r, map[ka]);
-    if (nowOn) qTeachWriteEntries(r, map[ka]);
+    const ents = qTeachBucket(map[ka]).items;
+    if (wasOn && !nowOn) qTeachClearEntries(r, ents);
+    if (nowOn) qTeachWriteEntries(r, ents);
   });
 }
 /* 全表：所有已教 key 而家齊晒 → 套用（開紀錄／migrate 用） */
@@ -2637,7 +2694,7 @@ function qTeachApplyAll(r) {
   const map = qTeachMapGet();
   Object.keys(map).forEach(ka => {
     const parts = qTeachParseKey(ka);
-    if (parts.length && qTeachPartsMatch(r, parts)) qTeachWriteEntries(r, map[ka]);
+    if (parts.length && qTeachPartsMatch(r, parts)) qTeachWriteEntries(r, qTeachBucket(map[ka]).items);
   });
 }
 const FSD_V = { Y: '是', N: '否', NA: '不適用', T: '✓' };
@@ -5101,7 +5158,7 @@ function qTeachPaintMarkers() {
       const oCol = (typeof qAnsColor === 'function') ? qAnsColor(oAns, oCell) : '#94a3b8';
       const ghost = !matched; /* 問答未揀／未齊 → 暗淡提示已教位 */
       const locked = teachOn && matched; /* 教模式＋已生效＝鎖（唔好再教） */
-      (map[ka] || []).forEach(e => {
+      qTeachBucket(map[ka]).items.forEach(e => {
         if (!e || e.key !== key || !e.ik) return;
         const sidO = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(e.ik) : null;
         const tip = (ghost ? '已教（問答未揀）：' : '已教：') + oLab;
@@ -14920,6 +14977,16 @@ async function importFile(f) {
 /* ---------- start ---------- */
 (async function start() {
   Store.load(); Store.recs.forEach(syncNames);
+  /* v0.6.367：清走舊教對應（只留今日 HKT；無日期／舊陣列一律丟） */
+  try {
+    if (typeof qTeachPurgeOld === 'function') {
+      const pr = qTeachPurgeOld();
+      if (pr && pr.dropped && pr.dropped.length) {
+        const n = pr.dropped.length, k = (pr.kept || []).length;
+        setTimeout(() => { try { toast('已清舊教對應 ' + n + ' 條' + (k ? '（保留今日 ' + k + '）' : '（今日尚未教）'), 3200); } catch (e) {} }, 900);
+      }
+    }
+  } catch (e) {}
   await PhotoDB.open();
   if (navigator.storage && navigator.storage.persist) { try { navigator.storage.persist(); } catch (e) { } }
   if (/^https?:$/.test(location.protocol) && 'serviceWorker' in navigator) {
