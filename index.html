@@ -474,8 +474,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.340';
-/* v0.6.340：消防處填表左欄／右欄即時原 PDF 疊剔（闊螢幕分欄；手機「即時預覽」）
+const APP_VERSION = '0.6.341';
+/* v0.6.341：消防處·花灑（spr）左填右睇；右欄中文 Excel→xSheetPages（同提交；無 fake blank）
+   v0.6.340：消防處填表左欄／右欄即時原 PDF 疊剔（闊螢幕分欄；手機「即時預覽」）
    v0.6.339：跳過此項打剔；子項唔填是／否／不適用
    v0.6.338：疊剔再自然（角度／弧／臂長／墨色微變）
    v0.6.337：設定加入「桌面安裝」
@@ -3049,7 +3050,8 @@ function lkDetail(d) {
    v0.6.334 Fan：每剔 seed PRNG 微抖（角度／臂／線寬／位移）→ 自然唔一樣。
    v0.6.335 Fan：疊剔線寬幼啲。
    v0.6.338 Fan：疊剔再自然（角度／弧／臂／墨色）。
-   v0.6.340 Fan：闊屏左表單／右即時原 PDF 疊剔；窄屏「即時預覽」；沿用 xFsdChiPages。 */
+   v0.6.340 Fan：闊屏左表單／右即時原 PDF 疊剔；窄屏「即時預覽」；沿用 xFsdChiPages。
+   v0.6.341 Fan：消防處·花灑（spr）同樣左填右睇；右欄用中文 Excel「Sprinkler checklist」→ xSheetPages（同提交預覽；無 fsd_blank／overlay）。 */
 
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
@@ -3521,7 +3523,11 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
 /* ----- 5. 揀邊啲工作表（同 Excel 輸出一樣隱藏另一類檢查；問卷「冇」嘅系統列做 NA） ----- */
 const X_ANNUAL = ['A-1', 'A-2', 'F', 'H1', 'H2-1', 'H2-2', 'K', 'N', 'O', 'Fire Hydrant Hose Reel Systems', 'Supply Tanks', 'Annex A', 'Annex B', 'Sprinkler checklist（修訂 01 )', 'Checklist for Water Supplies', 'Annual Inspection Checklist for'];
 const X_NOPRINT = ['工作表2', '工作表3', 'Sprinkler checklist（修訂 01 ) (2)']; /* v0.6.326 Fan：HA 範本 (2) 標題偵測、內文花灑 → 永遠唔印；偵測用 App fds */
-const X_FSD_APP_ONLY = new Set(['fds', 'fa', 'fhhr', 'tank', 'ws']); /* v0.6.328：fds／fa；v0.6.330：+fhhr／tank／ws（英文 Excel ≠ 中文紙本）；spr 留中文 Excel */
+const X_FSD_APP_ONLY = new Set(['fds', 'fa', 'fhhr', 'tank', 'ws']); /* v0.6.328：fds／fa；v0.6.330：+fhhr／tank／ws（英文 Excel ≠ 中文紙本）；spr 留中文 Excel（唔入呢個 Set） */
+const X_FSD_SPR_SHEET = 'Sprinkler checklist（修訂 01 )'; /* v0.6.341：花灑 live／提交中文 Excel 名 */
+function fsdLiveOk(key) { /* livepane 覆蓋：App overlay 五份 ＋ spr Excel */
+  return !!(key && (X_FSD_APP_ONLY.has(key) || key === 'spr'));
+}
 const X_FSD_APP_SKIP_SHEETS = { /* App 中文紙本頁已畫 → 唔再印對應英文 X_FSD Excel（HA Appendix C 英文短表仍經 CL-D／E 等） */
   fhhr: ['Fire Hydrant Hose Reel Systems', 'Annex A'],
   tank: ['Supply Tanks', 'Annex B'],
@@ -3680,11 +3686,12 @@ async function haLiveRefresh(r) {
 }
 
 /* ----- v0.6.328：消防處·偵測／火警鐘步驟實時 PDF（App 結構頁；唔用英文 HA D／E）
-   v0.6.340：闊屏左填右睇（#livepane）；窄屏「即時預覽」；仍走 xFsdChiPages＝原 PDF 疊剔 ----- */
+   v0.6.340：闊屏左填右睇（#livepane）；窄屏「即時預覽」；X_FSD_APP_ONLY 走 xFsdChiPages＝原 PDF 疊剔
+   v0.6.341：spr 同樣左右；右欄中文 Excel「Sprinkler checklist」→ xSheetPages（同提交；無 fake blank PDF） ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
 function fsdLiveMountHtml(step) {
   const key = (typeof fsdKeyOf === 'function') ? fsdKeyOf(step) : null;
-  if (!key || !X_FSD_APP_ONLY.has(key)) return '';
+  if (!fsdLiveOk(key)) return '';
   const c = FSD_BY[key], lab = (c && (c.chip || c.title)) || key;
   const inner = (fsdLiveSnap.key === key && fsdLiveSnap.html) ? fsdLiveSnap.html : '<div class="halive-msg">準備消防處核對表實時 PDF…</div>';
   return `<section class="halive" id="fsdLive" data-fsd-key="${esc(key)}" aria-label="${esc(lab)} 實時 PDF">${inner}</section>`;
@@ -3692,7 +3699,7 @@ function fsdLiveMountHtml(step) {
 function fsdLiveSchedule(r) {
   if (!r || cur.view !== 'rec') return;
   const key = (typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null;
-  if (!key || !X_FSD_APP_ONLY.has(key)) return;
+  if (!fsdLiveOk(key)) return;
   clearTimeout(fsdLiveT);
   fsdLiveT = setTimeout(() => { fsdLiveRefresh(r); }, 450);
 }
@@ -3700,7 +3707,7 @@ function fsdLiveRevoke() { fsdLiveUrls.forEach(u => { try { URL.revokeObjectURL(
 async function fsdLiveRefresh(r) {
   const box = $('#fsdLive'); if (!box) return;
   const key = box.dataset.fsdKey || ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null);
-  if (!key || !X_FSD_APP_ONLY.has(key)) return;
+  if (!fsdLiveOk(key)) return;
   const tok = ++fsdLiveTok;
   const hadPg = !!box.querySelector('.halive-pg');
   if (!hadPg) box.innerHTML = '<div class="halive-msg">畫緊消防處核對表實時 PDF…</div>';
@@ -3718,6 +3725,53 @@ async function fsdLiveRefresh(r) {
     }
     fsdLiveRevoke();
     await xHwLoad();
+
+    /* v0.6.341：花灑無 fsd_blank／tickmap → 右欄跟提交：中文 Excel → xSheetPages */
+    if (key === 'spr') {
+      if (!XLS || !XLS.sheets || !XLS.sheets.length) {
+        box.innerHTML = '<div class="halive-msg">未載入範本版面，花灑實時預覽暫時唔得。</div>';
+        return;
+      }
+      const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov }, plan = xPlan(o);
+      const sheets = plan.inc.filter(n => n === X_FSD_SPR_SHEET);
+      if (!sheets.length) {
+        box.innerHTML = '<div class="halive-msg">呢份花灑中文 Excel 而家冇印出（睇下年檢／問卷 AA6）。</div>';
+        fsdLiveSnap = { key: '', html: '' };
+        return;
+      }
+      const head = document.createElement('div'); head.className = 'halive-h';
+      head.innerHTML = `<b>${esc(cExp.title || '花灑系統年檢核對表')} 即時核對</b><span class="mut">中文 Excel · 左填右睇 · 跟提交預覽</span>`;
+      box.innerHTML = ''; box.appendChild(head);
+      const liveK = Math.max(1, PDF_K * 0.55);
+      let pageN = 0;
+      for (let i = 0; i < sheets.length; i++) {
+        if (tok !== fsdLiveTok || !$('#fsdLive')) return;
+        const n = sheets[i]; const S = XL_BY[n]; if (!S) continue;
+        const st = document.createElement('div'); st.className = 'halive-st'; st.textContent = `畫緊 ${n}（${i + 1}/${sheets.length}）…`; box.appendChild(st);
+        await new Promise(res => setTimeout(res, 0));
+        const pages = await xSheetPages(S, B, { dateText: o.inspection_date || '', K: liveK });
+        if (tok !== fsdLiveTok || !$('#fsdLive')) { pages.forEach(p => { if (p.cv) { p.cv.width = 1; p.cv.height = 1; } }); return; }
+        st.remove();
+        pageN += pages.length;
+        const blk = document.createElement('div'); blk.className = 'halive-blk';
+        blk.innerHTML = `<div class="halive-t">${esc(n)}${pages.length > 1 ? ` <span class="mut">· ${pages.length} 頁</span>` : ''}</div>`;
+        pages.forEach((p, pi) => {
+          const u = p.cv.toDataURL('image/jpeg', 0.72); p.cv.width = 1; p.cv.height = 1; p.cv = null;
+          const im = document.createElement('img'); im.className = 'halive-pg' + (p.land ? ' land' : ''); im.alt = `${n} 第 ${pi + 1} 頁`; im.src = u;
+          blk.appendChild(im);
+        });
+        box.appendChild(blk);
+      }
+      if (tok === fsdLiveTok) {
+        const foot = document.createElement('div'); foot.className = 'halive-msg';
+        foot.textContent = `已畫 ${pageN} 頁（中文 Excel「${X_FSD_SPR_SHEET}」· 正式版以 Excel 為準）`;
+        box.appendChild(foot);
+        fsdLiveSnap = { key, html: box.innerHTML };
+      }
+      return;
+    }
+
+    /* fds／fa／fhhr／tank／ws：原 PDF 疊剔（或 ws 紙本回退） */
     let ovOk = false;
     try {
       const tmAll = await fsdLoadTickmaps();
