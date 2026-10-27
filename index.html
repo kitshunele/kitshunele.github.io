@@ -453,8 +453,9 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.338';
-/* v0.6.338：疊剔再自然（角度／弧／臂長／墨色微變）
+const APP_VERSION = '0.6.339';
+/* v0.6.339：跳過此項打剔；子項唔填是／否／不適用
+   v0.6.338：疊剔再自然（角度／弧／臂長／墨色微變）
    v0.6.337：設定加入「桌面安裝」
    v0.6.336：登入／批准後自動提示加到手機桌面（PWA）
    v0.6.335：疊剔線寬幼啲
@@ -2608,10 +2609,14 @@ function fsdExport(r) {
     if (c.key === 'spr') { sprT1Sync(r); sprT2Sync(r); }
     fsdEnsureRef(r, c.key); /* v0.6.222：提交前都預填承辦商參考編號 */
     const d = fsdGet(r, c.key), off = fsdIsOff(r, c), items = {}, skipped = [];
-    fsdWalk(c, d, (s, dep, sk, why) => { if (why === 'own') skipped.push(s.id);
+    fsdWalk(c, d, (s, dep, sk, why) => {
+      /* v0.6.339 Fan：段有「如不適用，跳過此項」且已跳過（def／q／own…）→ 列入 skipped_sections；子項唔填是／否／不適用 */
+      if (sk && s.skip) skipped.push(s.id);
+      else if (why === 'own') skipped.push(s.id);
       s.items.forEach(it => { const a = d.a[it.k] || {};
         const o = { section: s.id, id: it.id, text: it.text }; if (it.mode === 'y') o.tick_only = true;
-        if (sk) { o.result = it.mode === 'y' ? null : '不適用'; o.auto = why === 'own' ? 'section' : why === 'notank' ? 'no_spr_tank' : why; }
+        if (sk && s.skip) { o.result = null; o.auto = why === 'own' ? 'section' : why === 'notank' ? 'no_spr_tank' : why; o.section_skipped = true; }
+        else if (sk) { o.result = it.mode === 'y' ? null : '不適用'; o.auto = why === 'own' ? 'section' : why === 'notank' ? 'no_spr_tank' : why; }
         else { const ef = fsdEff(r, c, s, it, OM); o.result = ef.v ? FSD_V[ef.v] : null; if (ef.by) o.set_by = ef.by; if (!ef.v && it.mode !== 'y' && fsdItemOpt(OM, c, s)) o.optional = fsdItemOpt(OM, c, s); }
         if (has((a.note || '').trim())) o.remark = a.note.trim();
         items[it.k] = o; }); }, off, fsdHide(r, c), r);
@@ -4053,8 +4058,8 @@ function xFsdPaperPages(key, cExp, o, sink) {
         hline(P.xLeft, P.xRight, yPt);
         markTable();
       }
-      /* 紙本通函：段標 NA 仍印子項空行；只喺方格剔「不適用」 */
-      rows.forEach(it => paintItem(it, items[it.k]));
+      /* v0.6.339：跳過此項已剔 → 子項空行唔剔是／否／不適用 */
+      rows.forEach(it => paintItem(it, skipOn ? Object.assign({}, items[it.k] || {}, { result: null }) : items[it.k]));
       const hasTab = !!(s.table || s.id === 'T1' || s.id === 'T2');
       if (hasTab) {
         const tb = fsdPdfTablesFlat((cExp && cExp.tables) || {}, o);
@@ -4230,6 +4235,37 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   }
   ctx.restore();
 }
+
+function fsdOvSkipMap(key, tm) {
+  /* v0.6.339：跳過框 ↔ 段 id（tickmaps.skips 無 id；用「段首頁、子項最低 y 之上最近一個 NA 框」對） */
+  const out = {}, items = (tm && tm.items) || {}, skips = (tm && tm.skips) || [];
+  const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
+  const walk = (ss) => {
+    (ss || []).forEach(s => {
+      if (s.skip) {
+        const ks = (s.items || []).map(it => it.k).filter(k => items[k]);
+        if (ks.length) {
+          const pages = ks.map(k => items[k].page);
+          const firstPage = Math.min.apply(null, pages);
+          const ys = ks.filter(k => items[k].page === firstPage).map(k => {
+            const m = items[k]; return (m.yes || m.na || m.no || {}).y;
+          }).filter(y => y != null);
+          if (ys.length) {
+            const minY = Math.min.apply(null, ys);
+            const cands = skips.filter(sk => sk.page === firstPage && sk.na && sk.na.y < minY - 2);
+            if (cands.length) {
+              cands.sort((a, b) => b.na.y - a.na.y);
+              out[s.id] = cands[0];
+            }
+          }
+        }
+      }
+      walk(s.subs);
+    });
+  };
+  if (c) walk(c.sections);
+  return out;
+}
 async function xFsdOverlayPages(key, cExp, o, sink) {
   const maps = await fsdLoadTickmaps();
   const tm = maps[key];
@@ -4237,6 +4273,8 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
   const pdf = await fsdLoadBlankPdf(key, tm.pdf || ('fsd_blank/' + key + '.pdf'));
   const answers = (cExp && cExp.items) || {};
   const wholeNa = !!(cExp && cExp.whole_na);
+  const skipped = new Set((cExp && cExp.skipped_sections) || []);
+  const skipMap = fsdOvSkipMap(key, tm);
   const scale = PDF_K;
   const title = (cExp && cExp.title) || key;
   const nPages = Math.min(tm.page_count || pdf.numPages, pdf.numPages);
@@ -4244,10 +4282,19 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
   Object.keys(tm.items || {}).forEach(ik => {
     const m = tm.items[ik];
     const a = answers[ik];
+    if (a && a.section_skipped) return; /* v0.6.339：跳過段子項唔剔 */
+    if (a && a.section && skipped.has(a.section)) return;
     let r = (a && a.result) || '';
     if (wholeNa) r = '不適用';
     if (!r) return;
     (byPage[m.page] = byPage[m.page] || []).push({ ik, m, r, a });
+  });
+  const skipsByPage = {};
+  Object.keys(skipMap).forEach(sid => {
+    if (!skipped.has(sid) && !wholeNa) return;
+    const sk = skipMap[sid];
+    if (!sk || !sk.na) return;
+    (skipsByPage[sk.page] = skipsByPage[sk.page] || []).push({ sid, sk });
   });
   for (let pi = 0; pi < nPages; pi++) {
     const page = await pdf.getPage(pi + 1);
@@ -4258,6 +4305,9 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
     const ctx = cv.getContext('2d');
     await page.render({ canvasContext: ctx, viewport: vp, intent: 'display' }).promise;
     if (pi === 0) fsdOvFillHeader(ctx, key, cExp, o, scale, vp1.width);
+    (skipsByPage[pi] || []).forEach(({ sid, sk }) => {
+      fsdDrawTickOv(ctx, sk.na, scale, key + ':secskip:' + sid);
+    });
     (byPage[pi] || []).forEach(({ ik, m, r, a }) => {
       const onY = r === '是' || r === '✓';
       const onN = r === '否';
@@ -4269,7 +4319,6 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
         if (onN) fsdDrawTickOv(ctx, m.no, scale, key + ':' + ik + ':n');
         if (onNa) fsdDrawTickOv(ctx, m.na, scale, key + ':' + ik + ':na');
       }
-      /* 備註：掃瞄紙右欄；有答案就喺 na 右少少用細字寫（best-effort） */
       const rem = (a && (a.remark || a.optional)) || '';
       if (rem && m.na) {
         const x = (m.na.x + 14) * scale, y = m.na.y * scale;
