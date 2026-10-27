@@ -453,8 +453,10 @@ a.jump{color:var(--pri);font-weight:700}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.334';
-/* v0.6.334：疊剔每剔自然微變（seed PRNG）
+const APP_VERSION = '0.6.336';
+/* v0.6.336：登入／批准後自動提示加到手機桌面（PWA）
+   v0.6.335：疊剔線寬幼啲
+   v0.6.334：疊剔每剔自然微變（seed PRNG）
    v0.6.333：疊剔藍色大 V 字剔（#1565C0）
    v0.6.332：消防處原 PDF 疊剔（fds／fa／fhhr／tank）；ws 暫紙本；spr Excel；Fan 禁止自畫紙本主路徑
    v0.6.329：xFsdChiPages 紙本是／否／不適用三欄（4/2025／4/2022）
@@ -3003,7 +3005,8 @@ function lkDetail(d) {
    v0.6.330 Fan：紙本一模一樣（字擺位／字體大細／行距／欄闊／方格／頁邊／頁尾）— 量度通函 PDF；X_FSD_APP_ONLY 擴至 fhhr／tank／ws；spr 留中文 Excel。
    v0.6.332 Fan：停自畫紙本；fds／fa／fhhr／tank 用消防處原 PDF（fsd_blank/）＋ tickmaps 疊剔；ws 暫回退紙本（多欄表）；spr 仍中文 Excel。
    v0.6.333 Fan：疊剔改藍色大 V 字剔（#1565C0），唔用細綠 ✓。
-   v0.6.334 Fan：每剔 seed PRNG 微抖（角度／臂／線寬／位移）→ 自然唔一樣。 */
+   v0.6.334 Fan：每剔 seed PRNG 微抖（角度／臂／線寬／位移）→ 自然唔一樣。
+   v0.6.335 Fan：疊剔線寬幼啲。 */
 let XLS = null; /* v0.6.15：範本版面唔再內置；appDataApply 填 */
 const XL_BY = {};
 function xlsDataApply(x) { XLS = x || null; Object.keys(XL_BY).forEach(k => delete XL_BY[k]); (XLS ? XLS.sheets : []).forEach(s => { XL_BY[s.n] = s; }); XMT = null; Object.keys(XIMG).forEach(k => delete XIMG[k]); }
@@ -4144,7 +4147,7 @@ async function fsdLoadBlankPdf(key, rel) {
   return pdf;
 }
 function fsdDrawTickOv(ctx, box, scale, seed) {
-  /* v0.6.334 Fan：藍大 V；每剔用 seed PRNG 微抖（角度／臂長／線寬／位移）→ 自然唔克隆 */
+  /* v0.6.335 Fan：藍大 V＋seed 微抖；線寬再幼（pt899u） */
   if (!box) return;
   const rnd = (typeof xHwRng === 'function')
     ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ov:' + box.x + ':' + box.y))) : xHwSeed(String(seed || box.x)))
@@ -4172,7 +4175,7 @@ function fsdDrawTickOv(ctx, box, scale, seed) {
     return [mx - dy / L * b, my + dx / L * b];
   };
   const c1 = mid(A, Vpt, bendL), c2 = mid(Vpt, E, bendR);
-  const wd = Math.max(2.8, s * (0.13 + rnd() * 0.07));
+  const wd = Math.max(1.4, s * (0.065 + rnd() * 0.035)); /* v0.6.335 Fan：剔幼啲 */
   ctx.save();
   ctx.strokeStyle = '#1565C0';
   ctx.lineWidth = wd;
@@ -4184,7 +4187,7 @@ function fsdDrawTickOv(ctx, box, scale, seed) {
   ctx.stroke();
   /* 偶發右臂加重一撇（手寫習慣） */
   if (rnd() < 0.45) {
-    ctx.lineWidth = Math.max(2.0, wd * 0.62);
+    ctx.lineWidth = Math.max(1.0, wd * 0.55);
     ctx.beginPath();
     ctx.moveTo(Vpt[0], Vpt[1]);
     ctx.quadraticCurveTo(c2[0], c2[1], E[0] + u() * s * 0.04, E[1] + u() * s * 0.04);
@@ -7111,7 +7114,58 @@ function accApproved() {
 function accOpen() { /* 閘打開：顯示返而家個 hash 嘅頁，再行返開 App 嗰啲自動讀取 */
   if (typeof APPD !== 'undefined' && !APPD.ready) { setTimeout(() => { render(true); appDataFetch(); }, 0); return; } /* v0.6.15 未有公司資料 → 下載 */
   if (/^#\/wait\b/.test(location.hash)) return go('#/');
-  setTimeout(() => { render(true); try { lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); } catch (e) {} try { ckBoot(); } catch (e) {} }, 0);
+  setTimeout(() => { render(true); try { lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); } catch (e) {} try { ckBoot(); } catch (e) {} try { pwaMaybeInstall(); } catch (e) {} }, 0);
+}
+/* v0.6.336 Fan：登入／批准後自動加去手機桌面（PWA install）——Chrome／Android 用 beforeinstallprompt；iOS 顯示「加至主畫面」步驟。已係桌面 App（standalone）就唔再煩。 */
+const PWA_LS = 'fsapp20259005.pwaInstall.v1';
+let PWA_DP = null; /* deferred beforeinstallprompt */
+function pwaGet() { try { return JSON.parse(localStorage.getItem(PWA_LS) || '{}') || {}; } catch (e) { return {}; } }
+function pwaPut(o) { try { localStorage.setItem(PWA_LS, JSON.stringify(o)); } catch (e) {} }
+function pwaInstalled() {
+  try {
+    if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) return true;
+    if (navigator.standalone === true) return true; /* iOS Safari 已加主畫面 */
+  } catch (e) {}
+  return false;
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); PWA_DP = e; });
+window.addEventListener('appinstalled', () => { PWA_DP = null; const s = pwaGet(); s.installed = 1; s.at = new Date().toISOString(); pwaPut(s); toast('✅ 已加到手機桌面', 2500); });
+async function pwaMaybeInstall() {
+  if (pwaInstalled()) return;
+  const s = pwaGet(); if (s.installed || s.offered) return; /* 每部機最多自動試一次；唔中就唔再彈 */
+  s.offered = 1; s.at = new Date().toISOString(); pwaPut(s);
+  if (PWA_DP && typeof PWA_DP.prompt === 'function') {
+    try { await PWA_DP.prompt(); const c = await PWA_DP.userChoice; PWA_DP = null; if (c && c.outcome === 'accepted') { s.installed = 1; pwaPut(s); } } catch (e) { pwaShowBanner(); }
+    return;
+  }
+  /* iOS／未觸發 beforeinstallprompt：顯示一步提示 */
+  pwaShowBanner();
+}
+function pwaShowBanner() {
+  if (pwaInstalled() || document.getElementById('pwainst')) return;
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const tip = ios
+    ? '用 Safari 撳底部分享（□↑）→「加至主畫面」／Add to Home Screen'
+    : '撳下面掣，將 KitShun 加到手機桌面（之後開 App 快啲）';
+  const bar = document.createElement('div');
+  bar.id = 'pwainst';
+  bar.innerHTML = `<div style="position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:9999;background:#0f172a;color:#fff;border-radius:14px;padding:14px 14px 12px;box-shadow:0 8px 28px rgba(0,0,0,.35);font-size:15px;line-height:1.35">
+    <div style="font-weight:700;margin-bottom:6px">📲 加到手機桌面</div>
+    <div style="opacity:.92;margin-bottom:10px">${tip}</div>
+    <div style="display:flex;gap:8px">
+      ${ios ? '' : '<button type="button" id="pwainstgo" style="flex:1;min-height:44px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;font-size:16px">加到桌面</button>'}
+      <button type="button" id="pwainstx" style="min-width:72px;min-height:44px;border:0;border-radius:10px;background:#334155;color:#fff;font-weight:600">稍後</button>
+    </div></div>`;
+  document.body.appendChild(bar);
+  const kill = () => { try { bar.remove(); } catch (e) {} };
+  bar.querySelector('#pwainstx').onclick = kill;
+  const go = bar.querySelector('#pwainstgo');
+  if (go) go.onclick = async () => {
+    if (PWA_DP && typeof PWA_DP.prompt === 'function') {
+      try { await PWA_DP.prompt(); const c = await PWA_DP.userChoice; PWA_DP = null; if (c && c.outcome === 'accepted') { const s2 = pwaGet(); s2.installed = 1; pwaPut(s2); } } catch (e) { toast('請用瀏覽器選單「安裝應用程式／加到主畫面」', 4000); }
+    } else toast('請用瀏覽器選單「安裝應用程式／加到主畫面」', 4000);
+    kill();
+  };
 }
 function accBoot() { /* start() 入面 Store.load() 之後、第一次 render 之前 */
   const a = accGet();
@@ -12498,7 +12552,7 @@ async function importFile(f) {
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtl || $('#updbar')) return;
       const b = document.createElement('button'); b.id = 'updbar'; b.textContent = '有新版本 ⟳ 撳呢度重新載入'; b.onclick = () => location.reload(); document.body.appendChild(b); });
   }
-  parseHash(); accBoot(); await appDataBoot(); render(true); if (!accLocked() && APPD.ready) { lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); } /* v0.6.14.3 開 App 閘；v0.6.15 公司資料由伺服器下載 */
+  parseHash(); accBoot(); await appDataBoot(); render(true); if (!accLocked() && APPD.ready) { lkAuto(); ecAuto(); woAuto(); scAuto(); ehAuto(); pwAuto(); try { setTimeout(() => { try { pwaMaybeInstall(); } catch (e) {} }, 800); } catch (e) {} } /* v0.6.14.3 開 App 閘；v0.6.15 公司資料；v0.6.336 登入後加桌面 */
   setTimeout(autoRetry, 2500);
 })();
 
