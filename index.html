@@ -558,8 +558,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.347';
-/* v0.6.347：PDF 跟頁修正（闊屏視口 scroll、img decode 後跟、同頁重跟、tickmaps 預載）
+const APP_VERSION = '0.6.348';
+/* v0.6.348：電話跟頁——撳答案即 pin 頁；render 唔還原 livepane 蓋跟頁；窄屏即時 scroll＋touchend
+   v0.6.347：PDF 跟頁修正（闊屏視口 scroll、img decode 後跟、同頁重跟、tickmaps 預載）
    v0.6.346：填表位置 → 即時 PDF 跟頁（section／item → overlay／spr／紙本頁）
    v0.6.345：揀答案後唔跳頂（haslive .liveform／.livepane scroll 跟住 render）
    v0.6.344：分隔撳下唔跳（實測起點＋唔用 pointer-events:none）
@@ -1538,7 +1539,8 @@ window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cu
 /* v0.6.133：消防檢查核對表（view=rec）每頁記住 scroll；key = 紀錄id|步驟（含 FSD-…）
    v0.6.345：haslive 表單捲喺 .liveform／.livepane（窄屏），唔係 window——揀答案 render() 要一齊 save/restore，唔好跳返頂
    v0.6.346：render 後 bind 填表→PDF 跟頁（fsdLiveFollowBind）
-   v0.6.347：scroll 還原後再 sync 跟頁（避免 keep.p 蓋過 PDF 跟頁） */
+   v0.6.347：scroll 還原後再 sync 跟頁（避免 keep.p 蓋過 PDF 跟頁）
+   v0.6.348：force pin 期間唔還原 .livepane（電話跟頁唔再俾 keep.p 打贏） */
 const LS_REC_SCROLL = 'fsapp20259005.recScroll.v1';
 let REC_SCROLL = {};
 try { REC_SCROLL = JSON.parse(localStorage.getItem(LS_REC_SCROLL) || '{}') || {}; } catch (e) { REC_SCROLL = {}; }
@@ -1567,18 +1569,25 @@ function recScrollCapture() {
 function recScrollApply(pos) {
   const n = recScrollNorm(pos);
   if (!n) return;
+  /* v0.6.348：跟頁 force pin（剛撳答案）期間唔還原 livepane——否則電話 PDF 永遠停舊頁 */
+  const skipPane = (typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive());
   window.scrollTo(0, n.w);
   const form = document.querySelector('main.haslive .liveform');
   const pane = document.querySelector('main.haslive .livepane');
   if (form) form.scrollTop = n.f;
-  if (pane) pane.scrollTop = n.p;
+  if (pane && !skipPane) pane.scrollTop = n.p;
   /* flex／grid 比例套完先再寫一次，避免 layout 後被重置 */
   requestAnimationFrame(() => {
+    const skip2 = (typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive());
     window.scrollTo(0, n.w);
     const f2 = document.querySelector('main.haslive .liveform');
     const p2 = document.querySelector('main.haslive .livepane');
     if (f2) f2.scrollTop = n.f;
-    if (p2) p2.scrollTop = n.p;
+    if (p2 && !skip2) p2.scrollTop = n.p;
+    /* 還原完 form 後，若有 pin 就強制跟一次 PDF（贏過一切 rAF restore） */
+    if (skip2 && typeof fsdLiveFollowScroll === 'function' && typeof fsdLiveFollowPendingPi !== 'undefined' && fsdLiveFollowPendingPi != null) {
+      fsdLiveFollowScroll(fsdLiveFollowPendingPi | 0, false);
+    }
   });
 }
 function recScrollPersist() {
@@ -1662,9 +1671,16 @@ function render(toTop) {
     /* liveSplitApply 改 flex／grid 後再還原一次（同頁重畫／換頁還原） */
     if (!toTop && keep) recScrollApply(keep);
     else if (toTop) { const stored = recScrollRestorePos(); if (stored) recScrollApply(stored); }
-    /* v0.6.347：form scroll 還原完，用視口段再跟一次 PDF（唔好俾 keep.p 永遠停喺舊頁） */
+    /* v0.6.347／348：還原完再跟；force pin 優先（電話撳答案） */
     if (typeof fsdLiveFollowSync === 'function') {
-      requestAnimationFrame(() => requestAnimationFrame(() => fsdLiveFollowSync(false)));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (typeof fsdLiveFollowForceActive === 'function' && fsdLiveFollowForceActive()
+            && typeof fsdLiveFollowScroll === 'function' && fsdLiveFollowPendingPi != null) {
+          fsdLiveFollowScroll(fsdLiveFollowPendingPi | 0, false);
+        } else {
+          fsdLiveFollowSync(false);
+        }
+      }));
     }
   }
   const c = $('.chip.cur'), nav = $('.steps');
@@ -4077,6 +4093,51 @@ let fsdLiveFollowPi = 0, fsdLiveFollowKey = '', fsdLiveFollowMaps = null;
 let fsdLiveFollowT = null, fsdLiveFollowBoundEl = null;
 let fsdLiveFollowPendingPi = null, fsdLiveFollowScrollListening = false;
 let fsdLiveFollowSyncT = null;
+/* v0.6.348：撳答案／段即 pin 頁碼；render 期間唔俾 keep.p 蓋返舊 PDF 位（電話窄屏致命） */
+let fsdLiveFollowForceUntil = 0;
+const FSD_LIVE_FOLLOW_FORCE_MS = 900;
+const FSD_LIVE_FOLLOW_DBG = false; /* 開：?fsdfollow=1 或 localStorage fsapp20259005.fsdfollow=1 */
+function fsdLiveFollowDbgOn() {
+  try {
+    if (FSD_LIVE_FOLLOW_DBG) return true;
+    if (typeof location !== 'undefined' && /(?:\?|&)fsdfollow=1(?:&|$)/.test(location.search || '')) return true;
+    if (localStorage.getItem('fsapp20259005.fsdfollow') === '1') return true;
+  } catch (e) {}
+  return false;
+}
+function fsdLiveFollowLog() {
+  if (!fsdLiveFollowDbgOn()) return;
+  try { console.log.apply(console, ['[fsdFollow]'].concat([].slice.call(arguments))); } catch (e) {}
+}
+function fsdLiveFollowNarrow() {
+  try { return !window.matchMedia('(min-width:1000px)').matches; } catch (e) { return true; }
+}
+function fsdLiveFollowSoftOk(soft) {
+  /* 電話／窄屏：即時跳頁，唔用 smooth（易被下一輪 restore／scroll 打斷） */
+  if (fsdLiveFollowNarrow()) return false;
+  return soft !== false;
+}
+function fsdLiveFollowForceActive() {
+  return fsdLiveFollowForceUntil > Date.now() && fsdLiveFollowPendingPi != null;
+}
+function fsdLiveFollowPin(elOrPi, soft) {
+  let pi = null, key = fsdLiveFollowKey;
+  if (typeof elOrPi === 'number' && isFinite(elOrPi)) {
+    pi = elOrPi | 0;
+  } else {
+    const hit = fsdLiveFollowResolve(elOrPi);
+    if (!hit) { fsdLiveFollowLog('pin miss', elOrPi); return null; }
+    pi = hit.pi | 0;
+    if (hit.key) key = hit.key;
+  }
+  fsdLiveFollowKey = key || fsdLiveFollowKey;
+  fsdLiveFollowPi = pi;
+  fsdLiveFollowPendingPi = pi;
+  fsdLiveFollowForceUntil = Date.now() + FSD_LIVE_FOLLOW_FORCE_MS;
+  fsdLiveFollowLog('pin', pi, 'key', fsdLiveFollowKey, 'soft', soft);
+  fsdLiveFollowScroll(pi, soft === true); /* 預設即時 */
+  return pi;
+}
 
 function fsdLiveFollowMapsOf(key) {
   if (!key) return null;
@@ -4163,16 +4224,20 @@ function fsdLiveFollowScroll(pi, soft) {
   const pages = box.querySelectorAll('.halive-pg');
   if (!pages.length) {
     fsdLiveFollowPendingPi = pi | 0;
+    fsdLiveFollowLog('scroll pending (no pages)', pi);
     return;
   }
   const n = pages.length;
   const i = Math.max(0, Math.min(n - 1, pi | 0));
   fsdLiveFollowPi = i;
-  fsdLiveFollowPendingPi = null;
+  /* force 期間保留 PendingPi，等 render 還原完再跳一次 */
+  if (!fsdLiveFollowForceActive()) fsdLiveFollowPendingPi = null;
+  else fsdLiveFollowPendingPi = i;
   pages.forEach((im, j) => { im.classList.toggle('live-on', j === i); });
   const target = pages[i];
   const pane = fsdLiveFollowPane();
   if (!target || !pane) return;
+  const useSoft = fsdLiveFollowSoftOk(soft);
 
   const apply = () => {
     try {
@@ -4183,16 +4248,17 @@ function fsdLiveFollowScroll(pi, soft) {
         fsdLiveFollowPendingPi = i;
         const tries = (fsdLiveFollowScroll._tries || 0) + 1;
         fsdLiveFollowScroll._tries = tries;
-        if (tries <= 12) setTimeout(() => { if (fsdLiveFollowPendingPi === i) fsdLiveFollowScroll(i, false); }, 80);
+        if (tries <= 12) setTimeout(() => { if ((fsdLiveFollowPendingPi | 0) === i || fsdLiveFollowPi === i) fsdLiveFollowScroll(i, false); }, 80);
         else fsdLiveFollowScroll._tries = 0;
         return;
       }
       fsdLiveFollowScroll._tries = 0;
       const next = pane.scrollTop + (tr.top - pr.top) - 8;
-      if (soft) pane.scrollTo({ top: next, behavior: 'smooth' });
+      fsdLiveFollowLog('scroll apply', i, '→', Math.round(next), 'soft', useSoft, 'narrow', fsdLiveFollowNarrow());
+      if (useSoft) pane.scrollTo({ top: next, behavior: 'smooth' });
       else pane.scrollTop = next;
     } catch (e) {
-      try { target.scrollIntoView({ block: 'start', behavior: soft ? 'smooth' : 'auto' }); } catch (e2) {}
+      try { target.scrollIntoView({ block: 'start', behavior: useSoft ? 'smooth' : 'auto' }); } catch (e2) {}
     }
   };
 
@@ -4205,22 +4271,26 @@ function fsdLiveFollowGo(el, soft) {
   const hit = fsdLiveFollowResolve(el);
   if (!hit) return;
   if (hit.key) fsdLiveFollowKey = hit.key;
+  /* force pin 期間唔俾 scroll-pick 搶去第二頁 */
+  if (fsdLiveFollowForceActive() && (fsdLiveFollowPendingPi | 0) !== (hit.pi | 0)) {
+    fsdLiveFollowLog('go skipped (force)', fsdLiveFollowPendingPi, '≠', hit.pi);
+    return;
+  }
   const same = hit.pi === fsdLiveFollowPi;
-  /* v0.6.347：同頁都要確保藍框＋捲到視野（之前 early-return 令 refresh／scroll-restore 後卡住頂） */
   if (same && fsdLiveFollowPageInView(hit.pi)) {
     const box = $('#fsdLive');
     if (box) box.querySelectorAll('.halive-pg').forEach((im, j) => im.classList.toggle('live-on', j === hit.pi));
     return;
   }
-  fsdLiveFollowScroll(hit.pi, soft !== false);
+  fsdLiveFollowScroll(hit.pi, soft);
 }
 
 function fsdLiveFollowSchedule(el) {
   clearTimeout(fsdLiveFollowT);
-  fsdLiveFollowT = setTimeout(() => fsdLiveFollowGo(el, true), 120);
+  fsdLiveFollowT = setTimeout(() => fsdLiveFollowGo(el, true), 80);
 }
 
-/* 視口閱讀帶：form 可見區上 12%–45%（窄屏＝.liveform 視窗；闊屏＝form∩viewport） */
+/* 視口閱讀帶：form 可見區上 8%–55%（窄屏＝.liveform 視窗；闊屏＝form∩viewport） */
 function fsdLiveFollowPick() {
   const form = document.querySelector('main.haslive .liveform');
   if (!form) return null;
@@ -4228,8 +4298,8 @@ function fsdLiveFollowPick() {
   const top = Math.max(fr.top, 0);
   const bot = Math.min(fr.bottom, window.innerHeight || document.documentElement.clientHeight || 0);
   if (bot - top < 40) return null;
-  const y0 = top + (bot - top) * 0.12;
-  const y1 = top + (bot - top) * 0.48;
+  const y0 = top + (bot - top) * 0.08;
+  const y1 = top + (bot - top) * 0.55;
   const mid = (y0 + y1) / 2;
   let best = null, bestD = Infinity, bestArea = -1;
   form.querySelectorAll('.fitem[data-live-ik], .fsec[data-live-sec]').forEach(el => {
@@ -4238,7 +4308,6 @@ function fsdLiveFollowPick() {
     const overlap = Math.min(r.bottom, y1) - Math.max(r.top, y0);
     if (overlap <= 0) return;
     const d = Math.abs((r.top + r.bottom) / 2 - mid);
-    /* 優先距離閱讀帶中心近；同分取 overlap 大 */
     if (d < bestD - 0.5 || (Math.abs(d - bestD) <= 0.5 && overlap > bestArea)) {
       bestD = d; bestArea = overlap; best = el;
     }
@@ -4247,6 +4316,12 @@ function fsdLiveFollowPick() {
 }
 
 function fsdLiveFollowSync(soft) {
+  if (fsdLiveFollowForceActive()) {
+    const pi = fsdLiveFollowPendingPi | 0;
+    fsdLiveFollowLog('sync force', pi);
+    fsdLiveFollowScroll(pi, false);
+    return;
+  }
   const el = fsdLiveFollowPick();
   if (el) fsdLiveFollowGo(el, soft !== false);
 }
@@ -4255,7 +4330,9 @@ function fsdLiveFollowOnFocus(ev) {
   const t = ev && ev.target;
   if (!t || !t.closest) return;
   if (!t.closest('.liveform') && !t.closest('.fsec') && !t.closest('.fitem')) return;
-  fsdLiveFollowSchedule(t);
+  const node = t.closest('[data-live-ik],[data-live-sec]');
+  if (node) fsdLiveFollowPin(node, false);
+  else fsdLiveFollowSchedule(t);
 }
 function fsdLiveFollowOnClick(ev) {
   const t = ev && ev.target;
@@ -4263,7 +4340,8 @@ function fsdLiveFollowOnClick(ev) {
   const node = t.closest('[data-live-ik],[data-live-sec]');
   if (!node) return;
   if (!node.closest('.liveform') && !node.closest('main.haslive')) return;
-  fsdLiveFollowSchedule(node);
+  /* v0.6.348：同步 pin——render() 會拆舊 .liveform，120ms schedule 會被 Unbind 清走 */
+  fsdLiveFollowPin(node, false);
 }
 function fsdLiveFollowOnScroll(ev) {
   if (!document.querySelector('main.haslive .liveform')) return;
@@ -4273,8 +4351,19 @@ function fsdLiveFollowOnScroll(ev) {
       && !(t.classList && t.classList.contains('liveform'))) {
     return;
   }
+  /* 用力 pin 期間（剛撳答案）唔跟 scroll-pick，避免盖 pin */
+  if (fsdLiveFollowForceActive()) return;
   clearTimeout(fsdLiveFollowSyncT);
-  fsdLiveFollowSyncT = setTimeout(() => fsdLiveFollowSync(true), 120);
+  fsdLiveFollowSyncT = setTimeout(() => fsdLiveFollowSync(true), 100);
+}
+function fsdLiveFollowOnTouchEnd(ev) {
+  /* iOS：momentum scroll 期間 scroll 事件稀疏；touchend 後再 sync 一次 */
+  if (!document.querySelector('main.haslive .liveform')) return;
+  if (fsdLiveFollowForceActive()) return;
+  const t = ev && ev.target;
+  if (t && t.closest && t.closest('.livepane')) return;
+  clearTimeout(fsdLiveFollowSyncT);
+  fsdLiveFollowSyncT = setTimeout(() => fsdLiveFollowSync(false), 140);
 }
 
 function fsdLiveFollowUnbind() {
@@ -4282,12 +4371,16 @@ function fsdLiveFollowUnbind() {
     try {
       fsdLiveFollowBoundEl.removeEventListener('focusin', fsdLiveFollowOnFocus, true);
       fsdLiveFollowBoundEl.removeEventListener('click', fsdLiveFollowOnClick, true);
+      fsdLiveFollowBoundEl.removeEventListener('pointerdown', fsdLiveFollowOnClick, true);
       fsdLiveFollowBoundEl.removeEventListener('scroll', fsdLiveFollowOnScroll, { capture: true, passive: true });
+      fsdLiveFollowBoundEl.removeEventListener('touchend', fsdLiveFollowOnTouchEnd, { capture: true, passive: true });
     } catch (e) {
       try {
         fsdLiveFollowBoundEl.removeEventListener('focusin', fsdLiveFollowOnFocus, true);
         fsdLiveFollowBoundEl.removeEventListener('click', fsdLiveFollowOnClick, true);
+        fsdLiveFollowBoundEl.removeEventListener('pointerdown', fsdLiveFollowOnClick, true);
         fsdLiveFollowBoundEl.removeEventListener('scroll', fsdLiveFollowOnScroll, true);
+        fsdLiveFollowBoundEl.removeEventListener('touchend', fsdLiveFollowOnTouchEnd, true);
       } catch (e2) {}
     }
     fsdLiveFollowBoundEl = null;
@@ -4313,7 +4406,6 @@ function fsdLiveFollowBind() {
   if (key === 'spr') fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
   else if (FSD_TICKMAPS && FSD_TICKMAPS[key]) fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
   else if (key !== 'spr' && typeof fsdLoadTickmaps === 'function') {
-    /* v0.6.347：預載 tickmaps，唔使等 PDF refresh 完先跟得 */
     fsdLoadTickmaps().then(() => {
       if (fsdLiveFollowKey !== key) return;
       fsdLiveFollowMaps = fsdLiveFollowMapsOf(key);
@@ -4326,18 +4418,22 @@ function fsdLiveFollowBind() {
     fsdLiveFollowBoundEl = form;
     form.addEventListener('focusin', fsdLiveFollowOnFocus, true);
     form.addEventListener('click', fsdLiveFollowOnClick, true);
+    form.addEventListener('pointerdown', fsdLiveFollowOnClick, true); /* 早過 render 嘅 click 路徑 */
     form.addEventListener('scroll', fsdLiveFollowOnScroll, { capture: true, passive: true });
+    form.addEventListener('touchend', fsdLiveFollowOnTouchEnd, { capture: true, passive: true });
   }
   if (!fsdLiveFollowScrollListening) {
     window.addEventListener('scroll', fsdLiveFollowOnScroll, { capture: true, passive: true });
     document.addEventListener('scroll', fsdLiveFollowOnScroll, { capture: true, passive: true });
     fsdLiveFollowScrollListening = true;
   }
-  /* 初入／refresh／render 後：還原跟頁，再跟表單視口 */
   const want = (fsdLiveFollowPendingPi != null) ? fsdLiveFollowPendingPi : fsdLiveFollowPi;
   requestAnimationFrame(() => {
     fsdLiveFollowScroll(want, false);
-    requestAnimationFrame(() => fsdLiveFollowSync(false));
+    requestAnimationFrame(() => {
+      if (fsdLiveFollowForceActive()) fsdLiveFollowScroll(fsdLiveFollowPendingPi | 0, false);
+      else fsdLiveFollowSync(false);
+    });
   });
 }
 
