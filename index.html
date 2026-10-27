@@ -475,6 +475,8 @@ main.haslive .livepane .halive-pg{max-width:100%}
 .livepick .lpk.on{border-color:var(--pri);background:var(--pri);color:#fff}
 .livepick .lpk.na-mode{border-color:#94a3b8;color:#475569}
 .livepick .lpk.na-mode.on{border-color:#64748b;background:#64748b;color:#fff}
+.livepick .lpk.need-mode{border-color:#d97706;color:#92400e}
+.livepick .lpk.need-mode.on{border-color:#b45309;background:#f59e0b;color:#fff}
 .livepick .lpk:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
 /* v0.6.364：右欄「不適用」剔模式 */
 .fsdna{margin:0 0 8px;padding:8px 10px;background:#f8fafc;border:2px solid #64748b;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
@@ -620,8 +622,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.365';
-/* v0.6.365：教對應可「要齊 2／3 個」問答答案（AND）先剔核對表——prefs.qTeachMap key「A|答+B|答」；單一照舊；教 bar 有單一／要齊2／要齊3
+const APP_VERSION = '0.6.366';
+/* v0.6.366：單一／要齊2／要齊3 掣搬去右欄 livepick「不適用」隔離（問卷步）；黃教 bar 只留進度／清除／完成
+   v0.6.365：教對應可「要齊 2／3 個」問答答案（AND）先剔核對表——prefs.qTeachMap key「A|答+B|答」；單一照舊
    v0.6.364：核對表右欄 livepick 加「不適用」模式掣——開咗之後撳 PDF 是／否／不適用格一律剔為不適用（再撳取消）；段「如不適用／跳往…」跟 __skip__／d.skip；同教對應互斥
    v0.6.363：① 唔同問答題用唔同色——穩定按 Q cell id 著色（答案掣＋教標記＋疊剔同色；唔再跟有／冇／是／否共用色）② 冇／不適用／跳往… 路徑——左欄是／否／不適用（同表一欄）仍可揀；段「如不適用，跳往…」NA 可教／剔（所有 Q／所有 skip 段）
    v0.6.362：同一題有／冇／不適用可各自教右欄剔位（claim 只跨題）；揀答案唔 pin／唔跳右欄 PDF；§2 不適用／其他框 hit 略闊；含 0.6.361 問答解鎖
@@ -4693,7 +4696,7 @@ function fsdLivePaneKey(step) {
 }
 function fsdLivePickIsAuto() { return !fsdLiveManualKey; }
 function qTeachBarHtml() {
-  /* v0.6.356／0.6.365：教對應提示條；可設要齊 2／3 個問答答案先剔 */
+  /* v0.6.356／0.6.365／0.6.366：教對應提示條；要齊 2／3 掣已搬去 livepick「不適用」隔離 */
   if (!qTeachActive || !qTeachActive.parts || !qTeachActive.parts.length) return '';
   const parts = qTeachActive.parts;
   const need = qTeachActive.need || 1;
@@ -4717,10 +4720,7 @@ function qTeachBarHtml() {
     : (ready
       ? ('要齊 ' + need + ' 個答 · 而家齊晒 · 撳右欄剔位記住')
       : ('要齊 ' + need + ' 個答 · 仲差 <b>' + miss + '</b> 個——再喺左邊揀多題答案'));
-  const needBtns = [1, 2, 3].map(n0 =>
-    `<button type="button" class="lpk${need === n0 ? ' on' : ''}" data-act="qteachneed" data-n="${n0}" aria-pressed="${need === n0 ? 'true' : 'false'}">${n0 === 1 ? '單一' : ('要齊' + n0)}</button>`
-  ).join('');
-  return `<div class="qteach" id="qteach" role="status" style="--ans:${esc(col)}"><div class="qteach-lab">教對應中：${partsHtml} · ${hint}</div><div class="qteach-row qteach-need">${needBtns}</div><div class="qteach-row"><span class="qteach-n">${ready ? ('已記 ' + n + ' 項' + (items ? '：' + esc(items) : '') + ' · 自動儲存') : ('未齊——暫唔記剔（差 ' + miss + '）')}</span><button type="button" class="lpk" data-act="qteachclear">清除呢組教過</button><button type="button" class="lpk" data-act="qteachdone">完成</button></div></div>`;
+  return `<div class="qteach" id="qteach" role="status" style="--ans:${esc(col)}"><div class="qteach-lab">教對應中：${partsHtml} · ${hint}</div><div class="qteach-row"><span class="qteach-n">${ready ? ('已記 ' + n + ' 項' + (items ? '：' + esc(items) : '') + ' · 自動儲存') : ('未齊——暫唔記剔（差 ' + miss + '）')}</span><button type="button" class="lpk" data-act="qteachclear">清除呢組教過</button><button type="button" class="lpk" data-act="qteachdone">完成</button></div></div>`;
 }
 function fsdLivePickBarHtml(step) {
   const key = fsdLivePaneKey(step);
@@ -4738,6 +4738,17 @@ function fsdLivePickBarHtml(step) {
   /* v0.6.364：核對表上面「不適用」模式掣 */
   const naOn = !!fsdNaMode;
   btns.push(`<button type="button" class="lpk na-mode${naOn ? ' on' : ''}" data-act="fsdnamode" title="撳開後喺 PDF 剔不適用／段跳過" aria-pressed="${naOn ? 'true' : 'false'}">不適用</button>`);
+  /* v0.6.366：單一／要齊2／要齊3 放喺「不適用」隔離（問卷 livepick） */
+  if (step === 'q') {
+    const needNow = (qTeachActive && qTeachActive.need) || 1;
+    const teachOn = !!(qTeachActive && qTeachActive.parts && qTeachActive.parts.length);
+    [1, 2, 3].forEach(n0 => {
+      const on = teachOn && needNow === n0;
+      const lab = n0 === 1 ? '單一' : ('要齊' + n0);
+      const tip = n0 === 1 ? '單一答：撳右欄即記剔' : ('要齊 ' + n0 + ' 個問答答案先剔核對表');
+      btns.push(`<button type="button" class="lpk need-mode${on ? ' on' : ''}" data-act="qteachneed" data-n="${n0}" title="${tip}" aria-pressed="${on ? 'true' : 'false'}">${lab}</button>`);
+    });
+  }
   const mode = autoOn ? ((step === 'q') ? '跟緊問卷／題目' : '跟左邊表單') : ('固定睇：' + (FSD_LIVE_PICK_SHORT[fsdLiveManualKey] || fsdLiveManualKey));
   const teach = (step === 'q') ? qTeachBarHtml() : '';
   const naBar = fsdNaBarHtml();
@@ -4824,6 +4835,7 @@ function qTeachSetActive(parts, need) {
   const prim = arr[arr.length - 1];
   qTeachActive = { parts: arr, need: n, cell: prim.cell, ans: prim.ans };
   qTeachRefreshBar();
+  if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns();
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
   if (box) box.classList.add('qteach-mode');
   qTeachPaintMarkers();
@@ -4849,12 +4861,16 @@ function qTeachActivate(cell, ans) {
   qTeachSetActive([{ cell: c, ans: a }], 1);
 }
 function qTeachSetNeed(n) {
-  if (!qTeachActive || !qTeachActive.parts || !qTeachActive.parts.length) return;
+  if (!qTeachActive || !qTeachActive.parts || !qTeachActive.parts.length) {
+    if (typeof toast === 'function') toast('先喺左邊揀一個答案，再撳單一／要齊2／要齊3', 2400);
+    return;
+  }
   const need = Math.max(1, Math.min(3, Number(n) || 1));
   let parts = qTeachActive.parts.slice();
   if (need === 1) parts = [parts[parts.length - 1]]; /* 退回單一＝保留而家呢題 */
   else if (parts.length > need) parts = parts.slice(0, need);
   qTeachSetActive(parts, need);
+  if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns();
   if (typeof toast === 'function') {
     if (need === 1) toast('單一答模式：撳右欄即記', 1800);
     else toast('要齊 ' + need + ' 個問答答案先剔核對表——再喺左邊揀多題', 2400);
@@ -4877,13 +4893,27 @@ function qTeachDeactivate() {
     const im = h.querySelector('.halive-pg');
     if (im && h.parentNode) { h.parentNode.insertBefore(im, h); h.remove(); }
   });
+  if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns();
+}
+function qTeachRefreshNeedBtns() {
+  /* v0.6.366：同步 livepick「單一／要齊2／要齊3」亮燈 */
+  const pick = document.getElementById('livepick');
+  if (!pick) return;
+  const need = (qTeachActive && qTeachActive.need) || 1;
+  const teachOn = !!(qTeachActive && qTeachActive.parts && qTeachActive.parts.length);
+  pick.querySelectorAll('.lpk.need-mode').forEach(btn => {
+    const n0 = Number(btn.dataset.n) || 1;
+    const on = teachOn && need === n0;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 }
 function qTeachRefreshBar() {
   const pane = document.getElementById('livepane');
-  if (!pane) return;
+  if (!pane) { if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns(); return; }
   const old = document.getElementById('qteach');
   const html = qTeachBarHtml();
-  if (!html) { if (old) old.remove(); return; }
+  if (!html) { if (old) old.remove(); if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns(); return; }
   const wrap = document.createElement('div'); wrap.innerHTML = html;
   const neu = wrap.firstElementChild;
   if (old) old.replaceWith(neu);
@@ -4893,6 +4923,7 @@ function qTeachRefreshBar() {
     else if (pick) pick.parentNode.appendChild(neu);
     else pane.insertBefore(neu, pane.firstChild);
   }
+  if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns();
 }
 /* v0.6.363：段 skip（如不適用，跳往第 4 項）教／剔用 ik */
 const Q_TEACH_SKIP_PFX = '__skip__:';
@@ -14429,7 +14460,7 @@ document.addEventListener('click', async e => {
     case 'qteachdone': { /* v0.6.356：完成教對應 */
       if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
       return; }
-    case 'qteachneed': { /* v0.6.365：教對應要齊 1／2／3 個問答答案 */
+    case 'qteachneed': { /* v0.6.365／0.6.366：教對應要齊 1／2／3（掣喺 livepick 不適用隔離） */
       if (typeof qTeachSetNeed === 'function') qTeachSetNeed(el.dataset.n);
       return; }
     case 'qteachclear': { /* v0.6.356／0.6.365：清除呢組（單一或 AND）教過嘅對應 */
