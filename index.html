@@ -632,10 +632,10 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.372';
-/* v0.6.372：① livepick 唔再用 touchstart／pointerdown preventDefault（會殺 click → 偵測／火警鐘掣冇反應）；pointerup 直接 Apply
-   ② 揀 checklist 後 NoFollow：跟頁永遠唔自動捲，保留左＋右 scroll；只得用戶撳表單先恢復跟頁（修 371 quiet 完仍 kick→Sync 跳頂）
-   v0.6.371：livepick 跳頂真因——hold 解除後 OnScroll／tickmaps Sync 仍 FollowScroll 蓋 keep；改 quiet＋清 timer＋pane lock
+const APP_VERSION = '0.6.373';
+/* v0.6.373：TaiWo add DTMO + Bus Terminus (FAX-K-616R half-yearly 2026-11-11) */
+/* v0.6.372：livepick NoFollow＋唔 preventDefault（掣得掣；揀完唔自動跟頁跳頂）— 詳見 pwa_hosting/index.html
+   v0.6.371：livepick quiet＋清 Sync timer＋pane lock（修 hold 解除後 OnScroll→Sync 跳頂）
    v0.6.370：livepick 揀 checklist 真正唔跳頂——hold 封 FollowScroll／Sync／Go；用揀掣 keep 還原（修 0.6.369 仍俾 bind 蓋 keep）
    v0.6.369：右欄 livepick 揀消防處 checklist 後保留 scroll（唔跳頂；防 sticky focus＋keep pane）
    v0.6.368：消防年檢草稿跨機共用（GAS fsd_draft_*／Drive「消防年檢草稿」；LWW updated；相一齊同步上限內）
@@ -1633,8 +1633,6 @@ window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cu
    v0.6.348：force pin 期間唔還原 .livepane（電話跟頁唔再俾 keep.p 打贏）
    v0.6.350：問卷 haslive＋消防處 blank 跟題
    v0.6.352：闊屏 liveform／livepane 各自 overflow（見 app_head）；scroll keep 繼續記 f／p
-   v0.6.372：livepick NoFollow＋唔 preventDefault（掣得掣；揀完唔自動跟頁跳頂）
-   v0.6.371：livepick quiet＋清 Sync timer＋pane lock（修 370 hold 解除後仍跳頂）
    v0.6.370：livepick hold 封跟頁 scroll（修 369 仍跳頂）
    v0.6.369：livepick 揀消防處 checklist 保留 scroll（唔跳頂）
    v0.6.353：右欄 livepick 揀邊份消防處 PDF
@@ -1738,7 +1736,6 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 function render(toTop) {
   if (typeof fsdLiveRemember === 'function') fsdLiveRemember();
   if (typeof haLiveRemember === 'function') haLiveRemember();
-  if (toTop) { try { fsdLivePickNoFollow = false; } catch (eNF) {} } /* v0.6.372：換步／導航清 NoFollow */
   recScrollSave(); /* 換頁前先記低舊頁位置（recScrollAt 仍係舊 key；hash 已改 cur） */
   const keep = toTop ? null : recScrollCapture(); /* 同頁重畫（揀答案等）：記住 haslive pane＋window */
   const LK = typeof accLocked === 'function' && accLocked() && cur.view !== 'accmgr'; /* v0.6.14.3 未批准：任何 hash 都只顯示鎖住頁 */
@@ -4730,10 +4727,17 @@ let fsdLivePaneKeepAfterRefresh = true; /* v0.6.354：false＝跟頁／去頂；
 let fsdLivePickScrollKeep = null; /* v0.6.369：livepick pointerdown 早過 focus 記 scroll */
 let fsdLivePickHoldScroll = false; /* v0.6.370：揀 checklist 期間禁止 FollowScroll／Sync 蓋 keep */
 let fsdLivePickHoldKeep = null; /* v0.6.370：揀掣當下 {w,f,p}；refresh 用呢份，唔用可能已跳頂嘅 scrollTop */
-let fsdLivePickQuietUntil = 0; /* v0.6.371：hold 解除後短 quiet（只擋 collapse／restore 期間） */
-let fsdLivePickLockTok = 0; /* v0.6.371：release／settle 世代 */
+let fsdLivePickQuietUntil = 0; /* v0.6.371／372：短 quiet 只擋 pane collapse */
+let fsdLivePickLockTok = 0;
 let fsdLivePickNoFollow = false; /* v0.6.372：揀 checklist 後禁自動 FollowScroll／Sync，直至用戶撳表單 */
 let fsdLivePickPtr = null; /* v0.6.372：pointerdown→up 認掣（唔靠可能被殺嘅 click） */
+function fsdLivePickQuietActive() {
+  return !!fsdLivePickHoldScroll || Date.now() < (fsdLivePickQuietUntil | 0);
+}
+function fsdLivePickBlockFollow() {
+  /* v0.6.372：hold／quiet／NoFollow → 跟頁完全唔自動捲（保留 livepick 當下 scroll） */
+  return !!fsdLivePickHoldScroll || !!fsdLivePickNoFollow || Date.now() < (fsdLivePickQuietUntil | 0);
+}
 
 /* ----- v0.6.346／0.6.347：填緊邊 → PDF 顯示邊頁 -----
    overlay（fds／fa／fhhr／tank）：tickmaps.items[ik].page（0-based）
@@ -4814,7 +4818,7 @@ function fsdLivePickBarHtml(step) {
   if (!fsdLiveOk(key) && !(step === 'q' || (step && String(step).startsWith('FSD-')))) return '';
   const autoOn = fsdLivePickIsAuto();
   const autoLab = (step === 'q') ? '跟問卷' : '自動';
-  /* v0.6.370／371：fsdlivepick tabindex=-1——減 sticky focus → livepane scrollIntoView 跳頂 */
+  /* v0.6.370：fsdlivepick tabindex=-1——減 sticky focus → livepane scrollIntoView 跳頂 */
   const btns = [`<button type="button" class="lpk${autoOn ? ' on' : ''}" data-act="fsdlivepick" data-k="auto" tabindex="-1" aria-pressed="${autoOn ? 'true' : 'false'}">${autoLab}</button>`]
     .concat(FSD_LIVE_PICK_ORDER.map(k => {
       const on = !autoOn && fsdLiveManualKey === k;
@@ -5284,21 +5288,6 @@ function qTeachApplyHit(hit) {
     toast((still2 ? '已記住 ' : '已取消 ') + hit.key + ' ' + (sid != null ? ('跳過§' + sid) : hit.ik) + '＝' + lab + '（' + gLab + ' · 自動儲存）', 2400);
   }
 }
-function fsdLivePickQuietActive() {
-  /* v0.6.371／372：hold 或短 QuietUntil——只用於 restore／pane nail，唔包 NoFollow（否則鎖死用戶捲 PDF） */
-  return !!fsdLivePickHoldScroll || Date.now() < (fsdLivePickQuietUntil | 0);
-}
-function fsdLivePickBlockFollow() {
-  /* v0.6.372：hold／quiet／NoFollow → 跟頁完全唔自動捲（保留 livepick 當下 scroll） */
-  return !!fsdLivePickHoldScroll || !!fsdLivePickNoFollow || Date.now() < (fsdLivePickQuietUntil | 0);
-}
-function fsdLivePickClearFollowTimers() {
-  try { clearTimeout(fsdLiveFollowT); } catch (e0) {}
-  try { clearTimeout(fsdLiveFollowSyncT); } catch (e1) {}
-  fsdLiveFollowT = null;
-  fsdLiveFollowSyncT = null;
-  try { if (fsdLiveFollowScroll && fsdLiveFollowScroll._tries) fsdLiveFollowScroll._tries = 0; } catch (e2) {}
-}
 function fsdLivePickCaptureScroll() {
   if (typeof recScrollCapture === 'function') return recScrollCapture();
   const form = document.querySelector('main.haslive .liveform');
@@ -5330,7 +5319,7 @@ function fsdLivePickHoldReleaseSoon() {
     if (tok !== fsdLivePickLockTok) return;
     try { fsdLivePickHoldRestore(); } catch (e0) {}
   };
-  fsdLivePickClearFollowTimers();
+  if (typeof fsdLivePickClearFollowTimers === 'function') fsdLivePickClearFollowTimers();
   kick();
   requestAnimationFrame(() => {
     kick();
@@ -5339,12 +5328,12 @@ function fsdLivePickHoldReleaseSoon() {
       setTimeout(() => {
         if (tok !== fsdLivePickLockTok) return;
         kick();
-        fsdLivePickClearFollowTimers();
+        if (typeof fsdLivePickClearFollowTimers === 'function') fsdLivePickClearFollowTimers();
         fsdLivePickHoldScroll = false;
         fsdLivePickQuietUntil = Date.now() + 500; /* 短 quiet：nail pane 一陣；之後靠 NoFollow */
         fsdLiveFollowPendingPi = null;
-        fsdLivePickClearFollowTimers();
-        kick(); /* 仍喺 quiet 內，OnScroll 唔會 Sync；完後靠 NoFollow */
+        if (typeof fsdLivePickClearFollowTimers === 'function') fsdLivePickClearFollowTimers();
+        kick();
       }, 180);
       setTimeout(() => { if (tok === fsdLivePickLockTok) kick(); }, 360);
     });
@@ -5364,9 +5353,9 @@ function fsdLivePickApply(k) {
   fsdLivePickHoldKeep = keep;
   fsdLivePickHoldScroll = true; /* 禁止 FollowScroll／Sync／Go 捲 pane */
   fsdLivePickNoFollow = true; /* 耐久：refresh／quiet 完都唔自動 FollowScroll */
-  fsdLivePickQuietUntil = Date.now() + 60000; /* refresh 期間當 quiet；release 再縮短 */
-  fsdLivePickLockTok++; /* 取消上一次 release settle */
-  fsdLivePickClearFollowTimers();
+  fsdLivePickQuietUntil = Date.now() + 60000;
+  fsdLivePickLockTok++;
+  if (typeof fsdLivePickClearFollowTimers === 'function') fsdLivePickClearFollowTimers();
   fsdLiveFollowForceUntil = 0;
   fsdLiveFollowPendingPi = null;
   fsdLivePaneKeepAfterRefresh = true;
@@ -5422,15 +5411,13 @@ document.addEventListener('pointerup', e => {
   if (typeof fsdLivePickApply === 'function') fsdLivePickApply(b.dataset.k);
 }, { capture: true });
 document.addEventListener('pointercancel', () => { fsdLivePickPtr = null; }, true);
-/* v0.6.372：表單任何 data-act 撳掣都清 NoFollow（含 FSD 是／否／NA；唔經 FollowOnClick 嘅路徑） */
 document.addEventListener('click', e => {
   const t = e.target && e.target.closest && e.target.closest('main.haslive .liveform [data-act]');
   if (!t) return;
   if (t.dataset && t.dataset.act === 'fsdlivepick') return;
   try { fsdLivePickNoFollow = false; } catch (eNF) {}
 }, true);
-
-/* v0.6.371：quiet 期間釘住 livepane.scrollTop＝keep.p（擋 FollowScroll／clamp／sticky） */
+/* v0.6.371：quiet 期間釘住 livepane.scrollTop＝keep.p */
 document.addEventListener('scroll', e => {
   if (!fsdLivePickQuietActive()) return;
   const t = e && e.target;
@@ -5672,20 +5659,10 @@ function fsdLiveFollowEnsureImgs(pages) {
 
 function fsdLiveFollowScroll(pi, soft) {
   /* v0.6.372：livepick BlockFollow（hold／quiet／NoFollow）——只 highlight，唔捲（保留 scroll） */
-  const box0 = $('#fsdLive');
   if (typeof fsdLivePickBlockFollow === 'function' ? fsdLivePickBlockFollow() : fsdLivePickHoldScroll) {
-    fsdLiveFollowLog('scroll skipped (pick block)', pi);
-    if (box0) {
-      const pages0 = box0.querySelectorAll('.halive-pg');
-      if (pages0.length) {
-        const i0 = Math.max(0, Math.min(pages0.length - 1, pi | 0));
-        fsdLiveFollowPi = i0;
-        pages0.forEach((im, j) => { im.classList.toggle('live-on', j === i0); });
-      }
-    }
-    return;
+    fsdLiveFollowLog('scroll skipped (pick block)', pi); return;
   }
-  const box = box0; if (!box) return;
+  const box = $('#fsdLive'); if (!box) return;
   const pages = box.querySelectorAll('.halive-pg');
   if (!pages.length) {
     fsdLiveFollowPendingPi = pi | 0;
@@ -5713,10 +5690,7 @@ function fsdLiveFollowScroll(pi, soft) {
         fsdLiveFollowPendingPi = i;
         const tries = (fsdLiveFollowScroll._tries || 0) + 1;
         fsdLiveFollowScroll._tries = tries;
-        if (tries <= 12) setTimeout(() => {
-          if (typeof fsdLivePickBlockFollow === 'function' ? fsdLivePickBlockFollow() : fsdLivePickHoldScroll) return;
-          if ((fsdLiveFollowPendingPi | 0) === i || fsdLiveFollowPi === i) fsdLiveFollowScroll(i, false);
-        }, 80);
+        if (tries <= 12) setTimeout(() => { if ((fsdLiveFollowPendingPi | 0) === i || fsdLiveFollowPi === i) fsdLiveFollowScroll(i, false); }, 80);
         else fsdLiveFollowScroll._tries = 0;
         return;
       }
@@ -5874,7 +5848,6 @@ function fsdLiveFollowOnScroll(ev) {
 function fsdLiveFollowOnTouchEnd(ev) {
   /* iOS：momentum scroll 期間 scroll 事件稀疏；touchend 後再 sync 一次（只窄屏） */
   if (!document.querySelector('main.haslive .liveform')) return;
-  if (typeof fsdLivePickBlockFollow === 'function' ? fsdLivePickBlockFollow() : fsdLivePickHoldScroll) return; /* v0.6.372 */
   if (!fsdLiveFollowNarrow()) return;
   if (fsdLiveFollowForceActive()) return;
   const t = ev && ev.target;
@@ -5946,7 +5919,7 @@ function fsdLiveFollowBind() {
   const want = (fsdLiveFollowPendingPi != null) ? fsdLiveFollowPendingPi : fsdLiveFollowPi;
   requestAnimationFrame(() => {
     /* v0.6.354：闊屏 bind 只 highlight
-       v0.6.370／371：livepick quiet／hold 時窄屏都只 highlight，唔 FollowScroll／Sync（否則 want≈0 蓋 keep） */
+       v0.6.370：livepick hold 時窄屏都只 highlight，唔 FollowScroll／Sync（否則 want≈0 蓋 keep） */
     const box = $('#fsdLive');
     if (box) {
       const pages = box.querySelectorAll('.halive-pg');
@@ -5956,8 +5929,7 @@ function fsdLiveFollowBind() {
         pages.forEach((im, j) => { im.classList.toggle('live-on', j === i); });
       }
     }
-    const blocked = (typeof fsdLivePickBlockFollow === 'function') ? fsdLivePickBlockFollow() : fsdLivePickHoldScroll;
-    if (blocked || !fsdLiveFollowNarrow()) return;
+    if ((typeof fsdLivePickBlockFollow === 'function' ? fsdLivePickBlockFollow() : fsdLivePickHoldScroll) || !fsdLiveFollowNarrow()) return;
     fsdLiveFollowScroll(want, false);
     requestAnimationFrame(() => {
       if (typeof fsdLivePickBlockFollow === 'function' ? fsdLivePickBlockFollow() : fsdLivePickHoldScroll) return;
@@ -5984,9 +5956,8 @@ function fsdLiveSchedule(r) {
 function fsdLiveRevoke() { fsdLiveUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }); fsdLiveUrls = []; }
 function fsdLivePaneScrollApplyKeep(keepPane, wantKeep) {
   /* v0.6.354：PDF rebuild 後還原右欄 scroll；窄屏 force 跟頁優先；換份 PDF（wantKeep=false）跟 pin
-     v0.6.372：livepick BlockFollow／hold → 一定用 hold keep（唔跟頁），兼還原 form／window */
-  const quiet = (typeof fsdLivePickBlockFollow === 'function') ? fsdLivePickBlockFollow() : fsdLivePickHoldScroll;
-  if (quiet && fsdLivePickHoldKeep) {
+     v0.6.370：livepick hold → 一定用 hold keep（唔跟頁），兼還原 form／window */
+  if (fsdLivePickHoldScroll && fsdLivePickHoldKeep) {
     keepPane = fsdLivePickHoldKeep.p | 0;
     wantKeep = true;
   }
@@ -5994,12 +5965,12 @@ function fsdLivePaneScrollApplyKeep(keepPane, wantKeep) {
   const narrow = fsdLiveFollowNarrow();
   const force = fsdLiveFollowForceActive();
   if (!wantKeep) {
-    if (!quiet) {
+    if (!fsdLivePickHoldScroll) {
       fsdLiveFollowScroll(fsdLiveFollowPendingPi != null ? fsdLiveFollowPendingPi : (fsdLiveFollowPi | 0), false);
     }
     return;
   }
-  if (narrow && force && !quiet) {
+  if (narrow && force && !fsdLivePickHoldScroll) {
     fsdLiveFollowScroll(fsdLiveFollowPendingPi != null ? fsdLiveFollowPendingPi : (fsdLiveFollowPi | 0), false);
     return;
   }
@@ -6008,9 +5979,9 @@ function fsdLivePaneScrollApplyKeep(keepPane, wantKeep) {
     requestAnimationFrame(() => {
       const p2 = fsdLiveFollowPane();
       if (p2) p2.scrollTop = keepPane | 0;
-      if (quiet) fsdLivePickHoldRestore();
+      if (fsdLivePickHoldScroll) fsdLivePickHoldRestore();
     });
-  } else if (quiet) {
+  } else if (fsdLivePickHoldScroll) {
     fsdLivePickHoldRestore();
   }
 }
@@ -6019,12 +5990,11 @@ async function fsdLiveRefresh(r) {
   const key = box.dataset.fsdKey || ((typeof fsdLivePaneKey === 'function') ? fsdLivePaneKey(cur.step) : ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null));
   if (!fsdLiveOk(key)) return;
   const pane0 = fsdLiveFollowPane();
-  /* v0.6.372：揀 checklist 用 hold keep.p（避免 await 期間 sticky／collapse 令 scrollTop 已變 0） */
-  const pickQuiet = (typeof fsdLivePickBlockFollow === 'function') ? fsdLivePickBlockFollow() : fsdLivePickHoldScroll;
-  const keepPane = (pickQuiet && fsdLivePickHoldKeep)
+  /* v0.6.370：揀 checklist 用 hold keep.p（避免 await 期間 sticky／collapse 令 scrollTop 已變 0） */
+  const keepPane = (fsdLivePickHoldScroll && fsdLivePickHoldKeep)
     ? (fsdLivePickHoldKeep.p | 0)
     : (pane0 ? (pane0.scrollTop | 0) : 0);
-  const wantKeep = fsdLivePaneKeepAfterRefresh !== false || pickQuiet;
+  const wantKeep = fsdLivePaneKeepAfterRefresh !== false || fsdLivePickHoldScroll;
   fsdLivePaneKeepAfterRefresh = true;
   const tok = ++fsdLiveTok;
   const hadPg = !!box.querySelector('.halive-pg');
