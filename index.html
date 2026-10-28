@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.373';
+const APP_VERSION = '0.6.374';
+/* v0.6.374：① 一次過清晒全部教對應（qTeachPurgeV 0.6.374；唔留今日）② 修 ghost 暗淡標記（img decode 後再畫、paint 後寫入 snap）③ prefs.qTeachMap 全局——開新一座照帶；唔使上傳都 localStorage 記住 */
 /* v0.6.373：TaiWo add DTMO + Bus Terminus (FAX-K-616R half-yearly 2026-11-11) */
 /* v0.6.372：livepick NoFollow＋唔 preventDefault（掣得掣；揀完唔自動跟頁跳頂）— 詳見 pwa_hosting/index.html
    v0.6.371：livepick quiet＋清 Sync timer＋pane lock（修 hold 解除後 OnScroll→Sync 跳頂）
@@ -2409,7 +2410,7 @@ const qFsdMap = () => Q_FSD_MAP || (Q_FSD_MAP = qFsdMapBuild());
 function qFsdHintHtml(cell) {
   const e = qFsdMap()[cell];
   const parts = [];
-  /* v0.6.356／0.6.365：顯示已教對應（prefs.qTeachMap；含多答 AND） */
+  /* v0.6.356／0.6.365／0.6.374：顯示已教對應（prefs.qTeachMap 全局共用；含多答 AND；唔使上傳都記住） */
   try {
     const tm = (typeof qTeachMapGet === 'function') ? qTeachMapGet() : ((Store.prefs && Store.prefs.qTeachMap) || {});
     Object.keys(tm || {}).forEach(ka => {
@@ -2429,8 +2430,9 @@ function qFsdHintHtml(cell) {
   return `<div class="qfsd">${esc(parts.join(' · '))}</div>`;
 }
 /* v0.6.356：可教 Q→核對表對應 —— Store.prefs.qTeachMap["CELL|答"] = [{key,ik,v},…]；自動 saveSoon 如 qOrder
-   v0.6.365：多答 AND —— key「CELL1|答1+CELL2|答2」（可再＋第三）；要齊晒先套用剔；單一「CELL|答」照舊
-   v0.6.367：每 key 改存 { at:HKT-ISO, items:[{key,ik,v}…] }；開 App 清走冇日期／唔係今日 HKT 嘅教對應（舊陣列＝無日期→清） */
+   v0.6.365：多答 AND —— key「CELL1|答1+CELL2|答2」；要齊晒先套用剔；單一「CELL|答」照舊
+   v0.6.367：每 key 改存 { at:HKT-ISO, items:[{key,ik,v}…] }
+   v0.6.374：① 一次過清晒全部教（唔留今日）② 仍存 prefs.qTeachMap（全局；開新一座照帶；唔使上傳／提交都 localStorage 記住） */
 function qTeachMapGet() {
   const m = Store.prefs && Store.prefs.qTeachMap;
   return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
@@ -2449,43 +2451,35 @@ function qTeachDayOf(at) {
     return (typeof hkDate === 'function') ? hkDate(d) : null;
   } catch (e) { return null; }
 }
-/* v0.6.367 一次過清舊：無 at／舊陣列／早過 minDay（預設 2026-10-28）→丟；
-   有 at 且日 ≥ minDay →保留（唔會日日清走「今日」）。已跑過用 prefs.qTeachPurgeV 記。 */
+/* v0.6.374：一次過清晒全部教對應（唔留今日；FAN 全部清除重新嚟）——之後新教寫回 prefs.qTeachMap（全局共用）；prefs.qTeachPurgeV 記已跑。 */
 function qTeachPurgeOld(minDay) {
   const floor = minDay || '2026-10-28';
   if (!Store.prefs) Store.prefs = {};
-  if (Store.prefs.qTeachPurgeV === '0.6.367') {
+  if (Store.prefs.qTeachPurgeV === '0.6.374') {
     const prev = Store.prefs.qTeachPurge || {};
-    return { day: floor, kept: prev.kept || Object.keys(qTeachMapGet()), dropped: [], skipped: true };
+    return { day: floor, kept: prev.kept || [], dropped: [], skipped: true, all: true };
   }
   const map = qTeachMapGet();
-  const next = {};
-  const kept = [];
-  const dropped = [];
-  Object.keys(map).forEach(ka => {
-    const b = qTeachBucket(map[ka]);
-    const d = qTeachDayOf(b.at);
-    if (d && d >= floor && b.items.length) {
-      next[ka] = { at: b.at, items: b.items.map(e => ({ key: e.key, ik: e.ik, v: e.v })) };
-      kept.push(ka);
-    } else {
-      dropped.push(ka);
-    }
-  });
-  const before = Object.keys(map).length;
-  Store.prefs.qTeachMap = next;
-  Store.prefs.qTeachPurgeV = '0.6.367';
+  const dropped = Object.keys(map);
+  /* 順手清走誤寫上紀錄嘅 qTeachMap（舊實驗）；教對應只住 prefs */
+  try {
+    (Store.recs || []).forEach(r => { if (r && r.qTeachMap != null) delete r.qTeachMap; });
+  } catch (e0) {}
+  Store.prefs.qTeachMap = {};
+  delete Store.prefs.qTeachByBldg;
+  Store.prefs.qTeachPurgeV = '0.6.374';
   Store.prefs.qTeachPurge = {
     day: floor,
-    policy: 'drop no-at / day<' + floor + '; keep day>=' + floor,
-    kept: kept.slice(),
+    policy: '0.6.374 drop ALL teach (incl. today); re-teach into global prefs.qTeachMap (carry to new buildings; persist without upload)',
+    kept: [],
     dropped: dropped.length,
     droppedKeys: dropped.slice(0, 80),
-    before: before,
+    before: dropped.length,
+    all: true,
     at: (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString()
   };
   try { Store.saveSoon(); } catch (e) {}
-  return { day: floor, kept: kept, dropped: dropped };
+  return { day: floor, kept: [], dropped: dropped, all: true };
 }
 function qTeachKey(cell, ans) { return String(cell || '') + '|' + String(ans == null ? '' : ans); }
 function qTeachParseKey(ka) {
@@ -2638,7 +2632,7 @@ function qTeachSaveKey(ka, entries) {
     map[ka] = { at: at, items: entries.map(e => ({ key: e.key, ik: e.ik, v: e.v })) };
   }
   Store.prefs.qTeachMap = map;
-  Store.saveSoon(); /* 自動紀錄；跟 qOrder／其他 prefs 同一套 */
+  Store.saveSoon(); /* 自動記 localStorage；唔使上傳／提交；開新一座照帶 */
 }
 function qTeachSave(cell, ans, entries) {
   qTeachSaveKey(qTeachKey(cell, ans), entries);
@@ -4987,7 +4981,7 @@ function qTeachSetActive(parts, need) {
   if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns();
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
   if (box) box.classList.add('qteach-mode');
-  qTeachPaintMarkers();
+  if (typeof qTeachPaintMarkersSoon === 'function') qTeachPaintMarkersSoon(); else qTeachPaintMarkers();
 }
 function qTeachActivate(cell, ans) {
   if (!cell || ans == null || ans === '') { qTeachDeactivate(); return; }
@@ -5039,7 +5033,7 @@ function qTeachDeactivate() {
   document.querySelectorAll('.qteach').forEach(n => n.remove());
   if (typeof qTeachRefreshNeedBtns === 'function') qTeachRefreshNeedBtns();
   /* v0.6.366：關教模式後仍暗淡顯示已教剔位（問答未揀都見） */
-  if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers();
+  if (typeof qTeachPaintMarkersSoon === 'function') qTeachPaintMarkersSoon(); else if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers();
 }
 function qTeachRefreshNeedBtns() {
   /* v0.6.366：同步 livepick「單一／要齊2／要齊3」亮燈 */
@@ -5232,6 +5226,23 @@ function qTeachPaintMarkers() {
       return `<span class="${cls}" style="--ans:${esc(col)};left:${left}%;top:${top}%;width:${w}%;padding-top:${w}%" title="${esc(title)}"></span>`;
     }).join('');
   });
+  /* v0.6.374：paint 後寫入 snap，之後 refresh／還原 innerHTML 都帶 ghost 標記 */
+  try {
+    const k0 = box.dataset.fsdKey || '';
+    if (k0 && box.querySelector('.halive-pg')) fsdLiveSnap = { key: k0, html: box.innerHTML };
+  } catch (eSnap) {}
+}
+/* v0.6.374：等 PDF img decode／有 naturalWidth 再畫 ghost（唔好喺 0×0 時畫完即冇） */
+function qTeachPaintMarkersSoon() {
+  const box = (typeof $ === 'function') ? $('#fsdLive') : null;
+  if (!box) return;
+  const pages = box.querySelectorAll('.halive-pg');
+  const go = () => { try { qTeachPaintMarkers(); } catch (e) {} };
+  if (!pages.length) { go(); return; }
+  const after = (typeof fsdLiveFollowEnsureImgs === 'function')
+    ? fsdLiveFollowEnsureImgs(pages)
+    : Promise.resolve();
+  after.then(go).catch(go);
 }
 
 function qTeachApplyHit(hit) {
@@ -5280,7 +5291,7 @@ function qTeachApplyHit(hit) {
   }
   qTeachRefreshBar();
   /* markers redraw after live refresh; soft paint now too */
-  setTimeout(() => qTeachPaintMarkers(), 80);
+  setTimeout(() => { if (typeof qTeachPaintMarkersSoon === 'function') qTeachPaintMarkersSoon(); else qTeachPaintMarkers(); }, 80);
   const still2 = list.find(e => e.key === hit.key && e.ik === hit.ik);
   if (typeof toast === 'function') {
     const lab = still2 ? (sid != null ? ('不適用／跳過§' + sid) : (still2.v === 'Y' ? '是' : still2.v === 'N' ? '否' : still2.v === 'NA' ? '不適用' : still2.v === 'T' ? '✓' : still2.v)) : '—';
@@ -6097,7 +6108,7 @@ async function fsdLiveRefresh(r) {
     }
     if (typeof qTeachActive !== 'undefined' && qTeachActive) { const b = $('#fsdLive'); if (b) b.classList.add('qteach-mode'); }
     /* v0.6.366：每次刷新右欄都畫已教暗淡標記（問答未揀都見） */
-    setTimeout(() => { if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers(); }, 30);
+    setTimeout(() => { if (typeof qTeachPaintMarkersSoon === 'function') qTeachPaintMarkersSoon(); else if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers(); }, 30);
     if (typeof fsdNaMode !== 'undefined' && fsdNaMode) { const b2 = $('#fsdLive'); if (b2) { b2.classList.add('fsdna-mode'); b2.classList.remove('fsdyes-mode'); } }
     if (typeof fsdYesMode !== 'undefined' && fsdYesMode) { const b3 = $('#fsdLive'); if (b3) { b3.classList.add('fsdyes-mode'); b3.classList.remove('fsdna-mode'); } }
   } catch (e) {
@@ -15365,13 +15376,15 @@ async function importFile(f) {
 /* ---------- start ---------- */
 (async function start() {
   Store.load(); Store.recs.forEach(syncNames);
-  /* v0.6.367：清走舊教對應（只留今日 HKT；無日期／舊陣列一律丟） */
+  /* v0.6.374：一次過清晒全部教對應（唔留今日；之後新教寫 prefs.qTeachMap 全局；唔使上傳都記住；開新一座照帶） */
   try {
     if (typeof qTeachPurgeOld === 'function') {
       const pr = qTeachPurgeOld();
-      if (pr && pr.dropped && pr.dropped.length) {
-        const n = pr.dropped.length, k = (pr.kept || []).length;
-        setTimeout(() => { try { toast('已清舊教對應 ' + n + ' 條' + (k ? '（保留今日 ' + k + '）' : '（今日尚未教）'), 3200); } catch (e) {} }, 900);
+      if (pr && !pr.skipped && pr.dropped && pr.dropped.length) {
+        const n = pr.dropped.length;
+        setTimeout(() => { try { toast('已清全部教對應 ' + n + ' 條——請重新教（新教會帶去其他座）', 3800); } catch (e) {} }, 900);
+      } else if (pr && !pr.skipped) {
+        setTimeout(() => { try { toast('教對應已重置——請重新教', 2800); } catch (e) {} }, 900);
       }
     }
   } catch (e) {}
