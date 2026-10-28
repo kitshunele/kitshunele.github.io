@@ -632,8 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.376';
-/* v0.6.376：冇→不適用疊剔可見——!applicable stub 併入已教 qTeachMap；apply 先清後寫；段 skip 無 NA 框仍畫子項不適用；保留 375 教解鎖 */
+const APP_VERSION = '0.6.377';
+/* v0.6.377：qTeachMap 跨機同步（Drive「KitShun App／教對應地圖」；per-key LWW；唔擦草稿）
+   v0.6.376：冇→不適用疊剔可見——!applicable stub 併入已教 qTeachMap；apply 先清後寫；段 skip 無 NA 框仍畫子項不適用；保留 375 教解鎖 */
 /* v0.6.375：取消教對應硬鎖——已教過嘅格仍可再教（有→是／冇→不適用唔使先清組）；qTeachMap／ghost／全局 prefs 保留 */
 /* v0.6.374：① 一次過清晒全部教對應（qTeachPurgeV 0.6.374；唔留今日）② 修 ghost 暗淡標記（img decode 後再畫、paint 後寫入 snap）③ prefs.qTeachMap 全局——開新一座照帶；唔使上傳都 localStorage 記住 */
 /* v0.6.373：TaiWo add DTMO + Bus Terminus (FAX-K-616R half-yearly 2026-11-11) */
@@ -2434,7 +2435,8 @@ function qFsdHintHtml(cell) {
 /* v0.6.356：可教 Q→核對表對應 —— Store.prefs.qTeachMap["CELL|答"] = [{key,ik,v},…]；自動 saveSoon 如 qOrder
    v0.6.365：多答 AND —— key「CELL1|答1+CELL2|答2」；要齊晒先套用剔；單一「CELL|答」照舊
    v0.6.367：每 key 改存 { at:HKT-ISO, items:[{key,ik,v}…] }
-   v0.6.374：① 一次過清晒全部教（唔留今日）② 仍存 prefs.qTeachMap（全局；開新一座照帶；唔使上傳／提交都 localStorage 記住） */
+   v0.6.374：① 一次過清晒全部教（唔留今日）② 仍存 prefs.qTeachMap（全局；開新一座照帶；唔使上傳／提交都 localStorage 記住）
+   v0.6.377：Drive「教對應地圖」跨機；per-key LWW；刪＝墓碑；purgeAt 上雲；唔擦年檢草稿 */
 function qTeachMapGet() {
   const m = Store.prefs && Store.prefs.qTeachMap;
   return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
@@ -2470,17 +2472,20 @@ function qTeachPurgeOld(minDay) {
   Store.prefs.qTeachMap = {};
   delete Store.prefs.qTeachByBldg;
   Store.prefs.qTeachPurgeV = '0.6.374';
+  const purgeAt = (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString();
+  Store.prefs.qTeachPurgeAt = purgeAt;
   Store.prefs.qTeachPurge = {
     day: floor,
-    policy: '0.6.374 drop ALL teach (incl. today); re-teach into global prefs.qTeachMap (carry to new buildings; persist without upload)',
+    policy: '0.6.374 drop ALL teach (incl. today); re-teach into global prefs.qTeachMap (carry to new buildings; persist without upload); 0.6.377 sync purgeAt to cloud',
     kept: [],
     dropped: dropped.length,
     droppedKeys: dropped.slice(0, 80),
     before: dropped.length,
     all: true,
-    at: (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString()
+    at: purgeAt
   };
   try { Store.saveSoon(); } catch (e) {}
+  try { if (typeof qTeachCloudOnLocalChange === 'function') qTeachCloudOnLocalChange(true); } catch (e1) {}
   return { day: floor, kept: [], dropped: dropped, all: true };
 }
 function qTeachKey(cell, ans) { return String(cell || '') + '|' + String(ans == null ? '' : ans); }
@@ -2628,13 +2633,13 @@ function qTeachSaveKey(ka, entries) {
   if (!ka) return;
   if (!Store.prefs) Store.prefs = {};
   const map = Object.assign({}, qTeachMapGet());
-  if (!entries || !entries.length) delete map[ka];
-  else {
-    const at = (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString();
-    map[ka] = { at: at, items: entries.map(e => ({ key: e.key, ik: e.ik, v: e.v })) };
-  }
+  const at = (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString();
+  /* v0.6.377：刪 → 墓碑 {at,items:[],del:1} 先同步到其他機；唔用 delete 否則雲端舊 key 會拉返 */
+  if (!entries || !entries.length) map[ka] = { at: at, items: [], del: 1 };
+  else map[ka] = { at: at, items: entries.map(e => ({ key: e.key, ik: e.ik, v: e.v })) };
   Store.prefs.qTeachMap = map;
-  Store.saveSoon(); /* 自動記 localStorage；唔使上傳／提交；開新一座照帶 */
+  Store.saveSoon(); /* 自動記 localStorage；唔使上傳／提交；開新一座照帶；0.6.377 另 debounce 上雲 */
+  try { if (typeof qTeachCloudOnLocalChange === 'function') qTeachCloudOnLocalChange(); } catch (e0) {}
 }
 function qTeachSave(cell, ans, entries) {
   qTeachSaveKey(qTeachKey(cell, ans), entries);
@@ -14541,8 +14546,9 @@ document.addEventListener('visibilitychange', () => { try { if (document.visibil
 
 'use strict';
 /* v0.6.368 消防年檢草稿跨機共用——Store.recs ↔ GAS fsd_draft_*（Drive「KitShun App／消防年檢草稿」）
-   LWW：updated ISO／updated_ms；提交／刪本地 → fsd_draft_delete。prefs／qTeachMap 唔上雲。
-   相片：跟草稿一齊（最多 15 張；單張／成包太大就淨同步剔位答案，相仍本機）。 */
+   LWW：updated ISO／updated_ms；提交／刪本地 → fsd_draft_delete。
+   相片：跟草稿一齊（最多 15 張；單張／成包太大就淨同步剔位答案，相仍本機）。
+   v0.6.377：qTeachMap 另走 qteach_get／put（Drive「教對應地圖」；per-key LWW）；唔寫入草稿資料夾。 */
 const FSDD = {
   busy: false, pullBusy: false, timer: null, lastPull: 0,
   pushed: Object.create(null), // id → updated_ms last successfully pushed
@@ -14749,6 +14755,7 @@ function fsddBoot() {
   // 開 App 稍遲拉（等 acc／PIN）
   setTimeout(() => { fsddPull(true).catch(() => {}); }, 3500);
   setInterval(() => { fsddPull(false).catch(() => {}); }, 120000);
+  try { if (typeof qTeachCloudBoot === 'function') qTeachCloudBoot(); } catch (e) {}
 }
 
 // 加 GAS_READS
@@ -14756,8 +14763,190 @@ try {
   if (typeof GAS_READS !== 'undefined' && GAS_READS && GAS_READS.add) {
     GAS_READS.add('fsd_draft_list');
     GAS_READS.add('fsd_draft_get');
+    GAS_READS.add('qteach_get');
   }
 } catch (e) {}
+
+
+/* ========== v0.6.377 qTeachMap 跨機（GAS qteach_*／Drive「KitShun App／教對應地圖」）==========
+   本機 prefs.qTeachMap 仍 localStorage；上雲 per-key 用 at LWW；刪＝墓碑；purgeAt 清舊。
+   唔讀寫「消防年檢草稿」——草稿 sync 照舊獨立。 */
+const QTC = { busy: false, timer: null, lastPull: 0, lastPushSig: '', toastOnce: false, booted: false };
+const QTC_PULL_GAP = 10000;
+
+function qTeachCloudCanNet() {
+  if (navigator.onLine === false) return false;
+  if (typeof accLocked === 'function' && accLocked()) return false;
+  const c = typeof upCfg === 'function' ? upCfg() : {};
+  return !!(c.url && c.pin);
+}
+function qTeachCloudAtMs(at) {
+  if (!at) return 0;
+  const p = Date.parse(String(at));
+  return p > 0 ? p : 0;
+}
+function qTeachCloudNormMap(raw) {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const out = {};
+  Object.keys(src).forEach(k => {
+    const b = (typeof qTeachBucket === 'function') ? qTeachBucket(src[k]) : { at: null, items: [] };
+    const del = !!(src[k] && (src[k].del === 1 || src[k].del === true)) || !b.items.length;
+    if (del) {
+      if (!b.at) return;
+      out[k] = { at: b.at, items: [], del: 1 };
+    } else {
+      out[k] = { at: b.at || null, items: b.items.map(e => ({ key: e.key, ik: e.ik, v: e.v })) };
+    }
+  });
+  return out;
+}
+function qTeachCloudMerge(localMap, cloudMap, localPurgeMs, cloudPurgeMs) {
+  const purgeMs = Math.max(Number(localPurgeMs) || 0, Number(cloudPurgeMs) || 0);
+  const L = qTeachCloudNormMap(localMap);
+  const C = qTeachCloudNormMap(cloudMap);
+  const keys = {};
+  Object.keys(L).forEach(k => { keys[k] = 1; });
+  Object.keys(C).forEach(k => { keys[k] = 1; });
+  const out = {};
+  Object.keys(keys).forEach(k => {
+    const lb = L[k], cb = C[k];
+    let pick = null;
+    if (!lb) pick = cb;
+    else if (!cb) pick = lb;
+    else {
+      const lms = qTeachCloudAtMs(lb.at), cms = qTeachCloudAtMs(cb.at);
+      if (lms > cms) pick = lb;
+      else if (cms > lms) pick = cb;
+      else if (lb.del && !cb.del) pick = cb;
+      else if (cb.del && !lb.del) pick = lb;
+      else pick = lb; // tie → keep local
+    }
+    if (!pick) return;
+    const pms = qTeachCloudAtMs(pick.at);
+    if (purgeMs && (!pms || pms < purgeMs)) return;
+    out[k] = pick.del || !pick.items.length
+      ? { at: pick.at, items: [], del: 1 }
+      : { at: pick.at || null, items: pick.items.slice() };
+  });
+  return { map: out, purgeMs: purgeMs };
+}
+function qTeachCloudLocalPurgeMs() {
+  if (!Store.prefs) return 0;
+  const a = Store.prefs.qTeachPurgeAt || (Store.prefs.qTeachPurge && Store.prefs.qTeachPurge.at) || '';
+  return qTeachCloudAtMs(a);
+}
+function qTeachCloudApplyMerged(merged, purgeV, purgeAt) {
+  if (!Store.prefs) Store.prefs = {};
+  const prev = JSON.stringify(qTeachCloudNormMap(qTeachMapGet()));
+  Store.prefs.qTeachMap = merged.map;
+  if (purgeAt) {
+    Store.prefs.qTeachPurgeAt = purgeAt;
+    if (purgeV) Store.prefs.qTeachPurgeV = purgeV;
+  }
+  const next = JSON.stringify(merged.map);
+  if (prev !== next) {
+    try { Store.saveSoon(); } catch (e) {}
+    return true;
+  }
+  return false;
+}
+function qTeachCloudSig(map, purgeMs) {
+  try {
+    return String(purgeMs || 0) + '|' + JSON.stringify(map);
+  } catch (e) { return String(Date.now()); }
+}
+
+async function qTeachCloudPull(force) {
+  if (QTC.busy) return;
+  if (!force && Date.now() - QTC.lastPull < QTC_PULL_GAP) return;
+  if (!qTeachCloudCanNet()) return;
+  QTC.busy = true;
+  QTC.lastPull = Date.now();
+  try {
+    const g = await gasCall({ action: 'qteach_get' }, 45000);
+    if (!g || !g.ok) return;
+    const cloudMap = g.map || (g.payload && g.payload.map) || {};
+    const cloudPurgeMs = Number(g.purge_ms) || qTeachCloudAtMs(g.purgeAt) || 0;
+    const localMap = qTeachMapGet();
+    const localPurgeMs = qTeachCloudLocalPurgeMs();
+    const merged = qTeachCloudMerge(localMap, cloudMap, localPurgeMs, cloudPurgeMs);
+    const preferPurgeAt = (cloudPurgeMs >= localPurgeMs)
+      ? (g.purgeAt || Store.prefs.qTeachPurgeAt || '')
+      : (Store.prefs.qTeachPurgeAt || g.purgeAt || '');
+    const preferPurgeV = (cloudPurgeMs >= localPurgeMs)
+      ? (g.purgeV || Store.prefs.qTeachPurgeV || '')
+      : (Store.prefs.qTeachPurgeV || g.purgeV || '');
+    const changed = qTeachCloudApplyMerged(merged, preferPurgeV, preferPurgeAt);
+    if (changed && !QTC.toastOnce) {
+      QTC.toastOnce = true;
+      try { toast('已同步其他裝置嘅教對應', 2600); } catch (e) {}
+      try { if (typeof render === 'function') render(); } catch (e2) {}
+    }
+    // 本地有較新／雲缺 → 推合併後成圖
+    const sig = qTeachCloudSig(merged.map, merged.purgeMs);
+    if (sig !== QTC.lastPushSig) await qTeachCloudPush(merged.map, true);
+  } catch (e) {
+  } finally { QTC.busy = false; }
+}
+
+async function qTeachCloudPush(mapOpt, fromPull) {
+  if (!qTeachCloudCanNet()) return null;
+  if (QTC.busy && !fromPull) return null;
+  const held = QTC.busy;
+  if (!held) QTC.busy = true;
+  try {
+    const map = qTeachCloudNormMap(mapOpt || qTeachMapGet());
+    const purgeMs = qTeachCloudLocalPurgeMs();
+    const purgeAt = (Store.prefs && (Store.prefs.qTeachPurgeAt || (Store.prefs.qTeachPurge && Store.prefs.qTeachPurge.at))) || '';
+    const purgeV = (Store.prefs && Store.prefs.qTeachPurgeV) || '';
+    const sig = qTeachCloudSig(map, purgeMs);
+    if (sig === QTC.lastPushSig && !fromPull) return { ok: true, same: true };
+    const body = {
+      action: 'qteach_put',
+      map: map,
+      purge_ms: purgeMs,
+      purgeAt: purgeAt,
+      purgeV: purgeV,
+      updated_ms: Date.now(),
+      app_version: (typeof APP_VERSION !== 'undefined') ? APP_VERSION : ''
+    };
+    const o = await gasCall(body, 60000);
+    if (o && o.ok) {
+      // 伺服器 merge 結果寫返本機（他機同時教咗）
+      if (o.map && typeof o.map === 'object') {
+        const merged = qTeachCloudMerge(map, o.map, purgeMs, Number(o.purge_ms) || qTeachCloudAtMs(o.purgeAt) || 0);
+        qTeachCloudApplyMerged(merged, o.purgeV || purgeV, o.purgeAt || purgeAt);
+        QTC.lastPushSig = qTeachCloudSig(merged.map, merged.purgeMs);
+      } else {
+        QTC.lastPushSig = sig;
+      }
+    }
+    return o;
+  } catch (e) {
+    return null;
+  } finally {
+    if (!held) QTC.busy = false;
+  }
+}
+
+function qTeachCloudOnLocalChange(immediate) {
+  clearTimeout(QTC.timer);
+  const wait = immediate ? 400 : 1500;
+  QTC.timer = setTimeout(() => {
+    qTeachCloudPush(null, false).catch(() => {});
+  }, wait);
+}
+
+function qTeachCloudBoot() {
+  if (QTC.booted) return;
+  QTC.booted = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') qTeachCloudPull(false).catch(() => {});
+  });
+  window.addEventListener('online', () => { qTeachCloudPull(true).catch(() => {}); });
+  setTimeout(() => { qTeachCloudPull(true).catch(() => {}); }, 4200);
+  setInterval(() => { qTeachCloudPull(false).catch(() => {}); }, 180000);
+}
 
 /* ---------- 樓層 /F ---------- */
 function floorSync(r) { // 記錄 + 畫面上嘅樓層欄位一齊整理（下一頁／提交前）
