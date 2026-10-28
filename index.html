@@ -632,8 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.368';
-/* v0.6.368：消防年檢草稿跨機共用（GAS fsd_draft_*／Drive「消防年檢草稿」；LWW updated；相一齊同步上限內）
+const APP_VERSION = '0.6.369';
+/* v0.6.369：右欄 livepick 揀消防處 checklist 後保留 scroll（唔跳頂；防 sticky focus＋keep pane）
+   v0.6.368：消防年檢草稿跨機共用（GAS fsd_draft_*／Drive「消防年檢草稿」；LWW updated；相一齊同步上限內）
    v0.6.367：清舊教對應——prefs.qTeachMap 改 {at,items}；開 App 只留今日 HKT（無日期／舊陣列一律清）；之後每次教寫入 at
    v0.6.366：① 單一／要齊2／要齊3 搬去右欄 livepick（問卷步）②「不適用」改名「預設不適用」③ 隔離加「預設是」（撳格強制 Y／剔選 T；同教對應／預設不適用互斥）④ 對表已教剔位——問答未揀都暗淡顯示；黃教 bar 只留進度／清除／完成
    v0.6.365：教對應可「要齊 2／3 個」問答答案（AND）先剔核對表——prefs.qTeachMap key「A|答+B|答」；單一照舊
@@ -1628,6 +1629,7 @@ window.addEventListener('hashchange', () => { Store.flush(); parseHash(); if (cu
    v0.6.348：force pin 期間唔還原 .livepane（電話跟頁唔再俾 keep.p 打贏）
    v0.6.350：問卷 haslive＋消防處 blank 跟題
    v0.6.352：闊屏 liveform／livepane 各自 overflow（見 app_head）；scroll keep 繼續記 f／p
+   v0.6.369：livepick 揀消防處 checklist 保留 scroll（唔跳頂）
    v0.6.353：右欄 livepick 揀邊份消防處 PDF
    v0.6.354：闊屏揀答案後一定還原 .livepane（唔 skip）；窄屏先 skip＋force 跟頁
    v0.6.356：問卷教對應（prefs.qTeachMap；右欄剔位）
@@ -4716,7 +4718,8 @@ async function haLiveRefresh(r) {
    v0.6.353：右欄 .livepick 揀邊份消防處 checklist（跟問卷／手動蓋 Q_FSD_MAP）；官方 blank／spr Excel
    v0.6.354：揀答案／live refresh 後右欄 scroll 留原位（闊屏）；窄屏仍 force 跟頁 ----- */
 let fsdLiveTok = 0, fsdLiveT = null, fsdLiveUrls = [];
-let fsdLivePaneKeepAfterRefresh = true; /* v0.6.354：false＝換咗另一份 PDF（livepick）→ 跟頁／去頂 */
+let fsdLivePaneKeepAfterRefresh = true; /* v0.6.354：false＝跟頁／去頂；v0.6.369 livepick 換 checklist 改 keep＝true 留原位 */
+let fsdLivePickScrollKeep = null; /* v0.6.369：livepick pointerdown 早過 focus 記 scroll */
 
 /* ----- v0.6.346／0.6.347：填緊邊 → PDF 顯示邊頁 -----
    overlay（fds／fa／fhhr／tank）：tickmaps.items[ik].page（0-based）
@@ -5267,13 +5270,39 @@ function qTeachApplyHit(hit) {
   }
 }
 function fsdLivePickApply(k) {
+  /* v0.6.369：揀消防處 checklist（livepick）保留 scroll，唔跳頂
+     舊：PendingPi=0＋force＋keep=false → 右欄／窄屏去頂；sticky livepick focus 亦會捲 livepane */
   const next = (!k || k === 'auto') ? null : String(k);
   if (next && !fsdLiveOk(next)) return false;
   if ((fsdLiveManualKey || null) === (next || null)) return false;
   fsdLiveManualKey = next;
-  fsdLiveFollowPendingPi = 0;
-  fsdLiveFollowForceUntil = Date.now() + FSD_LIVE_FOLLOW_FORCE_MS;
-  fsdLivePaneKeepAfterRefresh = false; /* 換份 PDF：唔保留舊 scroll */
+  const keep = (fsdLivePickScrollKeep && typeof fsdLivePickScrollKeep === 'object')
+    ? fsdLivePickScrollKeep
+    : ((typeof recScrollCapture === 'function')
+      ? recScrollCapture()
+      : (() => {
+          const form = document.querySelector('main.haslive .liveform');
+          const pane = document.querySelector('main.haslive .livepane');
+          return {
+            w: window.scrollY | 0,
+            f: form ? (form.scrollTop | 0) : 0,
+            p: pane ? (pane.scrollTop | 0) : 0
+          };
+        })());
+  fsdLivePickScrollKeep = null;
+  const restore = () => {
+    if (typeof recScrollApply === 'function') recScrollApply(keep);
+    else {
+      try { window.scrollTo(0, keep.w | 0); } catch (e0) {}
+      const form = document.querySelector('main.haslive .liveform');
+      const pane = document.querySelector('main.haslive .livepane');
+      if (form) form.scrollTop = keep.f | 0;
+      if (pane) pane.scrollTop = keep.p | 0;
+    }
+  };
+  fsdLiveFollowForceUntil = 0;
+  fsdLiveFollowPendingPi = null;
+  fsdLivePaneKeepAfterRefresh = true; /* 換份仍還原 livepane scroll */
   fsdLiveSnap = { key: '', html: '' };
   const paneKey = fsdLivePaneKey(cur.step);
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
@@ -5287,13 +5316,33 @@ function fsdLivePickApply(k) {
     if (typeof fsdNaRefreshBar === 'function') fsdNaRefreshBar();
     if (typeof qTeachRefreshBar === 'function') qTeachRefreshBar();
   }
+  restore();
   const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
   if (r) {
     if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
     else if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(r);
   }
+  requestAnimationFrame(restore);
   return true;
 }
+['pointerdown', 'mousedown'].forEach(t => document.addEventListener(t, e => {
+  const b = e.target && e.target.closest && e.target.closest('#livepick .lpk[data-act="fsdlivepick"]');
+  if (!b) return;
+  e.preventDefault(); /* 防 sticky livepick focus → livepane／window 跳頂 */
+  try {
+    fsdLivePickScrollKeep = (typeof recScrollCapture === 'function')
+      ? recScrollCapture()
+      : (() => {
+          const form = document.querySelector('main.haslive .liveform');
+          const pane = document.querySelector('main.haslive .livepane');
+          return {
+            w: window.scrollY | 0,
+            f: form ? (form.scrollTop | 0) : 0,
+            p: pane ? (pane.scrollTop | 0) : 0
+          };
+        })();
+  } catch (e1) { fsdLivePickScrollKeep = null; }
+}, true));
 /* v0.6.356：問卷教對應——撳右欄 PDF 剔位
    v0.6.358：非教模式亦可撳 PDF 已填／空剔位 → 師傅覆寫（記住） */
 function fsdPdfApplyHit(hit) {
