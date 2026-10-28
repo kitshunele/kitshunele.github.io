@@ -632,8 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.377';
-/* v0.6.377：qTeachMap 跨機同步（Drive「KitShun App／教對應地圖」；per-key LWW；唔擦草稿）
+const APP_VERSION = '0.6.378';
+/* v0.6.378：教對應 sync——purge 只喺明確清場先上雲（唔再拎各機舊 purgeAt 互擦）；iPad/PWA 重試／pageshow；KitShun 登入即得
+   v0.6.377：qTeachMap 跨機同步（Drive「KitShun App／教對應地圖」；per-key LWW；唔擦草稿）
    v0.6.376：冇→不適用疊剔可見——!applicable stub 併入已教 qTeachMap；apply 先清後寫；段 skip 無 NA 框仍畫子項不適用；保留 375 教解鎖 */
 /* v0.6.375：取消教對應硬鎖——已教過嘅格仍可再教（有→是／冇→不適用唔使先清組）；qTeachMap／ghost／全局 prefs 保留 */
 /* v0.6.374：① 一次過清晒全部教對應（qTeachPurgeV 0.6.374；唔留今日）② 修 ghost 暗淡標記（img decode 後再畫、paint 後寫入 snap）③ prefs.qTeachMap 全局——開新一座照帶；唔使上傳都 localStorage 記住 */
@@ -2474,9 +2475,11 @@ function qTeachPurgeOld(minDay) {
   Store.prefs.qTeachPurgeV = '0.6.374';
   const purgeAt = (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString();
   Store.prefs.qTeachPurgeAt = purgeAt;
+  /* v0.6.378：只喺呢次真正清場先標 dirty——上雲帶 purge_intent；唔好每次 put 都拎舊 purgeAt 去擦其他機較新嘅教 */
+  Store.prefs.qTeachPurgeDirty = 1;
   Store.prefs.qTeachPurge = {
     day: floor,
-    policy: '0.6.374 drop ALL teach (incl. today); re-teach into global prefs.qTeachMap (carry to new buildings; persist without upload); 0.6.377 sync purgeAt to cloud',
+    policy: '0.6.374 drop ALL teach (incl. today); re-teach into global prefs.qTeachMap; 0.6.378 purge_intent only (no cross-device stale purgeAt wipe)',
     kept: [],
     dropped: dropped.length,
     droppedKeys: dropped.slice(0, 80),
@@ -14768,10 +14771,12 @@ try {
 } catch (e) {}
 
 
-/* ========== v0.6.377 qTeachMap 跨機（GAS qteach_*／Drive「KitShun App／教對應地圖」）==========
-   本機 prefs.qTeachMap 仍 localStorage；上雲 per-key 用 at LWW；刪＝墓碑；purgeAt 清舊。
+/* ========== v0.6.377／0.6.378 qTeachMap 跨機（GAS qteach_*／Drive「KitShun App／教對應地圖」）==========
+   本機 prefs.qTeachMap 仍 localStorage；上雲 per-key 用 at LWW；刪＝墓碑。
+   v0.6.378：purge 只喺 qTeachPurgeDirty（明確清場）先帶 purge_intent 上雲——唔再用各機舊 purgeAt 互擦較新教；
+   iPad/PWA：pageshow／focus／登入後重試；busy 時 queue push；間隔同草稿 120s。KitShun PIN 登入即得（同草稿）。
    唔讀寫「消防年檢草稿」——草稿 sync 照舊獨立。 */
-const QTC = { busy: false, timer: null, lastPull: 0, lastPushSig: '', toastOnce: false, booted: false };
+const QTC = { busy: false, timer: null, lastPull: 0, lastPushSig: '', toastOnce: false, booted: false, pendingPush: false, retryN: 0 };
 const QTC_PULL_GAP = 10000;
 
 function qTeachCloudCanNet() {
@@ -14800,8 +14805,9 @@ function qTeachCloudNormMap(raw) {
   });
   return out;
 }
-function qTeachCloudMerge(localMap, cloudMap, localPurgeMs, cloudPurgeMs) {
-  const purgeMs = Math.max(Number(localPurgeMs) || 0, Number(cloudPurgeMs) || 0);
+/* applyPurgeMs：只喺明確清場（dirty／伺服器剛清）先用來丟 at < purge 嘅 key；日常 sync 傳 0 → 純 LWW */
+function qTeachCloudMerge(localMap, cloudMap, applyPurgeMs) {
+  const purgeMs = Number(applyPurgeMs) || 0;
   const L = qTeachCloudNormMap(localMap);
   const C = qTeachCloudNormMap(cloudMap);
   const keys = {};
@@ -14819,7 +14825,7 @@ function qTeachCloudMerge(localMap, cloudMap, localPurgeMs, cloudPurgeMs) {
       else if (cms > lms) pick = cb;
       else if (lb.del && !cb.del) pick = cb;
       else if (cb.del && !lb.del) pick = lb;
-      else pick = lb; // tie → keep local
+      else pick = lb;
     }
     if (!pick) return;
     const pms = qTeachCloudAtMs(pick.at);
@@ -14835,14 +14841,20 @@ function qTeachCloudLocalPurgeMs() {
   const a = Store.prefs.qTeachPurgeAt || (Store.prefs.qTeachPurge && Store.prefs.qTeachPurge.at) || '';
   return qTeachCloudAtMs(a);
 }
-function qTeachCloudApplyMerged(merged, purgeV, purgeAt) {
+function qTeachCloudPurgeDirty() {
+  return !!(Store.prefs && Number(Store.prefs.qTeachPurgeDirty));
+}
+function qTeachCloudClearPurgeDirty() {
+  if (!Store.prefs || !Store.prefs.qTeachPurgeDirty) return;
+  try {
+    delete Store.prefs.qTeachPurgeDirty;
+    Store.saveSoon();
+  } catch (e) {}
+}
+function qTeachCloudApplyMerged(merged) {
   if (!Store.prefs) Store.prefs = {};
   const prev = JSON.stringify(qTeachCloudNormMap(qTeachMapGet()));
   Store.prefs.qTeachMap = merged.map;
-  if (purgeAt) {
-    Store.prefs.qTeachPurgeAt = purgeAt;
-    if (purgeV) Store.prefs.qTeachPurgeV = purgeV;
-  }
   const next = JSON.stringify(merged.map);
   if (prev !== next) {
     try { Store.saveSoon(); } catch (e) {}
@@ -14850,79 +14862,110 @@ function qTeachCloudApplyMerged(merged, purgeV, purgeAt) {
   }
   return false;
 }
-function qTeachCloudSig(map, purgeMs) {
+function qTeachCloudSig(map, purgeMs, intent) {
   try {
-    return String(purgeMs || 0) + '|' + JSON.stringify(map);
+    return String(intent ? 1 : 0) + '|' + String(purgeMs || 0) + '|' + JSON.stringify(map);
   } catch (e) { return String(Date.now()); }
 }
 
 async function qTeachCloudPull(force) {
   if (QTC.busy) return;
   if (!force && Date.now() - QTC.lastPull < QTC_PULL_GAP) return;
-  if (!qTeachCloudCanNet()) return;
+  if (!qTeachCloudCanNet()) {
+    QTC.retryN = Math.min((QTC.retryN || 0) + 1, 8);
+    const wait = Math.min(20000, 2500 * QTC.retryN);
+    clearTimeout(QTC._retryT);
+    QTC._retryT = setTimeout(() => { qTeachCloudPull(true).catch(() => {}); }, wait);
+    return;
+  }
   QTC.busy = true;
   QTC.lastPull = Date.now();
+  QTC.retryN = 0;
   try {
     const g = await gasCall({ action: 'qteach_get' }, 45000);
-    if (!g || !g.ok) return;
+    if (!g || !g.ok) {
+      QTC.pendingPush = true;
+      return;
+    }
     const cloudMap = g.map || (g.payload && g.payload.map) || {};
     const cloudPurgeMs = Number(g.purge_ms) || qTeachCloudAtMs(g.purgeAt) || 0;
     const localMap = qTeachMapGet();
-    const localPurgeMs = qTeachCloudLocalPurgeMs();
-    const merged = qTeachCloudMerge(localMap, cloudMap, localPurgeMs, cloudPurgeMs);
-    const preferPurgeAt = (cloudPurgeMs >= localPurgeMs)
-      ? (g.purgeAt || Store.prefs.qTeachPurgeAt || '')
-      : (Store.prefs.qTeachPurgeAt || g.purgeAt || '');
-    const preferPurgeV = (cloudPurgeMs >= localPurgeMs)
-      ? (g.purgeV || Store.prefs.qTeachPurgeV || '')
-      : (Store.prefs.qTeachPurgeV || g.purgeV || '');
-    const changed = qTeachCloudApplyMerged(merged, preferPurgeV, preferPurgeAt);
+    /* 日常拉：唔用本機／雲 purge 濾 key（0.6.378）——避免 iPad 舊 purgeAt 擦電腦較新教；清場只靠 tombstone／purge_intent put */
+    const merged = qTeachCloudMerge(localMap, cloudMap, 0);
+    const changed = qTeachCloudApplyMerged(merged);
     if (changed && !QTC.toastOnce) {
       QTC.toastOnce = true;
       try { toast('已同步其他裝置嘅教對應', 2600); } catch (e) {}
       try { if (typeof render === 'function') render(); } catch (e2) {}
+    } else if (changed) {
+      try { if (typeof render === 'function') render(); } catch (e3) {}
     }
-    // 本地有較新／雲缺 → 推合併後成圖
-    const sig = qTeachCloudSig(merged.map, merged.purgeMs);
-    if (sig !== QTC.lastPushSig) await qTeachCloudPush(merged.map, true);
+    const intent = qTeachCloudPurgeDirty();
+    const sigPurge = intent ? qTeachCloudLocalPurgeMs() : 0;
+    const sig = qTeachCloudSig(merged.map, sigPurge, intent);
+    if (sig !== QTC.lastPushSig || QTC.pendingPush || intent) {
+      await qTeachCloudPush(merged.map, true);
+    }
   } catch (e) {
-  } finally { QTC.busy = false; }
+    QTC.pendingPush = true;
+    clearTimeout(QTC._retryT);
+    QTC._retryT = setTimeout(() => { qTeachCloudPull(true).catch(() => {}); }, 8000);
+  } finally {
+    QTC.busy = false;
+    if (QTC.pendingPush && qTeachCloudCanNet()) {
+      const need = QTC.pendingPush;
+      QTC.pendingPush = false;
+      if (need) setTimeout(() => { qTeachCloudPush(null, false).catch(() => {}); }, 400);
+    }
+  }
 }
 
 async function qTeachCloudPush(mapOpt, fromPull) {
-  if (!qTeachCloudCanNet()) return null;
-  if (QTC.busy && !fromPull) return null;
+  if (!qTeachCloudCanNet()) { QTC.pendingPush = true; return null; }
+  if (QTC.busy && !fromPull) { QTC.pendingPush = true; return null; }
   const held = QTC.busy;
   if (!held) QTC.busy = true;
   try {
     const map = qTeachCloudNormMap(mapOpt || qTeachMapGet());
-    const purgeMs = qTeachCloudLocalPurgeMs();
-    const purgeAt = (Store.prefs && (Store.prefs.qTeachPurgeAt || (Store.prefs.qTeachPurge && Store.prefs.qTeachPurge.at))) || '';
-    const purgeV = (Store.prefs && Store.prefs.qTeachPurgeV) || '';
-    const sig = qTeachCloudSig(map, purgeMs);
-    if (sig === QTC.lastPushSig && !fromPull) return { ok: true, same: true };
+    const intent = qTeachCloudPurgeDirty();
+    const purgeMs = intent ? qTeachCloudLocalPurgeMs() : 0;
+    const purgeAt = intent
+      ? ((Store.prefs && (Store.prefs.qTeachPurgeAt || (Store.prefs.qTeachPurge && Store.prefs.qTeachPurge.at))) || '')
+      : '';
+    const purgeV = intent ? ((Store.prefs && Store.prefs.qTeachPurgeV) || '') : '';
+    const sig = qTeachCloudSig(map, purgeMs, intent);
+    if (sig === QTC.lastPushSig && !fromPull && !intent) return { ok: true, same: true };
     const body = {
       action: 'qteach_put',
       map: map,
-      purge_ms: purgeMs,
-      purgeAt: purgeAt,
-      purgeV: purgeV,
       updated_ms: Date.now(),
       app_version: (typeof APP_VERSION !== 'undefined') ? APP_VERSION : ''
     };
+    if (intent) {
+      body.purge_intent = true;
+      body.purge_ms = purgeMs;
+      body.purgeAt = purgeAt;
+      body.purgeV = purgeV;
+    }
     const o = await gasCall(body, 60000);
     if (o && o.ok) {
-      // 伺服器 merge 結果寫返本機（他機同時教咗）
+      QTC.pendingPush = false;
+      if (intent) qTeachCloudClearPurgeDirty();
       if (o.map && typeof o.map === 'object') {
-        const merged = qTeachCloudMerge(map, o.map, purgeMs, Number(o.purge_ms) || qTeachCloudAtMs(o.purgeAt) || 0);
-        qTeachCloudApplyMerged(merged, o.purgeV || purgeV, o.purgeAt || purgeAt);
-        QTC.lastPushSig = qTeachCloudSig(merged.map, merged.purgeMs);
+        /* 伺服器回圖：日常唔再套 purge 濾（intent 已喺伺服器套過） */
+        const merged = qTeachCloudMerge(map, o.map, 0);
+        const ch = qTeachCloudApplyMerged(merged);
+        QTC.lastPushSig = qTeachCloudSig(merged.map, 0, false);
+        if (ch) { try { if (typeof render === 'function') render(); } catch (e) {} }
       } else {
-        QTC.lastPushSig = sig;
+        QTC.lastPushSig = qTeachCloudSig(map, 0, false);
       }
+    } else {
+      QTC.pendingPush = true;
     }
     return o;
   } catch (e) {
+    QTC.pendingPush = true;
     return null;
   } finally {
     if (!held) QTC.busy = false;
@@ -14930,11 +14973,16 @@ async function qTeachCloudPush(mapOpt, fromPull) {
 }
 
 function qTeachCloudOnLocalChange(immediate) {
+  QTC.pendingPush = true;
   clearTimeout(QTC.timer);
   const wait = immediate ? 400 : 1500;
   QTC.timer = setTimeout(() => {
     qTeachCloudPush(null, false).catch(() => {});
   }, wait);
+}
+
+function qTeachCloudOnUnlock() {
+  try { qTeachCloudPull(true).catch(() => {}); } catch (e) {}
 }
 
 function qTeachCloudBoot() {
@@ -14943,9 +14991,28 @@ function qTeachCloudBoot() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') qTeachCloudPull(false).catch(() => {});
   });
+  /* iOS Safari/PWA：bfcache 回頁用 pageshow；focus 補 visibility 唔發 */
+  window.addEventListener('pageshow', () => { qTeachCloudPull(true).catch(() => {}); });
+  window.addEventListener('focus', () => { qTeachCloudPull(false).catch(() => {}); });
   window.addEventListener('online', () => { qTeachCloudPull(true).catch(() => {}); });
-  setTimeout(() => { qTeachCloudPull(true).catch(() => {}); }, 4200);
-  setInterval(() => { qTeachCloudPull(false).catch(() => {}); }, 180000);
+  /* 開 App：多次拉（等 PIN／acc 閘開；冷啟動 GAS） */
+  [3500, 7000, 14000, 28000].forEach(ms => {
+    setTimeout(() => { qTeachCloudPull(true).catch(() => {}); }, ms);
+  });
+  setInterval(() => { qTeachCloudPull(false).catch(() => {}); }, 120000);
+  /* KitShun 登入／批准後即拉（同草稿：唔使 Google 帳號） */
+  try {
+    if (typeof accApproved === 'function' && !accApproved._qtcWrapped) {
+      const orig = accApproved;
+      function wrapped() {
+        const r = orig.apply(this, arguments);
+        try { qTeachCloudOnUnlock(); } catch (e) {}
+        return r;
+      }
+      wrapped._qtcWrapped = true;
+      accApproved = wrapped;
+    }
+  } catch (e) {}
 }
 
 /* ---------- 樓層 /F ---------- */
