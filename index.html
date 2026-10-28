@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.374';
+const APP_VERSION = '0.6.375';
+/* v0.6.375：取消教對應硬鎖——已教過嘅格仍可再教（有→是／冇→不適用唔使先清組）；qTeachMap／ghost／全局 prefs 保留 */
 /* v0.6.374：① 一次過清晒全部教對應（qTeachPurgeV 0.6.374；唔留今日）② 修 ghost 暗淡標記（img decode 後再畫、paint 後寫入 snap）③ prefs.qTeachMap 全局——開新一座照帶；唔使上傳都 localStorage 記住 */
 /* v0.6.373：TaiWo add DTMO + Bus Terminus (FAX-K-616R half-yearly 2026-11-11) */
 /* v0.6.372：livepick NoFollow＋唔 preventDefault（掣得掣；揀完唔自動跟頁跳頂）— 詳見 pwa_hosting/index.html
@@ -2563,7 +2564,7 @@ function qAnsColorRgb(ans, cell) {
   }
   return [21, 101, 192];
 }
-/* v0.6.360／0.6.362／0.6.365：核對表 item 已教畀邊條 Q|答（或 AND 組）；跨 key 獨佔；同一單一題有／冇／不適用可各自教 */
+/* v0.6.360／0.6.362／0.6.365／0.6.375：查核對表 item 曾教畀邊條 Q|答（資訊用）；0.6.375 起教模式唔再獨佔擋剔——同一 ik 可畀唔同答各自記 Y／N／NA */
 function qTeachClaimOwner(fsdKey, ik) {
   if (!fsdKey || ik == null || ik === '') return null;
   const map = qTeachMapGet();
@@ -4801,7 +4802,7 @@ function qTeachBarHtml() {
   }).join('＋');
   const miss = Math.max(0, need - parts.length);
   const hint = need <= 1
-    ? '撳右欄剔位記住（同色）· 已教過嘅格唔可以再撳 · 再撳自己嘅取消'
+    ? '撳右欄剔位記住（同色）· 有→是／冇→不適用可各自教 · 再撳自己嘅取消'
     : (ready
       ? ('要齊 ' + need + ' 個答 · 而家齊晒 · 撳右欄剔位記住')
       : ('要齊 ' + need + ' 個答 · 仲差 <b>' + miss + '</b> 個——再喺左邊揀多題答案'));
@@ -5256,15 +5257,7 @@ function qTeachApplyHit(hit) {
   const ka = (typeof qTeachActiveKey === 'function') ? qTeachActiveKey() : null;
   if (!ka) return;
   const cell = qTeachActive.cell;
-  /* v0.6.360／0.6.362／0.6.365：跨 key 獨佔；同一單一題唔同答可各自教；AND 組用完整 key */
-  if (typeof qTeachClaimOwner === 'function') {
-    const own = qTeachClaimOwner(hit.key, hit.ik);
-    if (own && own.key !== ka) {
-      const lab = own.label || (own.cell + '＝' + own.ans);
-      if (typeof toast === 'function') toast('已教過畀 ' + lab + '（要改請先清除嗰組教過）', 2600);
-      return;
-    }
-  }
+  /* v0.6.375：取消跨組獨佔鎖——同一格可畀唔同答各自教（例 F15|有→是、F15|冇→不適用）；唔再 toast 擋；唔使先清嗰組 */
   const list = (typeof qTeachToggleKey === 'function')
     ? qTeachToggleKey(ka, hit.key, hit.ik, hit.v)
     : qTeachToggle(cell, qTeachActive.ans, hit.key, hit.ik, hit.v);
