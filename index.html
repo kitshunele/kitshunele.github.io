@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.375';
+const APP_VERSION = '0.6.376';
+/* v0.6.376：冇→不適用疊剔可見——!applicable stub 併入已教 qTeachMap；apply 先清後寫；段 skip 無 NA 框仍畫子項不適用；保留 375 教解鎖 */
 /* v0.6.375：取消教對應硬鎖——已教過嘅格仍可再教（有→是／冇→不適用唔使先清組）；qTeachMap／ghost／全局 prefs 保留 */
 /* v0.6.374：① 一次過清晒全部教對應（qTeachPurgeV 0.6.374；唔留今日）② 修 ghost 暗淡標記（img decode 後再畫、paint 後寫入 snap）③ prefs.qTeachMap 全局——開新一座照帶；唔使上傳都 localStorage 記住 */
 /* v0.6.373：TaiWo add DTMO + Bus Terminus (FAX-K-616R half-yearly 2026-11-11) */
@@ -2677,19 +2678,24 @@ function qTeachWriteEntries(r, list) {
     a.v = e.v; a.by = 'default'; d.a[e.ik] = a;
   });
 }
-/* v0.6.356／0.6.365：將已教對應寫入／清走（單一答或 AND 組；改一格就重算所有相關 key） */
+/* v0.6.356／0.6.365：將已教對應寫入／清走（單一答或 AND 組；改一格就重算所有相關 key）
+   v0.6.376：先清晒再寫——避免 Object.keys 順序令「後組 clear」抹走「先組 write」
+   （例：F15|冇 教先、F15|有 教後 → 揀冇時寫 NA 再被有組 clear 甩，疊剔唔見） */
 function qTeachApplyToRec(r, cell, ans, prevAns) {
   if (!r || !cell) return;
   const map = qTeachMapGet();
+  const clears = [], writes = [];
   Object.keys(map).forEach(ka => {
     const parts = qTeachParseKey(ka);
     if (!parts.length || !parts.some(p => p.cell === cell)) return;
     const wasOn = (prevAns != null && prevAns !== '') ? qTeachPartsMatch(r, parts, cell, prevAns) : false;
     const nowOn = (ans != null && ans !== '') ? qTeachPartsMatch(r, parts, cell, ans) : false;
     const ents = qTeachBucket(map[ka]).items;
-    if (wasOn && !nowOn) qTeachClearEntries(r, ents);
-    if (nowOn) qTeachWriteEntries(r, ents);
+    if (wasOn && !nowOn) clears.push(ents);
+    if (nowOn) writes.push(ents);
   });
+  clears.forEach(ents => qTeachClearEntries(r, ents));
+  writes.forEach(ents => qTeachWriteEntries(r, ents));
 }
 /* 全表：所有已教 key 而家齊晒 → 套用（開紀錄／migrate 用） */
 function qTeachApplyAll(r) {
@@ -5989,6 +5995,43 @@ function fsdLivePaneScrollApplyKeep(keepPane, wantKeep) {
     fsdLivePickHoldRestore();
   }
 }
+
+/* v0.6.376：live 疊剔補教對應——閘＝冇 令 checklist !applicable 時 stub items 空，
+   而 paint markers 又因 matched&&!teachOn 跳過 → 冇→不適用「剔咗但剔唔見」。
+   把而家問答已齊嘅 qTeachMap 寫入 cExp.items／skipped_sections（唔改 Store）。 */
+function fsdLiveMergeTeach(cExp, r, key) {
+  if (!cExp || !r || !key) return cExp;
+  if (typeof qTeachMapGet !== 'function' || typeof qTeachParseKey !== 'function') return cExp;
+  const map = qTeachMapGet();
+  if (!map) return cExp;
+  const items = Object.assign({}, cExp.items || {});
+  const skipped = new Set(cExp.skipped_sections || []);
+  let filled = 0;
+  Object.keys(map).forEach(ka => {
+    const parts = qTeachParseKey(ka);
+    if (!parts.length) return;
+    if (typeof qTeachPartsMatch === 'function' && !qTeachPartsMatch(r, parts)) return;
+    const ents = (typeof qTeachBucket === 'function') ? qTeachBucket(map[ka]).items : [];
+    ents.forEach(e => {
+      if (!e || e.key !== key || !e.v) return;
+      const sid = (typeof qTeachParseSkipIk === 'function') ? qTeachParseSkipIk(e.ik) : null;
+      if (sid != null) {
+        skipped.add(String(sid));
+        filled++;
+        return;
+      }
+      const cur = items[e.ik];
+      if (cur && cur.result) return; /* 匯出／師傅已有實結果優先 */
+      const lab = (typeof FSD_V !== 'undefined' && FSD_V[e.v]) ? FSD_V[e.v] : (e.v === 'Y' ? '是' : e.v === 'N' ? '否' : e.v === 'NA' ? '不適用' : e.v === 'T' ? '✓' : null);
+      if (!lab) return;
+      items[e.ik] = Object.assign({}, cur || {}, { result: lab, set_by: 'default', section: (cur && cur.section) || '' });
+      filled++;
+    });
+  });
+  if (!filled) return cExp;
+  return Object.assign({}, cExp, { items: items, skipped_sections: Array.from(skipped) });
+}
+
 async function fsdLiveRefresh(r) {
   const box = $('#fsdLive'); if (!box) return;
   const key = box.dataset.fsdKey || ((typeof fsdLivePaneKey === 'function') ? fsdLivePaneKey(cur.step) : ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null));
@@ -6025,6 +6068,8 @@ async function fsdLiveRefresh(r) {
         header: { contractor_ref: (typeof FSD_REF_DEFAULT !== 'undefined') ? FSD_REF_DEFAULT : '' }
       };
     }
+    /* v0.6.376：閘＝冇／!applicable stub 亦疊已教剔（冇→不適用可見） */
+    if (cExp && typeof fsdLiveMergeTeach === 'function') cExp = fsdLiveMergeTeach(cExp, r, key);
     if (!cExp || !cExp.applicable) {
       fsdLiveRevoke();
       box.innerHTML = '<div class="halive-msg">呢份消防處核對表而家唔適用（睇下檢查類別／問卷）。</div>';
@@ -6718,7 +6763,11 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
     const m = tm.items[ik];
     const a = answers[ik];
     if (a && a.section_skipped) return; /* v0.6.339：跳過段子項唔剔 */
-    if (a && a.section && skipped.has(a.section)) return;
+    /* v0.6.376：段已 skip 但 tickmaps 無對應段 NA 框（例 fds §2）→ 仍畫子項結果（通常不適用），唔好空白 */
+    if (a && a.section && skipped.has(a.section)) {
+      const skBox = skipMap[a.section];
+      if (skBox && skBox.na) return;
+    }
     let r = (a && a.result) || '';
     if (wholeNa) r = '不適用';
     if (!r) return;
