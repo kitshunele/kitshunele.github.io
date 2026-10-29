@@ -632,8 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.391';
-/* v0.6.391：問答表一位置／覆蓋／備註／主板→年檢核對表相應格（修 live stub 缺 tables、跟頁去表一、cover/note 即時重畫）
+const APP_VERSION = '0.6.392';
+/* v0.6.392：表一數量 0→唔顯示；N→只填 a…N（‧1／‧2／‧4；FA／FDS PDF＋App T1）
+   v0.6.391：問答表一位置／覆蓋／備註／主板→年檢核對表相應格（修 live stub 缺 tables、跟頁去表一、cover/note 即時重畫）
    v0.6.390：表一全部問答→年檢核對表（‧1 FD_FACP_QTY／‧2 FD_REP∨FA_REPEATER+FD_REP_QTY／‧4 FD_BATT_QTY；PDF p6／p19 疊字）
    v0.6.389：FD_FACP_QTY → 火警鐘表一‧1（PDF 第六頁；同偵測共用）
    v0.6.388：F20／F21／F23 搬去 F15 下面（dep F15＝有），喺 FA_* 子項之後 */
@@ -3124,9 +3125,9 @@ function fsdTablesOut(r, c, d) { // 提交用：隱藏咗嘅來源記 NA（App �
   }
   return t;
 }
-/* v0.6.322／323／390 Fan：表一‧1／2／4 跟問卷數量開 N 行（字母 a…）；問卷下即時填位；3 無 Q 暫 1 行
+/* v0.6.322／323／390／392 Fan：表一‧1／2／4 跟問卷數量開 N 行（字母 a…）；0→唔顯示；未答暫 1；N→a…N
    元組：[組號, 名, qtyCell|null, ynGate|null|[…], 有主板欄]
-   ynGate＝字串或 OR 陣列（FD_REP∨FA_REPEATER）；任一＝有 → 開行；齊冇／未答 → 0 行；qty 未答／0 → 1 */
+   ynGate＝字串或 OR 陣列（FD_REP∨FA_REPEATER）；任一＝有 → 開行；齊冇／未答 → 0 行 */
 const FDS_T1_LETTERS = 'abcdefghij';
 const FDS_T1_MAX = 10;
 const FDS_T1 = [
@@ -3176,14 +3177,15 @@ function fdsT1GateLabel(ynGate) {
 }
 /* v0.6.320 Fan：表一 cover ← 基本 1 屋邨＋樓名（空先填；師傅改過唔蓋） */
 function fdsT1Place(r) { return [nameOf(r && r.estate), nameOf(r && r.block)].filter(Boolean).join('，'); }
+/* v0.6.392：數量 0 → 0 行（唔顯示）；未答 → 暫 1；N≥1 → a… 開 N 行（上限 FDS_T1_MAX／紙本格） */
 function fdsT1N(r, g, qtyCell, ynGate) {
   if (FDS_T1_DEF_SKIP[g]) return 0;
   if (ynGate && !fdsT1YnHas(r, ynGate)) return 0;
   if (!qtyCell) return 1;
   const raw = (r.q || {})[qtyCell];
-  if (!has(raw)) return 1;
+  if (!has(raw)) return 1; /* 未答暫 1 行 */
   const n = Number(raw);
-  if (Number.isNaN(n) || n < 1) return 1;
+  if (Number.isNaN(n) || n < 1) return 0; /* 明確 0 → 唔顯示 */
   return Math.min(FDS_T1_MAX, Math.floor(n));
 }
 function fdsT1Sync(r) {
@@ -3439,17 +3441,21 @@ function fsdTableHtml(r, c, s) {
     /* v0.6.322：1／2／4 跟問卷數量開 N 行；2 跟 FD_REP＝冇 → 不適用；3 def_skip */
     const panels = FDS_T1.map(([g, l, qtyCell, ynGate, main]) => {
       if (FDS_T1_DEF_SKIP[g]) return `<div class="sub"><h4>${g}. ${esc(l)}</h4><div class="skipnote">預設不適用（同 §1.c／附錄 II 模擬面板）</div></div>`;
-      /* v0.6.363／390：問卷＝冇／未答都仍顯示左欄（最少 1 行）可填；‧2 gate＝FD_REP∨FA_REPEATER */
+      /* v0.6.392：數量 0 → 唔顯示行；未答暫 1；N→a…N 行；‧2 gate＝FD_REP∨FA_REPEATER */
       const ynNo = fdsT1YnNo(r, ynGate);
       const ynPend = fdsT1YnPend(r, ynGate);
-      const n = Math.max(1, fdsT1N(r, g, qtyCell, ynGate) || (ynNo || ynPend ? 1 : 0));
+      const nRaw = fdsT1N(r, g, qtyCell, ynGate);
+      const qtyZero = !!(qtyCell && has((r.q || {})[qtyCell]) && Number(r.q[qtyCell]) < 1);
+      const n = qtyZero ? 0 : (nRaw || ((ynNo || ynPend) ? 1 : 0));
       const gLab = fdsT1GateLabel(ynGate);
-      const gateNote = ynNo ? `<div class="skipnote">問卷 ${esc(gLab)}＝冇 → 匯出不適用；左欄仍可填。</div>`
+      const gateNote = qtyZero ? `<div class="skipnote">問卷數量＝0 → 唔顯示（PDF 表一呢組留空）。</div>`
+        : ynNo ? `<div class="skipnote">問卷 ${esc(gLab)}＝冇 → 匯出不適用；左欄仍可填。</div>`
         : ynPend ? `<div class="skipnote">問卷未答「panel 有冇 repeater／有冇repeater？」→ 答咗先跟數量；左欄暫可填。</div>` : '';
-      const qHint = qtyCell && has((r.q || {})[qtyCell]) ? `（問卷＝${esc(String(r.q[qtyCell]))}）` : (qtyCell ? '（問卷未答數量 → 暫 1 行）' : '');
+      const qHint = qtyZero ? '（問卷＝0 → 唔顯示）'
+        : (qtyCell && has((r.q || {})[qtyCell]) ? `（問卷＝${esc(String(r.q[qtyCell]))} → ${n} 行 a…）` : (qtyCell ? '（問卷未答數量 → 暫 1 行）' : ''));
       return `<div class="sub"><h4>${g}. ${esc(l)}${qHint}</h4>${gateNote}
-        ${n > 1 ? `<div class="mut" style="margin-bottom:6px">共 ${n} 行；改問卷數量加／減（減唔刪已填；再加返會見返）。</div>` : ''}
-        ${Array.from({ length: n }, (_, j) => {
+        ${n > 1 ? `<div class="mut" style="margin-bottom:6px">共 ${n} 行（a–${FDS_T1_LETTERS[n - 1]}）；改問卷數量加／減（減唔刪已填；再加返會見返）。</div>` : ''}
+        ${n < 1 ? '' : Array.from({ length: n }, (_, j) => {
           const lettr = FDS_T1_LETTERS[j], id = g + '.' + lettr, x = f[id] || {}, rb = `${bb}.fds.${g}~${lettr}`;
           return `<div class="frow"><b>${lettr}.</b>${txtField(rb + '.loc', x.loc, '位置', '')}${txtField(rb + '.cover', x.cover, '消防裝置及設備覆蓋的建築物／處所', '')}${txtField(rb + '.note', x.note, '備註', '')}
         ${main ? `<div class="fld"><label>用作主板</label>${seg(rb + '.main', x.main, [['是', '是', 'yes'], ['否', '否', 'no']], `ft-${c.key}-${g}-${lettr}-main`)}</div>` : ''}</div>`;
@@ -6295,11 +6301,28 @@ const fsdPdfNeed = a => !!(a && !a.auto && !(a.result === '不適用' && a.set_b
 const fsdPdfQAns = (o, cell) => { const x = (o.questionnaire || {})[cell]; return x && typeof x === 'object' ? x.a : x; };
 function fsdPdfTablesFlat(tables, o) {
   const tb = [];
-  /* v0.6.390：‧2 不適用除非 FD_REP＝有 或 FA_REPEATER＝有（火警鐘／偵測 OR） */
+  /* v0.6.390／392：‧2 要 FD_REP∨FA_REPEATER＝有；數量 0 組唔列；只列 a…N（跟 qty） */
+  const t1QtyN = g => {
+    const cell = ({ '1': 'FD_FACP_QTY', '2': 'FD_REP_QTY', '4': 'FD_BATT_QTY' })[g];
+    if (!cell) return null;
+    const raw = fsdPdfQAns(o, cell);
+    if (raw == null || raw === '') return null; /* 未答：照舊資料列 */
+    const n = Number(raw);
+    if (Number.isNaN(n) || n < 1) return 0;
+    return Math.min(10, Math.floor(n));
+  };
   const skipFds = k => {
-    const g = String(k).split('.')[0];
+    const parts = String(k).split('.');
+    const g = parts[0];
+    const lettr = parts[1] || '';
     if (g === '3') return true;
     if (g === '2' && fsdPdfQAns(o, 'FD_REP') !== '有' && fsdPdfQAns(o, 'FA_REPEATER') !== '有') return true;
+    const n = t1QtyN(g);
+    if (n === 0) return true;
+    if (n != null && lettr) {
+      const idx = 'abcdefghij'.indexOf(lettr);
+      if (idx >= n) return true;
+    }
     return false;
   };
   (function fl(v, pre, inFds) {
@@ -6859,8 +6882,8 @@ function fsdOvSkipMap(key, tm) {
   if (c) walk(c.sections);
   return out;
 }
-/* v0.6.390／391 Fan：表一（FA PDF 第六頁／FDS 第 19 頁）← 問卷數量下位置／覆蓋／備註／主板／App T1 同一份 fsd.tables.fds
-   欄：位置／覆蓋／備註／用作主板；行數跟 qty（紙本固定 a–e／a–b／a／a–e，多出嘅唔疊呢頁） */
+/* v0.6.390／391／392 Fan：表一←問卷；0→唔疊；N→只疊 a…N（紙本 a–e／a–b／a／a–e 封頂）
+   欄：位置／覆蓋／備註／用作主板 */
 const FSD_T1_OV = {
   page: { fa: 5, fds: 18 },
   addr: { x: 210, y: 96, maxW: 400 },
@@ -6911,14 +6934,30 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
   put(bldg, FSD_T1_OV.bldg.x, FSD_T1_OV.bldg.y, FSD_T1_OV.bldg.maxW);
   const cols = FSD_T1_OV.cols, base = FSD_T1_OV.base, maxL = FSD_T1_OV.maxLetter;
   const letters = 'abcdefghij';
-  const qHasRep = () => {
-    const qa = (cell) => { const x = (o && o.questionnaire || {})[cell]; return x && typeof x === 'object' ? x.a : x; };
-    return qa('FD_REP') === '有' || qa('FA_REPEATER') === '有';
+  const qa = (cell) => { const x = (o && o.questionnaire || {})[cell]; return x && typeof x === 'object' ? x.a : x; };
+  const qHasRep = () => qa('FD_REP') === '有' || qa('FA_REPEATER') === '有';
+  /* v0.6.392：數量 0 → 唔疊；N → 只疊 a…第 N 格（紙本 maxLetter 封頂） */
+  const t1N = g => {
+    const cell = ({ '1': 'FD_FACP_QTY', '2': 'FD_REP_QTY', '4': 'FD_BATT_QTY' })[g];
+    if (!cell) return null;
+    const raw = qa(cell);
+    if (raw == null || raw === '') return null;
+    const n = Number(raw);
+    if (Number.isNaN(n) || n < 1) return 0;
+    const cap = (maxL && maxL[g]) || 10;
+    return Math.min(cap, Math.floor(n));
   };
   Object.keys(base).forEach(id => {
     const g = id.split('.')[0];
+    const lettr = id.split('.')[1] || '';
     if (g === '2' && !qHasRep()) return;
     if (g === '3') return; /* 無問卷對應；唔自動疊空行 */
+    const n = t1N(g);
+    if (n === 0) return; /* 數量 0 → 留空 */
+    if (n != null) {
+      const idx = letters.indexOf(lettr);
+      if (idx < 0 || idx >= n) return; /* 只填 a…N */
+    }
     const x = f[id];
     if (!x || typeof x !== 'object') return;
     const y = base[id];
@@ -6930,8 +6969,6 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
       if (box) fsdDrawTickOv(ctx, { x: box.x, y: y - 3, s: box.s }, scale, key + ':t1:' + id + ':main');
     }
   });
-  /* 超量行：紙本固定格數；多出嘅唔疊呢頁（備註：如有需要請另行加頁） */
-  void maxL; void letters;
 }
 
 async function xFsdOverlayPages(key, cExp, o, sink) {
