@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.387';
+const APP_VERSION = '0.6.388';
+/* v0.6.388：F20／F21／F23 搬去 F15 下面（dep F15＝有），喺 FA_* 子項之後 */
 /* v0.6.387：FA overlay 日期／註冊承辦商編號手寫；xHwText wob 令字唔平整打橫 */
 /* v0.6.386：FA overlay 地址樓名上移對齊橫線（y 148→136）＋ ChenYuluoyan 手寫 */
 /* v0.6.385：FA AIII 模擬面板 tickmap 錨去 bi12（唔再食附錄II）；AII→bi11 */
