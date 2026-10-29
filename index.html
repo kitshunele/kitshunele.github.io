@@ -632,8 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.390';
-/* v0.6.390：表一全部問答→年檢核對表（‧1 FD_FACP_QTY／‧2 FD_REP∨FA_REPEATER+FD_REP_QTY／‧4 FD_BATT_QTY；PDF p6／p19 疊字）
+const APP_VERSION = '0.6.391';
+/* v0.6.391：問答表一位置／覆蓋／備註／主板→年檢核對表相應格（修 live stub 缺 tables、跟頁去表一、cover/note 即時重畫）
+   v0.6.390：表一全部問答→年檢核對表（‧1 FD_FACP_QTY／‧2 FD_REP∨FA_REPEATER+FD_REP_QTY／‧4 FD_BATT_QTY；PDF p6／p19 疊字）
    v0.6.389：FD_FACP_QTY → 火警鐘表一‧1（PDF 第六頁；同偵測共用）
    v0.6.388：F20／F21／F23 搬去 F15 下面（dep F15＝有），喺 FA_* 子項之後 */
 /* v0.6.387：FA overlay 日期／註冊承辦商編號手寫；xHwText wob 令字唔平整打橫 */
@@ -2177,7 +2178,8 @@ function stepQ(r) {
     }
     const ik = tg && tg.ik ? ` data-live-ik="${esc(tg.ik)}"` : '';
     const sec = tg && tg.sec != null && tg.sec !== '' ? ` data-live-sec="${esc(tg.sec)}"` : '';
-    return ` data-live-qcell="${esc(cell)}" data-live-key="${esc(key)}"${ik}${sec}`;
+    const pi = tg && tg.pi != null && tg.pi !== '' ? ` data-live-pi="${esc(String(tg.pi))}"` : '';
+    return ` data-live-qcell="${esc(cell)}" data-live-key="${esc(key)}"${ik}${sec}${pi}`;
   };
   return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺頂欄「CL-A」。下半（電話）／右欄即時 PDF＝消防處年檢核對表原 blank（預設跟問卷；右欄可揀偵測／火警鐘／栓轆／水缸／供水道／花灑，或撳「跟問卷」恢復自動）。撳題目會跟頁／切換系統。<b>撳住題目</b>或左嘅 <b>≡</b> 可拉上拉下調次序（鬆手自動儲存）。</div>` + QS.map(s => {
     const items = qSortItems(s.items.filter(it => qVisible(r, it, s))), OM = optMap(r);
@@ -2767,6 +2769,9 @@ const qSkipLabel = s => {
 };
 /* v0.6.350：問卷 live PDF——閘／題目 → 消防處 blank key（唔用自畫紙本主路徑） */
 const FSD_GATE_KEY = { F9: 'fds', F15: 'fa', F6: 'fhhr', F24: 'tank', M6: 'ws', AA6: 'spr' };
+/* v0.6.391：表一問答格 → 年檢核對表表一頁（FA p6＝idx5／FDS p19＝idx18）；位置／覆蓋／備註／主板同店 */
+const FDS_T1_Q_CELLS = { FD_FACP_QTY: '1', FD_REP_QTY: '2', FD_REP: '2', FA_REPEATER: '2', FD_BATT_QTY: '4' };
+const FDS_T1_LIVE_PI = { fa: 5, fds: 18 };
 const FSD_Q_LIVE_ORDER = ['fds', 'fa', 'fhhr', 'tank', 'ws']; /* 預設優先 blank；spr 有閘再考慮 */
 function fsdKeyFromChipShort(sh) {
   const want = String(sh || '');
@@ -2781,6 +2786,14 @@ function qLiveIkClean(k) {
 }
 function qLiveTargetOf(cell) {
   if (!cell) return null;
+  /* v0.6.391：FACP／覆示／電池數量同閘 → 跟表一頁；優先火警鐘年檢（F15＝有）否則偵測（F9＝有） */
+  if (FDS_T1_Q_CELLS[cell]) {
+    let r = null;
+    try { r = (typeof Store !== 'undefined' && typeof cur !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null; } catch (e) {}
+    const q = (r && r.q) || {};
+    const key = (q.F15 === '有') ? 'fa' : ((q.F9 === '有') ? 'fds' : 'fa');
+    return { key, ik: null, sec: null, pi: FDS_T1_LIVE_PI[key] };
+  }
   const gateKey = FSD_GATE_KEY[cell];
   if (gateKey) {
     if (gateKey === 'spr') return { key: 'spr', ik: null, sec: null };
@@ -3081,10 +3094,13 @@ const SPR_SRC = [['jockey', '穩壓泵', 0], ['pump1', '花灑泵編號：', 3, 
 const sprSrc = r => noSprTank(r) ? SPR_SRC.filter(([k]) => !NOTANK_SRC.includes(k)) : SPR_SRC; // 冇花灑水缸 → 表二唔顯示花灑泵／中途泵
 function fsdTablesOut(r, c, d) { // 提交用：隱藏咗嘅來源記 NA（App 入面舊數保留，改返「有」會見返）
   const t = JSON.parse(JSON.stringify(d.t || {}));
-  /* v0.6.389：火警鐘表一跟偵測共用 fsd.fds.t.fds → 匯出抄入 fa.tables.fds */
+  /* v0.6.389／391：火警鐘表一跟偵測共用 fsd.fds.t.fds → 匯出必抄入 fa.tables.fds（空都抄，免舊數） */
   if (c.key === 'fa') {
+    if (typeof fdsT1Sync === 'function') fdsT1Sync(r);
     const shared = ((fsdRec(r, 'fds').t || {}).fds) || {};
-    if (Object.keys(shared).length) t.fds = JSON.parse(JSON.stringify(shared));
+    t.fds = JSON.parse(JSON.stringify(shared));
+  } else if (c.key === 'fds') {
+    if (typeof fdsT1Sync === 'function') fdsT1Sync(r);
   }
   if (c.key === 'spr') {
     /* v0.6.145：表一多系統 → tables.systems[]；同時鏡射 systems[0]→valves/totals 畀舊 importer */
@@ -3123,6 +3139,15 @@ const FDS_T1 = [
 const FDS_T1_DEF_SKIP = {};
 /* v0.6.389：偵測＋火警鐘表一共用 fsd.fds.t.fds（問卷／兩邊同一份） */
 function fdsT1Store(r) { const d = fsdRec(r, 'fds'); return (d.t.fds || (d.t.fds = {})); }
+/* v0.6.391：live／stub／export 都將問卷下位置／覆蓋／備註／主板寫入 cExp.tables.fds（FA／FDS 表一疊字同一份） */
+function fsdT1EnsureTables(cExp, r, key) {
+  if (!cExp || (key !== 'fa' && key !== 'fds') || !r) return cExp;
+  if (typeof fdsT1Sync === 'function') fdsT1Sync(r);
+  const shared = fdsT1Store(r);
+  const tables = Object.assign({}, cExp.tables || {});
+  tables.fds = JSON.parse(JSON.stringify(shared || {}));
+  return Object.assign({}, cExp, { tables: tables });
+}
 /* v0.6.390：ynGate 字串或 OR 陣列（偵測 FD_REP ∨ 火警鐘 FA_REPEATER） */
 function fdsT1GateList(ynGate) {
   if (!ynGate) return [];
@@ -5680,15 +5705,20 @@ function fsdLiveFollowResolve(el) {
   const qcell = node.getAttribute('data-live-qcell');
   if (qcell) fsdLiveQCell = qcell;
   let key = node.getAttribute('data-live-key') || fsdLiveFollowKey;
+  let tg = null;
   if (qcell && typeof qLiveTargetOf === 'function') {
-    const tg = qLiveTargetOf(qcell);
+    tg = qLiveTargetOf(qcell);
     if (tg && tg.key) key = tg.key;
   }
   const maps = fsdLiveFollowMapsOf(key) || fsdLiveFollowMaps;
-  const ik = node.getAttribute('data-live-ik') || (qcell && typeof qLiveTargetOf === 'function' && (qLiveTargetOf(qcell) || {}).ik) || null;
-  const sec = node.getAttribute('data-live-sec') || (qcell && typeof qLiveTargetOf === 'function' && (qLiveTargetOf(qcell) || {}).sec) || null;
+  const ik = node.getAttribute('data-live-ik') || (tg && tg.ik) || null;
+  const sec = node.getAttribute('data-live-sec') || (tg && tg.sec) || null;
   let pi = null;
-  if (maps) {
+  /* v0.6.391：表一問答（位置等）跟 PDF 表一頁 */
+  const livePi = node.getAttribute('data-live-pi');
+  if (livePi != null && livePi !== '' && Number.isFinite(Number(livePi))) pi = Number(livePi) | 0;
+  else if (tg && tg.pi != null && Number.isFinite(Number(tg.pi))) pi = Number(tg.pi) | 0;
+  if (pi == null && maps) {
     if (ik && maps.byIk && maps.byIk[ik] != null) pi = maps.byIk[ik] | 0;
     else if (sec && maps.bySec && maps.bySec[sec] != null) pi = maps.bySec[sec] | 0;
   }
@@ -6130,11 +6160,14 @@ async function fsdLiveRefresh(r) {
         whole_na: false,
         items: {},
         skipped_sections: [],
+        tables: {},
         header: { contractor_ref: (typeof FSD_REF_DEFAULT !== 'undefined') ? FSD_REF_DEFAULT : '' }
       };
     }
     /* v0.6.376：閘＝冇／!applicable stub 亦疊已教剔（冇→不適用可見） */
     if (cExp && typeof fsdLiveMergeTeach === 'function') cExp = fsdLiveMergeTeach(cExp, r, key);
+    /* v0.6.391：問卷位置／覆蓋／備註／主板 → 必寫入 tables.fds（stub／適用都抄；FA p6／FDS p19 疊字） */
+    if (cExp && typeof fsdT1EnsureTables === 'function') cExp = fsdT1EnsureTables(cExp, r, key);
     if (!cExp || !cExp.applicable) {
       fsdLiveRevoke();
       box.innerHTML = '<div class="halive-msg">呢份消防處核對表而家唔適用（睇下檢查類別／問卷）。</div>';
@@ -6826,7 +6859,7 @@ function fsdOvSkipMap(key, tm) {
   if (c) walk(c.sections);
   return out;
 }
-/* v0.6.390 Fan：表一（FA PDF 第六頁／FDS 第 19 頁）← 問卷數量下填位／App T1 同一份 fsd.tables.fds
+/* v0.6.390／391 Fan：表一（FA PDF 第六頁／FDS 第 19 頁）← 問卷數量下位置／覆蓋／備註／主板／App T1 同一份 fsd.tables.fds
    欄：位置／覆蓋／備註／用作主板；行數跟 qty（紙本固定 a–e／a–b／a／a–e，多出嘅唔疊呢頁） */
 const FSD_T1_OV = {
   page: { fa: 5, fds: 18 },
@@ -15793,7 +15826,8 @@ document.addEventListener('change', e => {
   if (el.dataset.floor) { const w = normFloor(el.value); if (w !== el.value) { el.value = w; setP(r, el.dataset.bind, w); if (typeof sprCoverFloorsLink === 'function') sprCoverFloorsLink(r, el.dataset.bind, w); Store.touch(r); } floorHint(el); } // 樓層：離開欄位即補 /F
   if (el.classList.contains('miss') && String(el.value).trim()) el.classList.remove('miss'); // 已填 → 即時除紅
   const b = el.dataset.bind;
-  if (b === 'date' || b.startsWith('block.') || b.startsWith('estate.') || /^q\.(T9|SPR_MULTI_SYS|FD_FACP_QTY|FD_REP_QTY|FD_BATT_QTY)$/.test(b) || /\.loc$/.test(b)) { Store.flush(); render(); }
+  /* v0.6.391：表一位置／覆蓋／備註都即時重畫（唔淨係 .loc）→ 年檢核對表疊字跟住變 */
+  if (b === 'date' || b.startsWith('block.') || b.startsWith('estate.') || /^q\.(T9|SPR_MULTI_SYS|FD_FACP_QTY|FD_REP_QTY|FD_BATT_QTY)$/.test(b) || /\.loc$/.test(b) || /^fsd\.fds\.t\.fds\./.test(b)) { Store.flush(); render(); }
 });
 document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.floor) floorHint(e.target); });
 let lastIR = null; // v0.4.3：快速 >N 掣填返啱啱撳過嘅絕緣電阻格
