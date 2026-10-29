@@ -632,8 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.382';
-/* v0.6.382：FA A1.1.l「是否不適用」可撳——blank p7 lone-NA 誤當段 skip，promote 做 ynn（synth Y/N）並順手執返 A1.2／A1.3 行對齊
+const APP_VERSION = '0.6.383';
+/* v0.6.383：F15 下「有冇火警訊號交其他panel」（FA_OTHER_PANEL）移到 FA_PANEL_ISO_DIAG 之後；label 無空格
+   v0.6.382：FA A1.1.l「是否不適用」可撳——blank p7 lone-NA 誤當段 skip，promote 做 ynn（synth Y/N）並順手執返 A1.2／A1.3 行對齊
    v0.6.381：F15 下加 FA_PANEL_ISO_DIAG「panel隔離有冇圖」（有／冇；dep F15＝有；未硬編碼 FSD map）
    v0.6.380：一般系統 F15（有冇警鐘㩒手）下加 FA_EX「有冇用防爆線」（有／冇；dep F15＝有；未硬編碼 FSD map）
    v0.6.379：每填／每改即上雲（≤200ms）含教對應＋問答次序 qOrder；修 pull 中途教被覆蓋；積極拉
