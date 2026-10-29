@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.385';
+const APP_VERSION = '0.6.386';
+/* v0.6.386：FA overlay 地址樓名上移對齊橫線（y 148→136）＋ ChenYuluoyan 手寫 */
 /* v0.6.385：FA AIII 模擬面板 tickmap 錨去 bi12（唔再食附錄II）；AII→bi11 */
 /* v0.6.384：F15 下加 FA_CUT_LIFT_VAC「有冇cut𨋢cut vac及門鎖等等」（yn；dep F15有；喺 FA_OTHER_PANEL 後） */
 /* v0.6.383：F15 下「有冇火警訊號交其他panel」（FA_OTHER_PANEL）移到 FA_PANEL_ISO_DIAG 之後；label 無空格
@@ -6713,7 +6714,8 @@ function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
   ctx.restore();
 }
 function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
-  /* best-effort 頭欄（掃瞄紙無 AcroForm；約位跟 OCR） */
+  /* best-effort 頭欄（掃瞄紙無 AcroForm；約位跟 OCR）
+     v0.6.386：FA「建築物／處所地址」baseline 上移對齊第一條橫線上面；樓名用手寫字型 ChenYuluoyan／ReenieBeanie */
   const est = o.estate || {}, blk = o.block || {};
   const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '';
   const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
@@ -6725,11 +6727,19 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   ctx.font = `${sz}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
   ctx.textBaseline = 'alphabetic';
   const put = (t, xPt, yPt) => { if (!t) return; ctx.fillText(String(t), xPt * scale, yPt * scale); };
+  const putHw = (t, xPt, yPt, maxWpt) => {
+    if (!t) return;
+    if (typeof XHW_OK !== 'undefined' && XHW_OK) {
+      xHwText(ctx, String(t), xPt * scale, yPt * scale, sz * 1.08, xHwSeed('hdr:' + key + ':' + xPt + ':' + yPt), (maxWpt || 400) * scale);
+    } else put(t, xPt, yPt);
+  };
   if (key === 'fds' || key === 'fa' || key === 'fhhr' || key === 'tank') {
+    /* FA 地址第一橫線 ≈140.5pt；FS251／日期用 baseline = 線 −4.5 → 地址用 136 */
+    const addrY = key === 'fa' ? 136 : 148;
     put(href, 455, 74);
     put(fs251, 130, 100);
     put(dateStr, 150, 118);
-    put(addr, 125, 148);
+    putHw(addr, 125, addrY, 430);
   }
   ctx.restore();
 }
