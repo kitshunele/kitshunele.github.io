@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.386';
+const APP_VERSION = '0.6.387';
+/* v0.6.387：FA overlay 日期／註冊承辦商編號手寫；xHwText wob 令字唔平整打橫 */
 /* v0.6.386：FA overlay 地址樓名上移對齊橫線（y 148→136）＋ ChenYuluoyan 手寫 */
 /* v0.6.385：FA AIII 模擬面板 tickmap 錨去 bi12（唔再食附錄II）；AII→bi11 */
 /* v0.6.384：F15 下加 FA_CUT_LIFT_VAC「有冇cut𨋢cut vac及門鎖等等」（yn；dep F15有；喺 FA_OTHER_PANEL 後） */
@@ -4191,18 +4192,24 @@ function xHwTick(ctx, R, seed) {
   if (rnd() < 0.6) { ctx.lineWidth = Math.max(0.45, wd * 0.55); ctx.beginPath(); ctx.moveTo(V[0], V[1]); ctx.quadraticCurveTo(c2[0], c2[1], E[0] + (rnd() - 0.5) * 0.8 * fit, E[1] + (rnd() - 0.5) * 0.8 * fit); ctx.stroke(); }
   ctx.restore();
 }
-function xHwText(ctx, text, x0, y0, size, seed, maxW) {
-  const rnd = xHwRng(seed), slant = Math.tan((7 + rnd() * 6) * Math.PI / 180), drift = 0.03 + rnd() * 0.04;
-  let cx = x0;
+function xHwText(ctx, text, x0, y0, size, seed, maxW, wob) {
+  /* wob（預設 1）：放大每字 dy／旋轉／橫向抖；頭欄用 ~1.85 令「唔平整打橫」更明顯 */
+  const wobK = (wob == null || wob <= 0) ? 1 : wob;
+  const rnd = xHwRng(seed), slant = Math.tan((7 + rnd() * 6) * Math.PI / 180), drift = (0.03 + rnd() * 0.04) * wobK;
+  let cx = x0, iCh = 0;
   for (const ch of String(text)) {
     if (ch === ' ') { cx += size * (0.25 + rnd() * 0.2); continue; }
     const cjk = XCJK.test(ch), fn = cjk ? XF_HW_CJK : XF_HW_LAT, s0 = cjk ? size * 1.12 : size * 1.55;
-    const s = s0 * (0.86 + rnd() * 0.28), dy = (rnd() - 0.6) * size / 9 - (cx - x0) * drift;
-    const rot = ((rnd() - 0.5) * 16 * (cjk ? 1 : 0.7) - drift * 40) * Math.PI / 180;
-    ctx.save(); ctx.translate(cx + (rnd() - 0.5) * 0.6, y0 + dy); ctx.transform(1, 0, -slant, 1, 0, 0); ctx.rotate(rot);
+    const s = s0 * (0.86 + rnd() * 0.28);
+    /* 隨機 dy ＋ 慢波 baseline（唔成直線） */
+    const wave = Math.sin(iCh * (0.55 + rnd() * 0.25) + seed * 1e-9) * size * 0.11 * wobK;
+    const dy = (rnd() - 0.55) * size / (9 / wobK) - (cx - x0) * drift + wave;
+    const rot = ((rnd() - 0.5) * 16 * wobK * (cjk ? 1 : 0.75) - drift * 40) * Math.PI / 180;
+    ctx.save(); ctx.translate(cx + (rnd() - 0.5) * 0.6 * wobK, y0 + dy); ctx.transform(1, 0, -slant, 1, 0, 0); ctx.rotate(rot);
     ctx.font = s + 'px "' + fn + '"'; ctx.fillStyle = xHwInk(rnd); ctx.textBaseline = 'alphabetic'; ctx.fillText(ch, 0, 0);
     const adv = ctx.measureText(ch).width; ctx.restore();
     cx += adv * (cjk ? (0.9 + rnd() * 0.12) : (0.82 + rnd() * 0.15)) + (cjk ? size * 0.05 : 0);
+    iCh++;
     if (maxW && cx - x0 > maxW) break;
   }
   return cx;
@@ -6715,7 +6722,7 @@ function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
 }
 function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   /* best-effort 頭欄（掃瞄紙無 AcroForm；約位跟 OCR）
-     v0.6.386：FA「建築物／處所地址」baseline 上移對齊第一條橫線上面；樓名用手寫字型 ChenYuluoyan／ReenieBeanie */
+     v0.6.386：FA 地址 y 上移＋手寫；v0.6.387：日期／註冊承辦商編號都手寫，wob~1.85 令字唔平整打橫 */
   const est = o.estate || {}, blk = o.block || {};
   const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '';
   const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
@@ -6730,15 +6737,15 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   const putHw = (t, xPt, yPt, maxWpt) => {
     if (!t) return;
     if (typeof XHW_OK !== 'undefined' && XHW_OK) {
-      xHwText(ctx, String(t), xPt * scale, yPt * scale, sz * 1.08, xHwSeed('hdr:' + key + ':' + xPt + ':' + yPt), (maxWpt || 400) * scale);
+      xHwText(ctx, String(t), xPt * scale, yPt * scale, sz * 1.08, xHwSeed('hdr:' + key + ':' + xPt + ':' + yPt), (maxWpt || 400) * scale, 1.85);
     } else put(t, xPt, yPt);
   };
   if (key === 'fds' || key === 'fa' || key === 'fhhr' || key === 'tank') {
     /* FA 地址第一橫線 ≈140.5pt；FS251／日期用 baseline = 線 −4.5 → 地址用 136 */
     const addrY = key === 'fa' ? 136 : 148;
-    put(href, 455, 74);
+    putHw(href, 455, 74, 120);
     put(fs251, 130, 100);
-    put(dateStr, 150, 118);
+    putHw(dateStr, 150, 118, 200);
     putHw(addr, 125, addrY, 430);
   }
   ctx.restore();
