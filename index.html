@@ -632,8 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.395';
-/* v0.6.395：F22 Lift Homing 搬 F15 下（dep F15＝有）；F15＝有 → 開 TR-C2（唔使 T6／C1） */
+const APP_VERSION = '0.6.396';
+/* v0.6.396：撤回 F15→開 TR-C2；保留 F22 跟 F15 顯示（dep F15＝有）。TR-C2 只跟 T6／C1 */
 /* v0.6.394：T8→e3 未填＝NA；F21→g／F22→e4／F23→e2：有＝✓、冇＝NA、未答空白 */
 /* v0.6.393：硬碼問卷→房署 CL-E（唔恢復 0.6.359 取消嘅全部 na_unless）
    F23→e2、T8→e3：有＝✓、冇＝NA；未答空白。其餘左表仍空白直至師傅揀。 */
@@ -1123,8 +1123,6 @@ function c2RowsSpr(r) {
   return rows;
 }
 const isC2 = k => k === 'TR-C2' || k === 'TR-C2U' || k === 'TR-C2S';
-/* v0.6.395：TR-C2 消防泵讀數 — C1（T6）有，或者 F15 警鐘㩒手＝有（CL-E n 環路阻抗／警報線路） */
-const trC2Open = r => formVisible(r, 'C1') || isYes(r, 'F15');
 const C2_ZH = { 'TR-C2': 'TR-C2 消防泵', 'TR-C2U': 'TR-C2 上水泵', 'TR-C2S': 'TR-C2 花灑泵' };
 const c2Set = k => k === 'TR-C2U' ? c2RowsUp : k === 'TR-C2S' ? c2RowsSpr : c2Rows;
 const isB0 = key => key === 'B_outgoing' || key === 'U_outgoing' || key === 'S_outgoing'; // Part B 出線：L-N／L-E／N-E 三格；其餘只 L-E
@@ -1206,8 +1204,7 @@ function h2Need(r) { let done = 0, total = 0; const M = optMap(r); (r.h2.zones |
 function stepList(r) {
   const L = [{ k: 'basic', t: '基本' }, { k: 'q', t: '問卷' }, { k: 'CL-A', t: 'CL-A' }]; /* v0.6.239：問卷隔離獨立 CL-A tab */
   if (formVisible(r, 'C1U')) L.push({ k: 'C1U', t: 'C1 上水泵' }, { k: 'TR-C2U', t: 'TR-C2 上水泵' });
-  if (formVisible(r, 'C1')) L.push({ k: 'C1', t: 'C1 消防泵' });
-  if (trC2Open(r)) L.push({ k: 'TR-C2', t: 'TR-C2 消防泵' }); /* v0.6.395：F15＝有亦開 */
+  if (formVisible(r, 'C1')) L.push({ k: 'C1', t: 'C1 消防泵' }, { k: 'TR-C2', t: 'TR-C2 消防泵' });
   if (formVisible(r, 'C1S')) L.push({ k: 'C1S', t: 'C1 花灑泵' }, { k: 'TR-C2S', t: 'TR-C2 花灑泵' }); // v0.5.0 年檢
   if (formVisible(r, 'BU')) L.push({ k: 'BU', t: 'B 上水泵' });   // v0.4.8 半年檢
   if (formVisible(r, 'B')) L.push({ k: 'B', t: 'B 消防泵' });
@@ -2354,7 +2351,7 @@ function issues(r) {
   const pq = prog(r, 'q'); if (pq.done < pq.total) warn.push([`問卷仲有 ${pq.total - pq.done} 條未答`, 'q']);
   if (formVisible(r, 'C1U')) { const p = prog(r, 'TR-C2U'); if (p.done < p.total) warn.push([`TR-C2 上水泵：${p.total - p.done} 行讀數未齊`, 'TR-C2U']); }
   if (formVisible(r, 'C1S')) { const p = prog(r, 'TR-C2S'); if (p.done < p.total) warn.push([`TR-C2 花灑泵：${p.total - p.done} 行讀數未齊`, 'TR-C2S']); }
-  if (trC2Open(r)) { const p = prog(r, 'TR-C2'); if (p.done < p.total) warn.push([`TR-C2 消防泵：${p.total - p.done} 行讀數未齊`, 'TR-C2']); } /* v0.6.395：F15 亦開 */
+  if (formVisible(r, 'C1')) { const p = prog(r, 'TR-C2'); if (p.done < p.total) warn.push([`TR-C2 消防泵：${p.total - p.done} 行讀數未齊`, 'TR-C2']); }
   FSD.forEach(c => { if (!fsdVisible(r, c)) return; const k = 'FSD-' + c.key, m = fsdMissing(r, c.key), p = fsdProg(r, c.key);
     m.filter(x => /否 未寫備註/.test(x.code)).forEach(x => err.push([`${c.title} ${x.code.replace('（否 未寫備註）', '')}：揀咗「否」但未寫備註`, k]));
     const rest = m.length - p.err; if (rest > 0) warn.push([`${c.title}（${c.version}）：仲有 ${rest} 項未填`, k]); });
@@ -15371,7 +15368,7 @@ async function buildExport(r, when) {
   if (FORMS['CL-A']) forms['CL-A'] = { applicable: true, auto: true, source: '問卷（工作表2）', // 唔問師傅：有 ✓、冇 —（範本 VLOOKUP；UI claMark 同步；PDF／Excel 跟公式）
     items: Object.fromEntries(FORMS['CL-A'].items.map(it => [it.id, { result: (!it.show_if || r.q[it.show_if] === '有') ? '✓' : null, auto: true, by: it.show_if || '', answer: it.show_if ? (r.q[it.show_if] || '') : '' }])) };
   const c2of = rows => { const o = {}; rows.forEach(row => { const d = Object.assign({ label: row.en, part: row.part, kind: row.kind }, r.c2[row.key] || {}); if (row.part === 'B' && !isB0(row.key)) { delete d.LN; delete d.NE; } o[row.key] = d; }); return o; };
-  const c2 = trC2Open(r) ? c2of(c2Rows(r)) : {}; // 消防泵（範本 C2-x FS Pump）；v0.6.395：F15＝有亦出
+  const c2 = formVisible(r, 'C1') ? c2of(c2Rows(r)) : {}; // 消防泵（範本 C2-x FS Pump）
   const c2u = formVisible(r, 'C1U') ? c2of(c2RowsUp(r)) : null;
   const c2s = formVisible(r, 'C1S') ? c2of(c2RowsSpr(r)) : null; // v0.5.0 花灑泵（範本 C2-x Sprinkler Pump） // v0.4.2 上水泵（範本 C2-x Upfeed Pump）
   const zones = h2Visible(r) ? (r.h2.zones || []).map(z => z || {}) : [];
