@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.402';
+const APP_VERSION = '0.6.403';
+/* v0.6.403：F15 下 FA_FACP_QTY／FA_BATT_QTY（↔ FD_* 兩向＋表一填位）；FA／FSD 表一 overlay 字 ×1.35 */
 /* v0.6.402：手寫字全局 ChenYuluoyanHW（FSD 各頁＋其他 checklist overlay）；頭欄維持 wob0.5×1.35；剔號唔改 */
 /* v0.6.401：FSD 頭欄數字／拉丁同中文——一律 ChenYuluoyanHW；wob0.5 sz×1.35 */
 /* v0.6.400：FSD 頭欄拉丁改 Patrick Hand；ref wob0.48 sz×1.4；date/addr wob0.5 sz×1.32 */
@@ -1305,6 +1306,14 @@ function qMigrateF30(r) {
   if (has(r.q.F30)) r.q.SPR_WATER_CURTAIN = r.q.F30;
   else if (has(r.q.SPR_WATER_CURTAIN)) r.q.F30 = r.q.SPR_WATER_CURTAIN;
 }
+/* v0.6.403：FA_FACP_QTY↔FD_FACP_QTY；FA_BATT_QTY↔FD_BATT_QTY（兩邊都有值時以 FD_* 為準） */
+function qMigrateFacpBatt(r) {
+  if (!r || !r.q) return;
+  if (has(r.q.FD_FACP_QTY)) r.q.FA_FACP_QTY = r.q.FD_FACP_QTY;
+  else if (has(r.q.FA_FACP_QTY)) r.q.FD_FACP_QTY = r.q.FA_FACP_QTY;
+  if (has(r.q.FD_BATT_QTY)) r.q.FA_BATT_QTY = r.q.FD_BATT_QTY;
+  else if (has(r.q.FA_BATT_QTY)) r.q.FD_BATT_QTY = r.q.FA_BATT_QTY;
+}
 function normRecFloors(r) { // 撳「下一頁」／提交前：成份紀錄所有樓層欄位再整理一次；回傳改咗幾多格
   let n = 0;
   const walk = (o, path) => { if (!o || typeof o !== 'object') return;
@@ -1894,7 +1903,7 @@ function viewHome() { /* 🧯 消防檢查模組入口（#/fire） */
   <div class="foot"><div class="in"><button class="btn" data-act="copyprev">📋 選擇樓宇</button><button class="btn pri" data-act="new">＋ 新增一座</button></div></div>`;
 }
 function viewRec(r) {
-  if (r && typeof qMigrateF30 === 'function') qMigrateF30(r);
+  if (r && typeof qMigrateF30 === 'function') qMigrateF30(r); if (r && typeof qMigrateFacpBatt === 'function') qMigrateFacpBatt(r);
   const steps = stepList(r); if (!steps.find(s => s.k === cur.step)) cur.step = 'basic';
   const i = steps.findIndex(s => s.k === cur.step);
   const chips = steps.map(s => { const p = prog(r, s.k); const full = p && p.total > 0 && p.done >= p.total && !p.err; const err = p && p.err;
@@ -2220,7 +2229,7 @@ function stepQ(r) {
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
     return `<div class="card" id="sec-${s.key}"><h3>${esc(s.title)} <span class="mut">${p}/${need}</span></h3>
-      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}" data-qcell="${esc(it.cell)}"${qLiveAttrs(it.cell)}><div class="qhead"><button type="button" class="qdrag" data-qdrag="${esc(it.cell)}" aria-label="拉上拉下調次序" title="撳住拉上拉下調次序">≡</button><div class="ql" data-qlong="1">${esc(it.label)}<span class="c">${it.cell}</span></div></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
+      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}" data-qcell="${esc(it.cell)}"${qLiveAttrs(it.cell)}><div class="qhead"><button type="button" class="qdrag" data-qdrag="${esc(it.cell)}" aria-label="拉上拉下調次序" title="撳住拉上拉下調次序">≡</button><div class="ql" data-qlong="1">${esc(it.label)}<span class="c">${it.cell}</span></div></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY' || it.cell === 'FA_FACP_QTY' || it.cell === 'FA_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell === 'FA_FACP_QTY' ? 'FD_FACP_QTY' : it.cell === 'FA_BATT_QTY' ? 'FD_BATT_QTY' : it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
 }
@@ -6976,11 +6985,11 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
     if (!t) return;
     const s = String(t);
     if (typeof XHW_OK !== 'undefined' && XHW_OK) {
-      xHwText(ctx, s, xPt * scale, yPt * scale, sz * 1.05, xHwSeed('t1:' + key + ':' + xPt + ':' + yPt), (maxWpt || 160) * scale, 0.55); /* v0.6.402：輕 wob＋ChenYuluoyan */
+      xHwText(ctx, s, xPt * scale, yPt * scale, sz * 1.35, xHwSeed('t1:' + key + ':' + xPt + ':' + yPt), (maxWpt || 160) * scale, 0.55); /* v0.6.403：表一字放大 ×1.35（Fan） */
     } else {
       ctx.save();
       ctx.fillStyle = '#0f172a';
-      ctx.font = `${sz}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
+      ctx.font = `${sz * 1.3}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
       ctx.textBaseline = 'alphabetic';
       let u = s;
       const maxW = (maxWpt || 160) * scale;
@@ -15348,7 +15357,7 @@ function qTeachCloudBoot() {
 
 /* ---------- 樓層 /F ---------- */
 function floorSync(r) { // 記錄 + 畫面上嘅樓層欄位一齊整理（下一頁／提交前）
-  if (r) { if (typeof qMigrateF30 === 'function') qMigrateF30(r); normRecFloors(r); }
+  if (r) { if (typeof qMigrateF30 === 'function') qMigrateF30(r); if (typeof qMigrateFacpBatt === 'function') qMigrateFacpBatt(r); normRecFloors(r); }
   document.querySelectorAll('input[data-floor]').forEach(x => { const w = normFloor(x.value); if (w !== x.value) x.value = w; floorHint(x); });
 }
 let _fcx = null;
@@ -15736,6 +15745,11 @@ document.addEventListener('click', async e => {
       /* v0.6.148：F30「有冇水廉?」↔ SPR_WATER_CURTAIN「有冇水簾？」兩向同一值（含清空） */
       if (el.dataset.bind === 'q.F30') r.q.SPR_WATER_CURTAIN = v;
       else if (el.dataset.bind === 'q.SPR_WATER_CURTAIN') r.q.F30 = v;
+      /* v0.6.403：FA_FACP_QTY↔FD_FACP_QTY；FA_BATT_QTY↔FD_BATT_QTY（F15 複本同 F9 原題） */
+      if (el.dataset.bind === 'q.FA_FACP_QTY') r.q.FD_FACP_QTY = v;
+      else if (el.dataset.bind === 'q.FD_FACP_QTY') r.q.FA_FACP_QTY = v;
+      if (el.dataset.bind === 'q.FA_BATT_QTY') r.q.FD_BATT_QTY = v;
+      else if (el.dataset.bind === 'q.FD_BATT_QTY') r.q.FA_BATT_QTY = v;
       /* v0.6.356／0.6.365：問卷揀完答案 → 套用已教對應＋開／加教對應（右欄撳剔位記住；要齊2／3 可加多題） */
       if ((el.dataset.bind || '').startsWith('q.')) {
         const cell = el.dataset.bind.slice(2);
@@ -15750,7 +15764,15 @@ document.addEventListener('click', async e => {
         }
       }
       Store.touch(r); return render(); }
-    case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); setP(r, el.dataset.bind, was == null ? Math.max(0, d) : Math.max(0, Number(was) + d)); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); } if (/^q\.(FD_FACP_QTY|FD_REP_QTY|FD_BATT_QTY)$/.test(el.dataset.bind || '') && typeof fdsT1Sync === 'function') fdsT1Sync(r); Store.touch(r); return render(); }
+    case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); const nv = was == null ? Math.max(0, d) : Math.max(0, Number(was) + d); setP(r, el.dataset.bind, nv);
+      /* v0.6.403：數量複本兩向同步 */
+      if (el.dataset.bind === 'q.FA_FACP_QTY') r.q.FD_FACP_QTY = nv;
+      else if (el.dataset.bind === 'q.FD_FACP_QTY') r.q.FA_FACP_QTY = nv;
+      if (el.dataset.bind === 'q.FA_BATT_QTY') r.q.FD_BATT_QTY = nv;
+      else if (el.dataset.bind === 'q.FD_BATT_QTY') r.q.FA_BATT_QTY = nv;
+      if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); }
+      if (/^q\.(FD_FACP_QTY|FA_FACP_QTY|FD_REP_QTY|FD_BATT_QTY|FA_BATT_QTY)$/.test(el.dataset.bind || '') && typeof fdsT1Sync === 'function') fdsT1Sync(r);
+      Store.touch(r); return render(); }
     case 'tick': { const k = el.dataset.key, a = r.items[k] || {}; if (a.v === el.dataset.v) delete r.items[k]; else { a.v = el.dataset.v; r.items[k] = a; } Store.touch(r); render();
       if (el.dataset.v === 'X' && r.items[k]) setTimeout(() => { const t = $(`#it-${k.replace(/\./g, '-')} textarea`); if (t) t.focus(); }, 50); return; }
     case 'allok': { const k = el.dataset.form; const n = FORMS[k].items.filter(it => itemMode(r, it) === 'ask' && !itemVal(r, k, it).v).length;
@@ -15898,7 +15920,13 @@ document.addEventListener('input', e => {
   if (kind === 'ir') { const v = parseIR(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); el.classList.toggle('gt', isGT(v)); } }
   else if (kind === 'num1') { const v = parse1(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); }
     if (el.dataset.kpa) { const s = el.parentElement.querySelector('.kpa'); if (s) s.textContent = (v != null && !Number.isNaN(v)) ? '= ' + Math.round(v * 100) + ' kPa' : ''; } }
-  else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); } if (/^q\.(FD_FACP_QTY|FD_REP_QTY|FD_BATT_QTY)$/.test(el.dataset.bind || '') && typeof fdsT1Sync === 'function') fdsT1Sync(r); } }
+  else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v);
+      if (el.dataset.bind === 'q.FA_FACP_QTY') r.q.FD_FACP_QTY = v;
+      else if (el.dataset.bind === 'q.FD_FACP_QTY') r.q.FA_FACP_QTY = v;
+      if (el.dataset.bind === 'q.FA_BATT_QTY') r.q.FD_BATT_QTY = v;
+      else if (el.dataset.bind === 'q.FD_BATT_QTY') r.q.FA_BATT_QTY = v;
+      if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); }
+      if (/^q\.(FD_FACP_QTY|FA_FACP_QTY|FD_REP_QTY|FD_BATT_QTY|FA_BATT_QTY)$/.test(el.dataset.bind || '') && typeof fdsT1Sync === 'function') fdsT1Sync(r); } }
   else { setP(r, el.dataset.bind, el.value); if (el.tagName === 'TEXTAREA' && el.closest('.why')) el.classList.toggle('need', !el.value.trim()); if (el.tagName === 'INPUT') el.classList.toggle('filled', !!el.value); }
   if (el.dataset.floor) floorHint(el);
   if (typeof sprCoverFloorsLink === 'function' && el.dataset.bind) {
@@ -15923,7 +15951,7 @@ document.addEventListener('change', e => {
   if (el.classList.contains('miss') && String(el.value).trim()) el.classList.remove('miss'); // 已填 → 即時除紅
   const b = el.dataset.bind;
   /* v0.6.391：表一位置／覆蓋／備註都即時重畫（唔淨係 .loc）→ 年檢核對表疊字跟住變 */
-  if (b === 'date' || b.startsWith('block.') || b.startsWith('estate.') || /^q\.(T9|SPR_MULTI_SYS|FD_FACP_QTY|FD_REP_QTY|FD_BATT_QTY)$/.test(b) || /\.loc$/.test(b) || /^fsd\.fds\.t\.fds\./.test(b)) { Store.flush(); render(); }
+  if (b === 'date' || b.startsWith('block.') || b.startsWith('estate.') || /^q\.(T9|SPR_MULTI_SYS|FD_FACP_QTY|FA_FACP_QTY|FD_REP_QTY|FD_BATT_QTY|FA_BATT_QTY)$/.test(b) || /\.loc$/.test(b) || /^fsd\.fds\.t\.fds\./.test(b)) { Store.flush(); render(); }
 });
 document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.floor) floorHint(e.target); });
 let lastIR = null; // v0.4.3：快速 >N 掣填返啱啱撳過嘅絕緣電阻格
@@ -15975,6 +16003,11 @@ async function recFromJson(o, opt) {
   if (has(r.q.F31) && !has(r.q.F30)) r.q.F30 = r.q.F31; delete r.q.F31;
   if (has(r.q.F30) && !has(r.q.SPR_WATER_CURTAIN)) r.q.SPR_WATER_CURTAIN = r.q.F30;
   else if (has(r.q.SPR_WATER_CURTAIN) && !has(r.q.F30)) r.q.F30 = r.q.SPR_WATER_CURTAIN;
+  /* v0.6.403：FACP／BATT 數量複本對齊 */
+  if (has(r.q.FD_FACP_QTY) && !has(r.q.FA_FACP_QTY)) r.q.FA_FACP_QTY = r.q.FD_FACP_QTY;
+  else if (has(r.q.FA_FACP_QTY) && !has(r.q.FD_FACP_QTY)) r.q.FD_FACP_QTY = r.q.FA_FACP_QTY;
+  if (has(r.q.FD_BATT_QTY) && !has(r.q.FA_BATT_QTY)) r.q.FA_BATT_QTY = r.q.FD_BATT_QTY;
+  else if (has(r.q.FA_BATT_QTY) && !has(r.q.FD_BATT_QTY)) r.q.FD_BATT_QTY = r.q.FA_BATT_QTY;
   Object.keys(o.forms || {}).forEach(k => Object.keys(o.forms[k].items || {}).forEach(id => { const it = o.forms[k].items[id]; if (it.result && !it.auto && it.set_by !== 'default') r.items[k + '.' + id] = { v: it.result, note: it.reason || '' }; else if (it.input && it.value != null && it.value !== '') r.items[k + '.' + id] = { n: it.value }; })); // v0.4.8 預設（set_by=default）唔存 → 跟返問卷 // 舊 v0.4.4 JSON 嘅 source／default_tick 欄位會被忽略
   const c2 = (o.readings || {}).tr_c2 || {}, c2u = (o.readings || {}).tr_c2_upfeed || {}, c2s = (o.readings || {}).tr_c2_sprinkler || {}; [c2, c2u, c2s].forEach(src => Object.keys(src).forEach(k => { const d = Object.assign({}, src[k]); delete d.label; delete d.part; delete d.kind; r.c2[k] = d; }));
   r.irAudit = ((o.readings || {}).ir_bulk_audit || []).slice();
