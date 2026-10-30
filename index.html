@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.396';
+const APP_VERSION = '0.6.397';
+/* v0.6.397：FSD 年檢頭欄（完成年檢日期／地址／參考編號）手寫 wob 1.85→0.95 工整啲 */
 /* v0.6.396：撤回 F15→開 TR-C2；保留 F22 跟 F15 顯示（dep F15＝有）。TR-C2 只跟 T6／C1 */
 /* v0.6.394：T8→e3 未填＝NA；F21→g／F22→e4／F23→e2：有＝✓、冇＝NA、未答空白 */
 /* v0.6.393：硬碼問卷→房署 CL-E（唔恢復 0.6.359 取消嘅全部 na_unless）
@@ -4290,7 +4291,7 @@ function xHwTick(ctx, R, seed) {
   ctx.restore();
 }
 function xHwText(ctx, text, x0, y0, size, seed, maxW, wob) {
-  /* wob（預設 1）：放大每字 dy／旋轉／橫向抖；頭欄用 ~1.85 令「唔平整打橫」更明顯 */
+  /* wob（預設 1）：放大每字 dy／旋轉／橫向抖；頭欄 v0.6.397 用 ~0.95 工整；舊 1.85＝唔平整 */
   const wobK = (wob == null || wob <= 0) ? 1 : wob;
   const rnd = xHwRng(seed), slant = Math.tan((7 + rnd() * 6) * Math.PI / 180), drift = (0.03 + rnd() * 0.04) * wobK;
   let cx = x0, iCh = 0;
@@ -6850,7 +6851,8 @@ function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
 }
 function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   /* best-effort 頭欄（掃瞄紙無 AcroForm；約位跟 OCR）
-     v0.6.386：FA 地址 y 上移＋手寫；v0.6.387：日期／註冊承辦商編號都手寫，wob~1.85 令字唔平整打橫 */
+     v0.6.386：FA 地址 y 上移＋手寫；v0.6.387：日期／編號手寫 wob~1.85；
+     v0.6.397：完成年檢日期／地址／參考編號 wob 1.85→0.95（工整啲，仍似手寫） */
   const est = o.estate || {}, blk = o.block || {};
   const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '';
   const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
@@ -6865,7 +6867,8 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   const putHw = (t, xPt, yPt, maxWpt) => {
     if (!t) return;
     if (typeof XHW_OK !== 'undefined' && XHW_OK) {
-      xHwText(ctx, String(t), xPt * scale, yPt * scale, sz * 1.08, xHwSeed('hdr:' + key + ':' + xPt + ':' + yPt), (maxWpt || 400) * scale, 1.85);
+      /* v0.6.397：頭欄（日期／地址／參考編號）wob 0.95＝工整手寫；唔改 tick／表一 */
+      xHwText(ctx, String(t), xPt * scale, yPt * scale, sz * 1.08, xHwSeed('hdr:' + key + ':' + xPt + ':' + yPt), (maxWpt || 400) * scale, 0.95);
     } else put(t, xPt, yPt);
   };
   if (key === 'fds' || key === 'fa' || key === 'fhhr' || key === 'tank') {
