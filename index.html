@@ -633,7 +633,7 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
 const APP_VERSION = '0.6.394';
-/* v0.6.394：T8→CL-E e3 未答／空白亦預設 NA（defaultNa）；F22→e4 有＝✓／冇＝NA／未答空白；F23→e2 未答仍空白 */
+/* v0.6.394：T8→e3 未填＝NA；F21→g／F22→e4／F23→e2：有＝✓、冇＝NA、未答空白 */
 /* v0.6.393：硬碼問卷→房署 CL-E（唔恢復 0.6.359 取消嘅全部 na_unless）
    F23→e2、T8→e3：有＝✓、冇＝NA；未答空白。其餘左表仍空白直至師傅揀。 */
 /* v0.6.392：表一數量 0→唔顯示；N→只填 a…N（‧1／‧2／‧4；FA／FDS PDF＋App T1）
@@ -1023,7 +1023,8 @@ const h2Visible = r => formVisible(r, 'H1') || formVisible(r, 'G1'); // TR-H2（
 const Q_HARD_CL = {
   'E|e2': { cell: 'F23', defaultNa: false }, /* 未答空白 */
   'E|e3': { cell: 'T8', defaultNa: true },   /* v0.6.394：未答／空白 → NA */
-  'E|e4': { cell: 'F22', defaultNa: false }, /* v0.6.394：Lift Homing；未答空白（同 F23） */
+  'E|e4': { cell: 'F22', defaultNa: false }, /* Lift Homing；未答空白 */
+  'E|g':  { cell: 'F21', defaultNa: false }, /* v0.6.394：閃燈；未答空白 */
 };
 function qHardSpec(it) {
   if (!it || !it.sheet || !it.id) return null;
@@ -1081,7 +1082,7 @@ function itemMode(r, it) {
   if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8／0.6.240 半年檢：CL-E *k–*n／CL-D *g–*h（REW）只限年檢 → 隱藏、記 NA
   /* v0.6.359：取消問卷驅動自動 NA（na_any／na_if／na_lt／na_unless）；空白直至師傅揀。保留冇花灑水缸結構隱藏 */
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏 */
-  { const hs = qHardSpec(it); /* v0.6.393／0.6.394：F23→e2／T8→e3／F22→e4 */
+  { const hs = qHardSpec(it); /* v0.6.393／0.6.394：F23→e2／T8→e3／F22→e4／F21→g */
     if (hs) { const ans = qA(r, hs.cell); if (ans === '冇' || (hs.defaultNa && ans !== '有')) return 'autona'; } }
   if (it.measure) return 'measure';
   if (it.input) return 'input';
