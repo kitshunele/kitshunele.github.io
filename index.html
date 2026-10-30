@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.405';
+const APP_VERSION = '0.6.406';
+/* v0.6.406：qty=0 表一 overlay 必空（FA+FD 一齊睇；ensureTables 唔抄 0 組舊料） */
 /* v0.6.405：可設 qty=0（表一唔顯示）；回填只限兩邊未答＋表一有舊料；明確 0 唔搶返 */
 /* v0.6.404：FACP／BATT 數量＝表一有資料行數回填；空 stepper 撳−唔變 0；FA↔FD 取較大正數 */
 /* v0.6.403：F15 下 FA_FACP_QTY／FA_BATT_QTY（↔ FD_* 兩向＋表一填位）；FA／FSD 表一 overlay 字 ×1.35 */
@@ -3185,13 +3186,28 @@ const FDS_T1 = [
 const FDS_T1_DEF_SKIP = {};
 /* v0.6.389：偵測＋火警鐘表一共用 fsd.fds.t.fds（問卷／兩邊同一份） */
 function fdsT1Store(r) { const d = fsdRec(r, 'fds'); return (d.t.fds || (d.t.fds = {})); }
-/* v0.6.391：live／stub／export 都將問卷下位置／覆蓋／備註／主板寫入 cExp.tables.fds（FA／FDS 表一疊字同一份） */
+/* v0.6.391／406：live／stub／export 抄表一入 cExp.tables.fds；406：qty=0／gate 組唔抄（overlay 唔畫舊 loc／note／main） */
 function fsdT1EnsureTables(cExp, r, key) {
   if (!cExp || (key !== 'fa' && key !== 'fds') || !r) return cExp;
   if (typeof fdsT1Sync === 'function') fdsT1Sync(r);
   const shared = fdsT1Store(r);
   const tables = Object.assign({}, cExp.tables || {});
-  tables.fds = JSON.parse(JSON.stringify(shared || {}));
+  const out = {};
+  Object.keys(shared || {}).forEach(id => {
+    const parts = String(id).split('.');
+    const g = parts[0], lettr = parts[1] || '';
+    const def = FDS_T1.find(x => x[0] === g);
+    if (!def) { out[id] = shared[id]; return; }
+    const qtyCell = def[2], ynGate = def[3];
+    const n = fdsT1N(r, g, qtyCell, ynGate);
+    if (n < 1) return; /* 明確 0／閘關 → 唔入 overlay tables */
+    if (lettr) {
+      const idx = FDS_T1_LETTERS.indexOf(lettr);
+      if (idx < 0 || idx >= n) return;
+    }
+    out[id] = shared[id];
+  });
+  tables.fds = JSON.parse(JSON.stringify(out));
   return Object.assign({}, cExp, { tables: tables });
 }
 /* v0.6.390：ynGate 字串或 OR 陣列（偵測 FD_REP ∨ 火警鐘 FA_REPEATER） */
@@ -3222,16 +3238,28 @@ function fdsT1GateLabel(ynGate) {
 }
 /* v0.6.320 Fan：表一 cover ← 基本 1 屋邨＋樓名（空先填；師傅改過唔蓋） */
 function fdsT1Place(r) { return [nameOf(r && r.estate), nameOf(r && r.block)].filter(Boolean).join('，'); }
-/* v0.6.392：數量 0 → 0 行（唔顯示）；未答 → 暫 1；N≥1 → a… 開 N 行（上限 FDS_T1_MAX／紙本格） */
+/* v0.6.392／406：數量 0 → 0 行；未答 → 暫 1；N≥1 → a…N。406：FA_*＋FD_* 一齊睇（F15 只匯出 FA 時 overlay 唔當未答） */
+function fdsT1QtyCells(g, qtyCell) {
+  const m = { '1': ['FD_FACP_QTY', 'FA_FACP_QTY'], '2': ['FD_REP_QTY'], '4': ['FD_BATT_QTY', 'FA_BATT_QTY'] };
+  if (m[g]) return m[g];
+  return qtyCell ? [qtyCell] : null;
+}
 function fdsT1N(r, g, qtyCell, ynGate) {
   if (FDS_T1_DEF_SKIP[g]) return 0;
   if (ynGate && !fdsT1YnHas(r, ynGate)) return 0;
-  if (!qtyCell) return 1;
-  const raw = (r.q || {})[qtyCell];
-  if (!has(raw)) return 1; /* 未答暫 1 行 */
-  const n = Number(raw);
-  if (Number.isNaN(n) || n < 1) return 0; /* 明確 0 → 唔顯示 */
-  return Math.min(FDS_T1_MAX, Math.floor(n));
+  const cells = fdsT1QtyCells(g, qtyCell);
+  if (!cells) return 1;
+  let anyHas = false, maxPos = 0;
+  for (let i = 0; i < cells.length; i++) {
+    const raw = (r.q || {})[cells[i]];
+    if (!has(raw)) continue;
+    anyHas = true;
+    const n = Number(raw);
+    if (!Number.isNaN(n) && n >= 1) maxPos = Math.max(maxPos, Math.min(FDS_T1_MAX, Math.floor(n)));
+  }
+  if (!anyHas) return 1; /* 兩邊都未答 → 暫 1 行 */
+  if (maxPos < 1) return 0; /* 明確 0（任一寫入且冇正數）→ 唔顯示 */
+  return maxPos;
 }
 /* v0.6.404：表一行有冇師傅資料（唔計 auto cover＝屋邨樓名） */
 function fdsT1RowFilled(x) {
@@ -6418,14 +6446,21 @@ const fsdPdfQAns = (o, cell) => { const x = (o.questionnaire || {})[cell]; retur
 function fsdPdfTablesFlat(tables, o) {
   const tb = [];
   /* v0.6.390／392：‧2 要 FD_REP∨FA_REPEATER＝有；數量 0 組唔列；只列 a…N（跟 qty） */
+  /* v0.6.406：FA_*＋FD_* 一齊睇（F15 路徑只匯出 FA＝0 都當 qty0） */
   const t1QtyN = g => {
-    const cell = ({ '1': 'FD_FACP_QTY', '2': 'FD_REP_QTY', '4': 'FD_BATT_QTY' })[g];
-    if (!cell) return null;
-    const raw = fsdPdfQAns(o, cell);
-    if (raw == null || raw === '') return null; /* 未答：照舊資料列 */
-    const n = Number(raw);
-    if (Number.isNaN(n) || n < 1) return 0;
-    return Math.min(10, Math.floor(n));
+    const cells = ({ '1': ['FD_FACP_QTY', 'FA_FACP_QTY'], '2': ['FD_REP_QTY'], '4': ['FD_BATT_QTY', 'FA_BATT_QTY'] })[g];
+    if (!cells) return null;
+    let anyHas = false, maxPos = 0;
+    for (let i = 0; i < cells.length; i++) {
+      const raw = fsdPdfQAns(o, cells[i]);
+      if (raw == null || raw === '') continue;
+      anyHas = true;
+      const n = Number(raw);
+      if (!Number.isNaN(n) && n >= 1) maxPos = Math.max(maxPos, Math.min(10, Math.floor(n)));
+    }
+    if (!anyHas) return null; /* 未答：照舊資料列 */
+    if (maxPos < 1) return 0;
+    return maxPos;
   };
   const skipFds = k => {
     const parts = String(k).split('.');
@@ -7054,16 +7089,22 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
   const letters = 'abcdefghij';
   const qa = (cell) => { const x = (o && o.questionnaire || {})[cell]; return x && typeof x === 'object' ? x.a : x; };
   const qHasRep = () => qa('FD_REP') === '有' || qa('FA_REPEATER') === '有';
-  /* v0.6.392：數量 0 → 唔疊；N → 只疊 a…第 N 格（紙本 maxLetter 封頂） */
+  /* v0.6.392／406：數量 0 → 唔疊；N → a…N。406：FA_*＋FD_*（F15 只匯出 FA＝0 亦留空） */
   const t1N = g => {
-    const cell = ({ '1': 'FD_FACP_QTY', '2': 'FD_REP_QTY', '4': 'FD_BATT_QTY' })[g];
-    if (!cell) return null;
-    const raw = qa(cell);
-    if (raw == null || raw === '') return null;
-    const n = Number(raw);
-    if (Number.isNaN(n) || n < 1) return 0;
+    const cells = ({ '1': ['FD_FACP_QTY', 'FA_FACP_QTY'], '2': ['FD_REP_QTY'], '4': ['FD_BATT_QTY', 'FA_BATT_QTY'] })[g];
+    if (!cells) return null;
     const cap = (maxL && maxL[g]) || 10;
-    return Math.min(cap, Math.floor(n));
+    let anyHas = false, maxPos = 0;
+    for (let i = 0; i < cells.length; i++) {
+      const raw = qa(cells[i]);
+      if (raw == null || raw === '') continue;
+      anyHas = true;
+      const n = Number(raw);
+      if (!Number.isNaN(n) && n >= 1) maxPos = Math.max(maxPos, Math.min(cap, Math.floor(n)));
+    }
+    if (!anyHas) return null;
+    if (maxPos < 1) return 0;
+    return maxPos;
   };
   Object.keys(base).forEach(id => {
     const g = id.split('.')[0];
