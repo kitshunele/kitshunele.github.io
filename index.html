@@ -632,7 +632,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.392';
+const APP_VERSION = '0.6.393';
+/* v0.6.393：硬碼問卷→房署 CL-E（唔恢復 0.6.359 取消嘅全部 na_unless）
+   F23→e2、T8→e3：有＝✓、冇＝NA；未答空白。其餘左表仍空白直至師傅揀。 */
 /* v0.6.392：表一數量 0→唔顯示；N→只填 a…N（‧1／‧2／‧4；FA／FDS PDF＋App T1）
    v0.6.391：問答表一位置／覆蓋／備註／主板→年檢核對表相應格（修 live stub 缺 tables、跟頁去表一、cover/note 即時重畫）
    v0.6.390：表一全部問答→年檢核對表（‧1 FD_FACP_QTY／‧2 FD_REP∨FA_REPEATER+FD_REP_QTY／‧4 FD_BATT_QTY；PDF p6／p19 疊字）
@@ -1015,8 +1017,18 @@ const HALF_NA = '半年檢唔使做（只限年檢：REW 電氣安全項目）';
 const h2Visible = r => formVisible(r, 'H1') || formVisible(r, 'G1'); // TR-H2（年檢）／TR-G2（半年檢）用同一組讀數格
 /* ---------- v0.4.8 問卷「有／是」→ 相關項目預設 ✓（範本常數 NA 嘅項目預設 NA）；師傅揀過嘅（r.items 有 v）先算「師傅揀」 ----------
    相關 = 表格嘅問卷總掣（show_if，例如 T6 消防泵）＋ 項目自己嘅問卷（na_unless／na_any）。問卷改咗，未郁過嘅項目自動跟新預設。 */
-function itemDef(r, it) { /* v0.6.359：取消左表自動剔／tdef 預設；空白直至師傅揀 */
-  return '';
+/* v0.6.393：窄硬碼問卷→房署 CL-E（唔恢復 0.6.359 取消嘅全部 na_unless）
+   鍵＝sheet|id；有＝✓、冇＝NA；未答空白。 */
+const Q_HARD_CL = { 'E|e2': 'F23', 'E|e3': 'T8' };
+function qHardCell(it) {
+  if (!it || !it.sheet || !it.id) return null;
+  return Q_HARD_CL[it.sheet + '|' + it.id] || null;
+}
+function itemDef(r, it) { /* v0.6.359 空白；v0.6.393 只恢復 Q_HARD_CL */
+  const hc = qHardCell(it);
+  if (!hc) return '';
+  if (itemMode(r, it) !== 'ask') return '';
+  return qA(r, hc) === '有' ? '✓' : '';
 }
 function defWhy(r, k, it) { const cs = [FORMS[k].show_if].concat(FORMS[k].need || [], it.na_any || (it.na_unless ? [it.na_unless] : []), it.na_lt ? [it.na_lt[0]] : []).filter(Boolean); return it.tdef === 'NA' ? '範本預設 NA' : '問卷 ' + cs.map(c => c + '＝' + (r.q[c] || '')).join('、'); }
 function inInfo(r, k, it) { /* v0.6.245／0.6.359：數目／讀數；取消 ndef 預填，空白直至師傅填 */
@@ -1031,7 +1043,12 @@ function itemAutoEditable(it, r) { /* v0.6.358：自動 NA（問卷）可改；�
 function itemVal(r, k, it) { // → { v, note, by: 'technician' | 'default' | '' }
   const a = r.items[k + '.' + it.id] || {};
   if (a.v) return { v: a.v, note: a.note || '', by: 'technician' };
-  /* v0.6.359：唔再預填自動 NA／itemDef；空白直至師傅揀 */
+  /* v0.6.393：只對 Q_HARD_CL 預填；其餘仍空白直至師傅揀（0.6.359） */
+  if (qHardCell(it)) {
+    if (itemMode(r, it) === 'autona' && itemAutoEditable(it, r)) return { v: 'NA', note: a.note || '', by: 'default' };
+    const d = itemDef(r, it);
+    if (d) return { v: d, note: a.note || '', by: 'default' };
+  }
   return { v: '', note: a.note || '', by: '' };
 }
 
@@ -1058,6 +1075,7 @@ function itemMode(r, it) {
   if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8／0.6.240 半年檢：CL-E *k–*n／CL-D *g–*h（REW）只限年檢 → 隱藏、記 NA
   /* v0.6.359：取消問卷驅動自動 NA（na_any／na_if／na_lt／na_unless）；空白直至師傅揀。保留冇花灑水缸結構隱藏 */
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏 */
+  if (qHardCell(it) && qA(r, qHardCell(it)) === '冇') return 'autona'; /* v0.6.393：F23→CL-E e2／T8→CL-E e3 */
   if (it.measure) return 'measure';
   if (it.input) return 'input';
   return 'ask';
