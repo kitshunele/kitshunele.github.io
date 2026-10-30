@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.403';
+const APP_VERSION = '0.6.404';
+/* v0.6.404：FACP／BATT 數量＝表一有資料行數回填；空 stepper 撳−唔變 0；FA↔FD 取較大正數 */
 /* v0.6.403：F15 下 FA_FACP_QTY／FA_BATT_QTY（↔ FD_* 兩向＋表一填位）；FA／FSD 表一 overlay 字 ×1.35 */
 /* v0.6.402：手寫字全局 ChenYuluoyanHW（FSD 各頁＋其他 checklist overlay）；頭欄維持 wob0.5×1.35；剔號唔改 */
 /* v0.6.401：FSD 頭欄數字／拉丁同中文——一律 ChenYuluoyanHW；wob0.5 sz×1.35 */
@@ -1306,9 +1307,10 @@ function qMigrateF30(r) {
   if (has(r.q.F30)) r.q.SPR_WATER_CURTAIN = r.q.F30;
   else if (has(r.q.SPR_WATER_CURTAIN)) r.q.F30 = r.q.SPR_WATER_CURTAIN;
 }
-/* v0.6.403：FA_FACP_QTY↔FD_FACP_QTY；FA_BATT_QTY↔FD_BATT_QTY（兩邊都有值時以 FD_* 為準） */
+/* v0.6.403／404：FA↔FD 數量鏡像；0.6.404 兼由有資料嘅表一行回填（qty=0／空但 loc／note／main 有） */
 function qMigrateFacpBatt(r) {
   if (!r || !r.q) return;
+  if (typeof fdsT1QtyRepair === 'function') { fdsT1QtyRepair(r); return; }
   if (has(r.q.FD_FACP_QTY)) r.q.FA_FACP_QTY = r.q.FD_FACP_QTY;
   else if (has(r.q.FA_FACP_QTY)) r.q.FD_FACP_QTY = r.q.FA_FACP_QTY;
   if (has(r.q.FD_BATT_QTY)) r.q.FA_BATT_QTY = r.q.FD_BATT_QTY;
@@ -3230,11 +3232,54 @@ function fdsT1N(r, g, qtyCell, ynGate) {
   if (Number.isNaN(n) || n < 1) return 0; /* 明確 0 → 唔顯示 */
   return Math.min(FDS_T1_MAX, Math.floor(n));
 }
+/* v0.6.404：表一行有冇師傅資料（唔計 auto cover＝屋邨樓名） */
+function fdsT1RowFilled(x) {
+  return !!(x && typeof x === 'object' && (has(x.loc) || has(x.note) || has(x.main)));
+}
+/* 組 g 最尾有資料嘅行號（1-based；中間空位都計到 max index） */
+function fdsT1FilledN(r, g) {
+  const f = fdsT1Store(r);
+  let n = 0;
+  for (let j = 0; j < FDS_T1_MAX; j++) {
+    if (fdsT1RowFilled(f[g + '.' + FDS_T1_LETTERS[j]])) n = j + 1;
+  }
+  return n;
+}
+/* v0.6.404：數量 0／未答但表一有 loc／note／main → 回填 qty；FA↔FD 取較大正數（有正數時唔強行抬到 filled，減數量仍可藏多出行） */
+function fdsT1QtyRepair(r) {
+  if (!r || !r.q) return false;
+  const pairs = [
+    ['1', 'FD_FACP_QTY', 'FA_FACP_QTY'],
+    ['4', 'FD_BATT_QTY', 'FA_BATT_QTY'],
+  ];
+  const pos = v => {
+    if (!has(v)) return 0;
+    const n = Number(v);
+    return (!Number.isNaN(n) && n > 0) ? Math.min(FDS_T1_MAX, Math.floor(n)) : 0;
+  };
+  let ch = false;
+  pairs.forEach(([g, fdCell, faCell]) => {
+    const filled = fdsT1FilledN(r, g);
+    const pFd = pos(r.q[fdCell]), pFa = pos(r.q[faCell]);
+    const anyPos = Math.max(pFd, pFa);
+    let best;
+    if (anyPos >= 1) best = anyPos; /* 已有正數：鏡像較大值；唔抬到 filled */
+    else if (filled >= 1) best = filled; /* 兩邊都冇正數（空或 0）+ 表一有料 → 回填 */
+    else {
+      if (has(r.q[fdCell]) && !has(r.q[faCell])) { r.q[faCell] = r.q[fdCell]; ch = true; }
+      else if (has(r.q[faCell]) && !has(r.q[fdCell])) { r.q[fdCell] = r.q[faCell]; ch = true; }
+      return;
+    }
+    if (r.q[fdCell] !== best) { r.q[fdCell] = best; ch = true; }
+    if (r.q[faCell] !== best) { r.q[faCell] = best; ch = true; }
+  });
+  return ch;
+}
 function fdsT1Sync(r) {
   if (!r) return;
+  let ch = fdsT1QtyRepair(r);
   const place = fdsT1Place(r);
   const f = fdsT1Store(r);
-  let ch = false;
   if (has(place)) {
     FDS_T1.forEach(([g, , qtyCell, ynGate]) => {
       const n = fdsT1N(r, g, qtyCell, ynGate);
@@ -15764,7 +15809,10 @@ document.addEventListener('click', async e => {
         }
       }
       Store.touch(r); return render(); }
-    case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d); const nv = was == null ? Math.max(0, d) : Math.max(0, Number(was) + d); setP(r, el.dataset.bind, nv);
+    case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d);
+      /* v0.6.404：未答時撳−唔寫 0（免 FA／FD 鏡像成 0 而表一資料仲喺） */
+      if ((was == null || was === '') && d < 0) return;
+      const nv = (was == null || was === '') ? Math.max(0, d) : Math.max(0, Number(was) + d); setP(r, el.dataset.bind, nv);
       /* v0.6.403：數量複本兩向同步 */
       if (el.dataset.bind === 'q.FA_FACP_QTY') r.q.FD_FACP_QTY = nv;
       else if (el.dataset.bind === 'q.FD_FACP_QTY') r.q.FA_FACP_QTY = nv;
@@ -16003,11 +16051,14 @@ async function recFromJson(o, opt) {
   if (has(r.q.F31) && !has(r.q.F30)) r.q.F30 = r.q.F31; delete r.q.F31;
   if (has(r.q.F30) && !has(r.q.SPR_WATER_CURTAIN)) r.q.SPR_WATER_CURTAIN = r.q.F30;
   else if (has(r.q.SPR_WATER_CURTAIN) && !has(r.q.F30)) r.q.F30 = r.q.SPR_WATER_CURTAIN;
-  /* v0.6.403：FACP／BATT 數量複本對齊 */
-  if (has(r.q.FD_FACP_QTY) && !has(r.q.FA_FACP_QTY)) r.q.FA_FACP_QTY = r.q.FD_FACP_QTY;
-  else if (has(r.q.FA_FACP_QTY) && !has(r.q.FD_FACP_QTY)) r.q.FD_FACP_QTY = r.q.FA_FACP_QTY;
-  if (has(r.q.FD_BATT_QTY) && !has(r.q.FA_BATT_QTY)) r.q.FA_BATT_QTY = r.q.FD_BATT_QTY;
-  else if (has(r.q.FA_BATT_QTY) && !has(r.q.FD_BATT_QTY)) r.q.FD_BATT_QTY = r.q.FA_BATT_QTY;
+  /* v0.6.403／404：FACP／BATT 鏡像＋表一有資料則回填數量 */
+  if (typeof fdsT1QtyRepair === 'function') fdsT1QtyRepair(r);
+  else {
+    if (has(r.q.FD_FACP_QTY) && !has(r.q.FA_FACP_QTY)) r.q.FA_FACP_QTY = r.q.FD_FACP_QTY;
+    else if (has(r.q.FA_FACP_QTY) && !has(r.q.FD_FACP_QTY)) r.q.FD_FACP_QTY = r.q.FA_FACP_QTY;
+    if (has(r.q.FD_BATT_QTY) && !has(r.q.FA_BATT_QTY)) r.q.FA_BATT_QTY = r.q.FD_BATT_QTY;
+    else if (has(r.q.FA_BATT_QTY) && !has(r.q.FD_BATT_QTY)) r.q.FD_BATT_QTY = r.q.FA_BATT_QTY;
+  }
   Object.keys(o.forms || {}).forEach(k => Object.keys(o.forms[k].items || {}).forEach(id => { const it = o.forms[k].items[id]; if (it.result && !it.auto && it.set_by !== 'default') r.items[k + '.' + id] = { v: it.result, note: it.reason || '' }; else if (it.input && it.value != null && it.value !== '') r.items[k + '.' + id] = { n: it.value }; })); // v0.4.8 預設（set_by=default）唔存 → 跟返問卷 // 舊 v0.4.4 JSON 嘅 source／default_tick 欄位會被忽略
   const c2 = (o.readings || {}).tr_c2 || {}, c2u = (o.readings || {}).tr_c2_upfeed || {}, c2s = (o.readings || {}).tr_c2_sprinkler || {}; [c2, c2u, c2s].forEach(src => Object.keys(src).forEach(k => { const d = Object.assign({}, src[k]); delete d.label; delete d.part; delete d.kind; r.c2[k] = d; }));
   r.irAudit = ((o.readings || {}).ir_bulk_audit || []).slice();
