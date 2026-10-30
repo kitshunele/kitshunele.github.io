@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.404';
+const APP_VERSION = '0.6.405';
+/* v0.6.405：可設 qty=0（表一唔顯示）；回填只限兩邊未答＋表一有舊料；明確 0 唔搶返 */
 /* v0.6.404：FACP／BATT 數量＝表一有資料行數回填；空 stepper 撳−唔變 0；FA↔FD 取較大正數 */
 /* v0.6.403：F15 下 FA_FACP_QTY／FA_BATT_QTY（↔ FD_* 兩向＋表一填位）；FA／FSD 表一 overlay 字 ×1.35 */
 /* v0.6.402：手寫字全局 ChenYuluoyanHW（FSD 各頁＋其他 checklist overlay）；頭欄維持 wob0.5×1.35；剔號唔改 */
@@ -1307,7 +1308,7 @@ function qMigrateF30(r) {
   if (has(r.q.F30)) r.q.SPR_WATER_CURTAIN = r.q.F30;
   else if (has(r.q.SPR_WATER_CURTAIN)) r.q.F30 = r.q.SPR_WATER_CURTAIN;
 }
-/* v0.6.403／404：FA↔FD 數量鏡像；0.6.404 兼由有資料嘅表一行回填（qty=0／空但 loc／note／main 有） */
+/* v0.6.403／405：FA↔FD 數量鏡像；回填只限兩邊未答＋表一有料；明確 0 保留 */
 function qMigrateFacpBatt(r) {
   if (!r || !r.q) return;
   if (typeof fdsT1QtyRepair === 'function') { fdsT1QtyRepair(r); return; }
@@ -3245,7 +3246,7 @@ function fdsT1FilledN(r, g) {
   }
   return n;
 }
-/* v0.6.404：數量 0／未答但表一有 loc／note／main → 回填 qty；FA↔FD 取較大正數（有正數時唔強行抬到 filled，減數量仍可藏多出行） */
+/* v0.6.405：回填只喺兩邊都「未答」；用戶明確 0 唔用表一舊料搶返。正數→鏡像 max。qty=0 → fdsT1N／UI／overlay 唔顯示行（資料仍留 store） */
 function fdsT1QtyRepair(r) {
   if (!r || !r.q) return false;
   const pairs = [
@@ -3259,16 +3260,20 @@ function fdsT1QtyRepair(r) {
   };
   let ch = false;
   pairs.forEach(([g, fdCell, faCell]) => {
+    const fd = r.q[fdCell], fa = r.q[faCell];
     const filled = fdsT1FilledN(r, g);
-    const pFd = pos(r.q[fdCell]), pFa = pos(r.q[faCell]);
+    const pFd = pos(fd), pFa = pos(fa);
     const anyPos = Math.max(pFd, pFa);
     let best;
-    if (anyPos >= 1) best = anyPos; /* 已有正數：鏡像較大值；唔抬到 filled */
-    else if (filled >= 1) best = filled; /* 兩邊都冇正數（空或 0）+ 表一有料 → 回填 */
-    else {
-      if (has(r.q[fdCell]) && !has(r.q[faCell])) { r.q[faCell] = r.q[fdCell]; ch = true; }
-      else if (has(r.q[faCell]) && !has(r.q[fdCell])) { r.q[fdCell] = r.q[faCell]; ch = true; }
-      return;
+    if (!has(fd) && !has(fa)) {
+      /* 從未設：表一有舊料先回填；否則唔寫 */
+      if (filled < 1) return;
+      best = filled;
+    } else if (anyPos >= 1) {
+      best = anyPos; /* 一邊／兩邊有正數 → 鏡像較大；唔抬到 filled */
+    } else {
+      /* 至少一邊已寫入且冇正數 → 用戶明確 0（或 0 鏡像）；唔用 filled 搶返 */
+      best = 0;
     }
     if (r.q[fdCell] !== best) { r.q[fdCell] = best; ch = true; }
     if (r.q[faCell] !== best) { r.q[faCell] = best; ch = true; }
@@ -15810,8 +15815,7 @@ document.addEventListener('click', async e => {
       }
       Store.touch(r); return render(); }
     case 'inc': { const was = getP(r, el.dataset.bind), d = Number(el.dataset.d);
-      /* v0.6.404：未答時撳−唔寫 0（免 FA／FD 鏡像成 0 而表一資料仲喺） */
-      if ((was == null || was === '') && d < 0) return;
+      /* v0.6.405：可 step 到 0（含空→−→0）；qty=0 表一 UI／overlay 留空，repair 唔搶返 */
       const nv = (was == null || was === '') ? Math.max(0, d) : Math.max(0, Number(was) + d); setP(r, el.dataset.bind, nv);
       /* v0.6.403：數量複本兩向同步 */
       if (el.dataset.bind === 'q.FA_FACP_QTY') r.q.FD_FACP_QTY = nv;
