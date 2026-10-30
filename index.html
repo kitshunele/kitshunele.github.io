@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.398';
+const APP_VERSION = '0.6.399';
+/* v0.6.399：FSD 頭欄拉丁改 Caveat（似手寫唔印刷）；ref wob0.45 sz×1.4；date/addr wob0.5 sz×1.32 */
 /* v0.6.398：FSD 頭欄更大更工整——date/addr wob0.5 sz×1.32；ref wob0.25 sz×1.4＋serif 數字（唔用 ReenieBeanie） */
 /* v0.6.397：FSD 年檢頭欄（完成年檢日期／地址／參考編號）手寫 wob 1.85→0.95 工整啲 */
 /* v0.6.396：撤回 F15→開 TR-C2；保留 F22 跟 F15 顯示（dep F15＝有）。TR-C2 只跟 T6／C1 */
@@ -4256,6 +4257,8 @@ const xFont = n => { n = String(n || '').toLowerCase();
 const X_FSD = new Set(['Fire Hydrant Hose Reel Systems', 'Supply Tanks', 'Annex A', 'Annex B', 'Sprinkler checklist（修訂 01 )', 'Checklist for Water Supplies', 'Annual Inspection Checklist for']); /* v0.6.326：(2) 唔再當偵測；v0.6.327：閘改對系統（見 xGateOf） */
 const X_FSD_TICK = /^\[\s*[√✓]\s*\]$/;
 const XF_HW_CJK = 'ChenYuluoyanHW', XF_HW_LAT = 'ReenieBeanieHW';
+/* v0.6.399：頭欄拉丁／數字用 Caveat（輕手寫、清晰）；ReenieBeanie 留畀其他 HW */
+const XF_HW_LAT_NEAT = 'CaveatHW';
 let XHW_OK = null;
 function xHwSeed(s) { let h = 2166136261 >>> 0; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 function xHwRng(seed) { let a = seed >>> 0; return () => { a = Math.imul(a ^ (a >>> 15), a | 1); a ^= a + Math.imul(a ^ (a >>> 7), a | 61); return ((a ^ (a >>> 14)) >>> 0) / 4294967296; }; }
@@ -4265,7 +4268,7 @@ async function xHwLoad() {
   if (!(document.fonts && document.fonts.add)) { XHW_OK = false; return false; }
   let base; try { base = new URL('./fonts/', location.href).href; } catch (e) { base = 'fonts/'; }
   try {
-    for (const [fam, file] of [[XF_HW_CJK, 'ChenYuluoyan-nohint.ttf'], [XF_HW_LAT, 'ReenieBeanie.ttf']]) {
+    for (const [fam, file] of [[XF_HW_CJK, 'ChenYuluoyan-nohint.ttf'], [XF_HW_LAT, 'ReenieBeanie.ttf'], [XF_HW_LAT_NEAT, 'Caveat.ttf']]) {
       const f = new FontFace(fam, 'url(' + base + file + ')'); await f.load(); document.fonts.add(f);
     }
     XHW_OK = true;
@@ -4292,7 +4295,7 @@ function xHwTick(ctx, R, seed) {
   ctx.restore();
 }
 function xHwText(ctx, text, x0, y0, size, seed, maxW, wob) {
-  /* wob（預設 1）：放大每字 dy／旋轉／橫向抖；頭欄 v0.6.398 用 xHwTextHdr（拉丁改 serif） */
+  /* wob（預設 1）：頭欄 v0.6.399 用 xHwTextHdr（拉丁 Caveat） */
   const wobK = (wob == null || wob <= 0) ? 1 : wob;
   const rnd = xHwRng(seed), slant = Math.tan((7 + rnd() * 6) * Math.PI / 180), drift = (0.03 + rnd() * 0.04) * wobK;
   let cx = x0, iCh = 0;
@@ -4314,25 +4317,26 @@ function xHwText(ctx, text, x0, y0, size, seed, maxW, wob) {
   return cx;
 }
 
-/* v0.6.398：FSD 年檢頭欄專用——CJK 仍 ChenYuluoyan；拉丁／數字改 XF_FSD_SERIF（唔用 ReenieBeanie 潦草）
-   size 方差細、slant／wob 低 → 工整大字；仍輕微手寫抖動 */
+/* v0.6.399：FSD 年檢頭欄——CJK ChenYuluoyan；拉丁／數字 Caveat（輕手寫，唔用 serif 印刷／ReenieBeanie 潦草） */
 function xHwTextHdr(ctx, text, x0, y0, size, seed, maxW, wob) {
   const wobK = (wob == null || wob <= 0) ? 0.5 : wob;
-  const rnd = xHwRng(seed), slant = Math.tan((2.5 + rnd() * 3) * Math.PI / 180), drift = (0.01 + rnd() * 0.015) * wobK;
+  const rnd = xHwRng(seed), slant = Math.tan((3 + rnd() * 4) * Math.PI / 180), drift = (0.012 + rnd() * 0.02) * wobK;
+  const latFam = (typeof XF_HW_LAT_NEAT !== 'undefined' && XF_HW_LAT_NEAT) ? XF_HW_LAT_NEAT : XF_HW_LAT;
   let cx = x0, iCh = 0;
   for (const ch of String(text)) {
     if (ch === ' ') { cx += size * (0.28 + rnd() * 0.08); continue; }
     const cjk = XCJK.test(ch);
-    const s0 = cjk ? size * 1.18 : size * 1.22;
-    const s = s0 * (0.96 + rnd() * 0.06);
-    const wave = Math.sin(iCh * (0.4 + rnd() * 0.15) + seed * 1e-9) * size * 0.05 * wobK;
-    const dy = (rnd() - 0.5) * size / (18 / wobK) - (cx - x0) * drift + wave;
-    const rot = ((rnd() - 0.5) * 6 * wobK * (cjk ? 1 : 0.55) - drift * 20) * Math.PI / 180;
-    ctx.save(); ctx.translate(cx + (rnd() - 0.5) * 0.25 * wobK, y0 + dy); ctx.transform(1, 0, -slant, 1, 0, 0); ctx.rotate(rot);
-    ctx.font = cjk ? (s + 'px "' + XF_HW_CJK + '"') : (s + 'px ' + XF_FSD_SERIF);
+    /* Caveat 視覺偏細 → 拉丁略放大 */
+    const s0 = cjk ? size * 1.18 : size * 1.38;
+    const s = s0 * (0.95 + rnd() * 0.08);
+    const wave = Math.sin(iCh * (0.45 + rnd() * 0.2) + seed * 1e-9) * size * 0.06 * wobK;
+    const dy = (rnd() - 0.5) * size / (16 / wobK) - (cx - x0) * drift + wave;
+    const rot = ((rnd() - 0.5) * 8 * wobK * (cjk ? 1 : 0.7) - drift * 25) * Math.PI / 180;
+    ctx.save(); ctx.translate(cx + (rnd() - 0.5) * 0.3 * wobK, y0 + dy); ctx.transform(1, 0, -slant, 1, 0, 0); ctx.rotate(rot);
+    ctx.font = cjk ? (s + 'px "' + XF_HW_CJK + '"') : (s + 'px "' + latFam + '"');
     ctx.fillStyle = xHwInk(rnd); ctx.textBaseline = 'alphabetic'; ctx.fillText(ch, 0, 0);
     const adv = ctx.measureText(ch).width; ctx.restore();
-    cx += adv * (cjk ? (0.94 + rnd() * 0.06) : (0.96 + rnd() * 0.05)) + (cjk ? size * 0.03 : 0);
+    cx += adv * (cjk ? (0.94 + rnd() * 0.06) : (0.94 + rnd() * 0.06)) + (cjk ? size * 0.03 : 0);
     iCh++;
     if (maxW && cx - x0 > maxW) break;
   }
@@ -6878,7 +6882,7 @@ function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
 function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   /* best-effort 頭欄（掃瞄紙無 AcroForm；約位跟 OCR）
      v0.6.386–387：手寫；v0.6.397 wob0.95；
-     v0.6.398：更大＋更工整（date/addr wob0.5 sz×1.32；ref wob0.25 sz×1.4＋serif 數字） */
+     v0.6.399：拉丁改 Caveat；date/addr wob0.5 sz×1.32；ref wob0.45 sz×1.4 */
   const est = o.estate || {}, blk = o.block || {};
   const addr = [blk.zh || blk.en, est.zh || est.en].filter(Boolean).join('，') || '';
   const href = (cExp && cExp.header && cExp.header.contractor_ref) || '';
@@ -6890,7 +6894,7 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   ctx.font = `${sz}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
   ctx.textBaseline = 'alphabetic';
   const put = (t, xPt, yPt) => { if (!t) return; ctx.fillText(String(t), xPt * scale, yPt * scale); };
-  /* v0.6.398：頭欄走 xHwTextHdr（拉丁／數字 serif，唔用 ReenieBeanie） */
+  /* v0.6.399：頭欄 xHwTextHdr＝Caveat 拉丁（似手寫但清晰） */
   const putHw = (t, xPt, yPt, maxWpt, mul, wob) => {
     if (!t) return;
     if (typeof XHW_OK !== 'undefined' && XHW_OK) {
@@ -6900,7 +6904,7 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   if (key === 'fds' || key === 'fa' || key === 'fhhr' || key === 'tank') {
     /* FA 地址第一橫線 ≈140.5pt；FS251／日期用 baseline = 線 −4.5 → 地址用 136 */
     const addrY = key === 'fa' ? 136 : 148;
-    putHw(href, 455, 74, 130, 1.4, 0.25); /* 參考編號：更大、更低 wob、serif 數字 */
+    putHw(href, 455, 74, 130, 1.4, 0.45); /* 參考編號：Caveat＋wob0.45＋大字 */
     put(fs251, 130, 100);
     putHw(dateStr, 150, 118, 200, 1.32, 0.5);
     putHw(addr, 125, addrY, 430, 1.32, 0.5);
