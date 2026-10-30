@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.401';
+const APP_VERSION = '0.6.402';
+/* v0.6.402：手寫字全局 ChenYuluoyanHW（FSD 各頁＋其他 checklist overlay）；頭欄維持 wob0.5×1.35；剔號唔改 */
 /* v0.6.401：FSD 頭欄數字／拉丁同中文——一律 ChenYuluoyanHW；wob0.5 sz×1.35 */
 /* v0.6.400：FSD 頭欄拉丁改 Patrick Hand；ref wob0.48 sz×1.4；date/addr wob0.5 sz×1.32 */
 /* v0.6.399：FSD 頭欄拉丁改 Caveat（似手寫唔印刷）；ref wob0.45 sz×1.4；date/addr wob0.5 sz×1.32 */
@@ -4253,7 +4254,8 @@ const xFont = n => { n = String(n || '').toLowerCase();
   return 'Arial,"Liberation Sans",Arimo,"Helvetica Neue",Helvetica,' + XF_SANS; };
 
 /* ----- v0.6.228／0.6.231 消防處 checklist 模擬手寫（跟 /workspace/sim/sim_pdf.py + sim/hwx/make.py）-----
-   字型：ChenYuluoyan-nohint（CJK）＋ ReenieBeanie（拉丁／數字）；剔號用手畫貝塞爾（唔用 √ 字型）。
+   字型：v0.6.402 起手寫字一律 ChenYuluoyan-nohint（含數字／拉丁）；剔號用手畫貝塞爾（唔用 √ 字型）。
+   ReenieBeanie 仍載入作後備，手寫文字路徑唔再用。
    抖動用固定種子 PRNG（build 禁 Math.ran…）；只套喺 X_FSD 工作表剔格 同 App提交紀錄 消防處結果／表值。
    v0.6.231：是／否／不適用 [ ] 框留返；剔畫入框內（唔再整格只畫剔）；手剔跟 make.py 比例／角度／線寬。 */
 const X_FSD = new Set(['Fire Hydrant Hose Reel Systems', 'Supply Tanks', 'Annex A', 'Annex B', 'Sprinkler checklist（修訂 01 )', 'Checklist for Water Supplies', 'Annual Inspection Checklist for']); /* v0.6.326：(2) 唔再當偵測；v0.6.327：閘改對系統（見 xGateOf） */
@@ -4295,29 +4297,28 @@ function xHwTick(ctx, R, seed) {
   ctx.restore();
 }
 function xHwText(ctx, text, x0, y0, size, seed, maxW, wob) {
-  /* wob（預設 1）：頭欄 v0.6.401 用 xHwTextHdr（全 ChenYuluoyan） */
+  /* v0.6.402：全部手寫字（含數字／拉丁）一律 ChenYuluoyanHW——同中文模式；剔號仍 xHwTick */
   const wobK = (wob == null || wob <= 0) ? 1 : wob;
   const rnd = xHwRng(seed), slant = Math.tan((7 + rnd() * 6) * Math.PI / 180), drift = (0.03 + rnd() * 0.04) * wobK;
   let cx = x0, iCh = 0;
   for (const ch of String(text)) {
     if (ch === ' ') { cx += size * (0.25 + rnd() * 0.2); continue; }
-    const cjk = XCJK.test(ch), fn = cjk ? XF_HW_CJK : XF_HW_LAT, s0 = cjk ? size * 1.12 : size * 1.55;
+    const s0 = size * 1.12; /* 同 CJK 倍率；唔再分 ReenieBeanie／Patrick／Caveat */
     const s = s0 * (0.86 + rnd() * 0.28);
-    /* 隨機 dy ＋ 慢波 baseline（唔成直線） */
     const wave = Math.sin(iCh * (0.55 + rnd() * 0.25) + seed * 1e-9) * size * 0.11 * wobK;
     const dy = (rnd() - 0.55) * size / (9 / wobK) - (cx - x0) * drift + wave;
-    const rot = ((rnd() - 0.5) * 16 * wobK * (cjk ? 1 : 0.75) - drift * 40) * Math.PI / 180;
+    const rot = ((rnd() - 0.5) * 16 * wobK - drift * 40) * Math.PI / 180;
     ctx.save(); ctx.translate(cx + (rnd() - 0.5) * 0.6 * wobK, y0 + dy); ctx.transform(1, 0, -slant, 1, 0, 0); ctx.rotate(rot);
-    ctx.font = s + 'px "' + fn + '"'; ctx.fillStyle = xHwInk(rnd); ctx.textBaseline = 'alphabetic'; ctx.fillText(ch, 0, 0);
+    ctx.font = s + 'px "' + XF_HW_CJK + '"'; ctx.fillStyle = xHwInk(rnd); ctx.textBaseline = 'alphabetic'; ctx.fillText(ch, 0, 0);
     const adv = ctx.measureText(ch).width; ctx.restore();
-    cx += adv * (cjk ? (0.9 + rnd() * 0.12) : (0.82 + rnd() * 0.15)) + (cjk ? size * 0.05 : 0);
+    cx += adv * (0.9 + rnd() * 0.12) + size * 0.05;
     iCh++;
     if (maxW && cx - x0 > maxW) break;
   }
   return cx;
 }
 
-/* v0.6.401：FSD 年檢頭欄——數字／拉丁同中文：一律 ChenYuluoyanHW＋同一 wob／size 邏輯 */
+/* v0.6.401／402：FSD 頭欄——ChenYuluoyan；全局 xHwText 亦同（其他頁／checklist） */
 function xHwTextHdr(ctx, text, x0, y0, size, seed, maxW, wob) {
   const wobK = (wob == null || wob <= 0) ? 0.5 : wob;
   const rnd = xHwRng(seed), slant = Math.tan((3 + rnd() * 4) * Math.PI / 180), drift = (0.012 + rnd() * 0.02) * wobK;
@@ -6975,7 +6976,7 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
     if (!t) return;
     const s = String(t);
     if (typeof XHW_OK !== 'undefined' && XHW_OK) {
-      xHwText(ctx, s, xPt * scale, yPt * scale, sz * 1.05, xHwSeed('t1:' + key + ':' + xPt + ':' + yPt), (maxWpt || 160) * scale, 1.7);
+      xHwText(ctx, s, xPt * scale, yPt * scale, sz * 1.05, xHwSeed('t1:' + key + ':' + xPt + ':' + yPt), (maxWpt || 160) * scale, 0.55); /* v0.6.402：輕 wob＋ChenYuluoyan */
     } else {
       ctx.save();
       ctx.fillStyle = '#0f172a';
