@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.410';
+const APP_VERSION = '0.6.411';
+/* v0.6.411：偵測 fds 頭欄「完成年檢日期」手寫 baseline 118→123.5（橫線≈128；只調日期） */
 /* v0.6.410：D|f Q_HARD yn_any←F27＋FA_CUT（根因：FAN／Excel 跟 F27「有冇Cut VAC?」，409 只睇 FA_CUT） */
 /* v0.6.409：Q_HARD_CL D|e←F23、D|f←FA_CUT_LIFT_VAC；FA_CUT 搬 F9 下 */
 /* v0.6.408：F9 下 FD_FIRELINK↔F23 兩向；qGlueUnder F9（同 F15） */
@@ -7076,11 +7077,13 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
     } else put(t, xPt, yPt);
   };
   if (key === 'fds' || key === 'fa' || key === 'fhhr' || key === 'tank') {
-    /* FA 地址第一橫線 ≈140.5pt；FS251／日期用 baseline = 線 −4.5 → 地址用 136 */
+    /* FA 地址第一橫線 ≈140.5pt；FS251／日期用 baseline = 線 −4.5 → 地址用 136
+       v0.6.411：偵測 fds 完成年檢日期橫線 ≈128pt（blank 量度）→ baseline 123.5；fa／其餘日期線≈122 維持 118；地址／參考編號唔郁 */
     const addrY = key === 'fa' ? 136 : 148;
+    const dateY = key === 'fds' ? 123.5 : 118;
     putHw(href, 455, 74, 130, 1.35, 0.5); /* 參考編號：同中文模式 */
     put(fs251, 130, 100);
-    putHw(dateStr, 150, 118, 200, 1.35, 0.5);
+    putHw(dateStr, 150, dateY, 200, 1.35, 0.5);
     putHw(addr, 125, addrY, 430, 1.35, 0.5);
   }
   ctx.restore();
