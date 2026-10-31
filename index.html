@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.415';
+const APP_VERSION = '0.6.416';
+/* v0.6.416：偵測／全表 NA hit——itemMode 遞迴 subs；ynn／NA 一律寫 NA；hit 半徑×3；render／refresh 保 fsdna bar（fsdna-hit） */
 /* v0.6.415：spr 空 skip 段（§2／§3 花灑泵如有）tickmap.skips→段 id；預設不適用可撳「不適用」框；fsdOvSkipHitList 多框 hit（fsdna-sprskip） */
 /* v0.6.413：livepick「預設不適用／預設是／單一／要齊」pointerup 可撳（fsdna-ptr；唔再只靠被殺嘅 click）；ynn＋tickmap-y 寫 NA */
 /* v0.6.412：FD/FA_BATT_QTY＞0 → 偵測 fds §1.d「是」（Q_HARD_FSD gt0；＝0／未答唔剔）；CL-D d 已有 gt0 */
@@ -1887,6 +1888,21 @@ function render(toTop) {
     if (typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id));
     if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(Store.get(cur.id));
     if (typeof liveSplitInit === 'function') liveSplitInit();
+    /* v0.6.416：render 重掛 DOM 後還原預設不適用／預設是 mode＋bar */
+    try {
+      if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
+        const b = (typeof $ === 'function') ? $('#fsdLive') : null;
+        if (b) { b.classList.add('fsdna-mode'); b.classList.remove('fsdyes-mode'); }
+        if (typeof fsdNaRefreshBar === 'function') fsdNaRefreshBar();
+        if (typeof fsdNaRefreshBtn === 'function') fsdNaRefreshBtn();
+      }
+      if (typeof fsdYesMode !== 'undefined' && fsdYesMode) {
+        const b = (typeof $ === 'function') ? $('#fsdLive') : null;
+        if (b) { b.classList.add('fsdyes-mode'); b.classList.remove('fsdna-mode'); }
+        if (typeof fsdYesRefreshBar === 'function') fsdYesRefreshBar();
+        if (typeof fsdYesRefreshBtn === 'function') fsdYesRefreshBtn();
+      }
+    } catch (eNaR) {}
     if (typeof qReorderBind === 'function') qReorderBind(); /* v0.6.355 問卷拉次序 */
     /* v0.6.346／347：換步驟重置跟頁；同頁重畫保留 fsdLiveFollowPi；還原 scroll 後再 sync */
     if (typeof fsdLiveFollowBind === 'function') {
@@ -5280,25 +5296,39 @@ function fsdYesRefreshBar() {
   if (old) old.replaceWith(neu);
   else fsdDefInsertBar(neu);
 }
+function fsdNaItemMode(key, ik) {
+  /* v0.6.416：遞迴 sections＋subs 找 checklist mode（嵌套 ynn 唔漏） */
+  try {
+    const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
+    if (!c) return null;
+    let found = null;
+    const walk = (secs) => {
+      (secs || []).forEach(s => {
+        if (found != null) return;
+        (s.items || []).forEach(it => {
+          if (found != null) return;
+          if (it && it.k === ik) found = it.mode || null;
+        });
+        if (found == null) walk(s.subs);
+      });
+    };
+    walk(c.sections);
+    return found;
+  } catch (e) { return null; }
+}
 function fsdNaApplyHit(hit) {
   /* v0.6.364：強制 NA；段 skip 跟現有 __skip__／d.skip；剔選項（mode y）清剔／提示
-     v0.6.413：tickmap mode=y 但 checklist 其實 ynn（例 fds 1.b／1.c／1.d）→ 寫 NA */
+     v0.6.413：tickmap mode=y 但 checklist 其實 ynn（例 fds 1.b／1.c／1.d）→ 寫 NA
+     v0.6.416：NA／ynn 一律寫 NA；itemMode 遞迴 subs */
   if (!hit) return false;
   const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
   if (sid != null) return fsdPdfApplyHit(hit);
+  /* 預設不適用：已命中 NA 框／ynn 列 → 一律寫 NA（唔入 mode=y 清剔） */
+  if (hit.v === 'NA' || hit.mode === 'ynn') {
+    return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'NA', mode: hit.mode === 'ynn' ? 'ynn' : (hit.mode || 'ynn') });
+  }
   if (hit.mode === 'y' || hit.v === 'T') {
-    let itemMode = null;
-    try {
-      const c = (typeof FSD_BY !== 'undefined' && FSD_BY[hit.key]) || null;
-      const secs = (c && c.sections) || [];
-      for (let si = 0; si < secs.length; si++) {
-        const items = secs[si].items || [];
-        for (let ii = 0; ii < items.length; ii++) {
-          if (items[ii] && items[ii].k === hit.ik) { itemMode = items[ii].mode; break; }
-        }
-        if (itemMode != null) break;
-      }
-    } catch (eIm) {}
+    const itemMode = typeof fsdNaItemMode === 'function' ? fsdNaItemMode(hit.key, hit.ik) : null;
     if (itemMode === 'ynn') {
       return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'NA', mode: 'ynn' });
     }
@@ -5457,7 +5487,7 @@ function qTeachHitTest(im, clientX, clientY) {
   let best = null, bestD = 1e9;
   const tryBox = (box, ik, v, mode) => {
     if (!box) return;
-    const s = (box.s || 9.5) * 2.25; /* v0.6.362：略闊 hit，§2 不適用／其他框易撳中 */
+    const s = Math.max(16, (box.s || 9.5) * 3); /* v0.6.416：加闊 hit（≥16pt／×3），偵測紙本細框／手指易中 */
     const dx = xPt - box.x, dy = yPt - box.y;
     if (Math.abs(dx) <= s && Math.abs(dy) <= s) {
       const d = dx * dx + dy * dy;
@@ -6684,8 +6714,16 @@ async function fsdLiveRefresh(r) {
     if (typeof qTeachActive !== 'undefined' && qTeachActive) { const b = $('#fsdLive'); if (b) b.classList.add('qteach-mode'); }
     /* v0.6.366：每次刷新右欄都畫已教暗淡標記（問答未揀都見） */
     setTimeout(() => { if (typeof qTeachPaintMarkersSoon === 'function') qTeachPaintMarkersSoon(); else if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers(); }, 30);
-    if (typeof fsdNaMode !== 'undefined' && fsdNaMode) { const b2 = $('#fsdLive'); if (b2) { b2.classList.add('fsdna-mode'); b2.classList.remove('fsdyes-mode'); } }
-    if (typeof fsdYesMode !== 'undefined' && fsdYesMode) { const b3 = $('#fsdLive'); if (b3) { b3.classList.add('fsdyes-mode'); b3.classList.remove('fsdna-mode'); } }
+    if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
+      const b2 = $('#fsdLive'); if (b2) { b2.classList.add('fsdna-mode'); b2.classList.remove('fsdyes-mode'); }
+      if (typeof fsdNaRefreshBar === 'function') fsdNaRefreshBar();
+      if (typeof fsdNaRefreshBtn === 'function') fsdNaRefreshBtn();
+    }
+    if (typeof fsdYesMode !== 'undefined' && fsdYesMode) {
+      const b3 = $('#fsdLive'); if (b3) { b3.classList.add('fsdyes-mode'); b3.classList.remove('fsdna-mode'); }
+      if (typeof fsdYesRefreshBar === 'function') fsdYesRefreshBar();
+      if (typeof fsdYesRefreshBtn === 'function') fsdYesRefreshBtn();
+    }
   } catch (e) {
     if (tok !== fsdLiveTok) return;
     box.innerHTML = `<div class="halive-msg" style="color:#b91c1c">實時 PDF 出錯：${esc(e.message || e)}</div>`;
