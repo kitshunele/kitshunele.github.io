@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.413';
+const APP_VERSION = '0.6.414';
+/* v0.6.414：預設不適用——tickmap mode=y（fds 1.b／1.c／1.d 只有 yes 框）寫 NA 後 overlay 畫斜線；PDF pointerup 可剔；livepick 防雙 toggle（fsdna-fix） */
 /* v0.6.413：livepick「預設不適用／預設是／單一／要齊」pointerup 可撳（fsdna-ptr；唔再只靠被殺嘅 click）；ynn＋tickmap-y 寫 NA */
 /* v0.6.412：FD/FA_BATT_QTY＞0 → 偵測 fds §1.d「是」（Q_HARD_FSD gt0；＝0／未答唔剔）；CL-D d 已有 gt0 */
 /* v0.6.411：偵測 fds 頭欄「完成年檢日期」手寫 baseline 118→123.5（橫線≈128；只調日期） */
@@ -5072,6 +5073,8 @@ let fsdLivePickLockTok = 0;
 let fsdLivePickNoFollow = false; /* v0.6.372：揀 checklist 後禁自動 FollowScroll／Sync，直至用戶撳表單 */
 let fsdLivePickPtr = null; /* v0.6.372：pointerdown→up 認掣（唔靠可能被殺嘅 click） */
 let fsdLpkPtrConsumed = null; /* v0.6.413：{el,t} pointerup 已處理 → click 唔再 toggle */
+let fsdPdfPtr = null; /* v0.6.414：PDF 格 pointer */
+let fsdPdfPtrConsumed = null;
 function fsdLivePickQuietActive() {
   return !!fsdLivePickHoldScroll || Date.now() < (fsdLivePickQuietUntil | 0);
 }
@@ -5518,7 +5521,8 @@ function qTeachPaintMarkers() {
       return;
     }
     const m = tm.items[e.ik]; if (!m) return;
-    const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
+    let b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
+    if (!b && (e.v === 'N' || e.v === 'NA')) b = m.yes; /* v0.6.414 mode=y 無 na／no */
     if (!b) return;
     pushMark(m.page, b, e.v, e.ik, false, e.ik + '=' + e.v, ansCol, false);
   });
@@ -5550,7 +5554,8 @@ function qTeachPaintMarkers() {
           return;
         }
         const m = tm.items[e.ik]; if (!m) return;
-        const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
+        let b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
+        if (!b && (e.v === 'N' || e.v === 'NA')) b = m.yes; /* v0.6.414 mode=y 無 na／no */
         if (!b) return;
         pushMark(m.page, b, e.v, e.ik, locked || ghost, tip + ' · ' + e.ik, oCol, ghost);
       });
@@ -5755,12 +5760,17 @@ function fsdLivePickApply(k) {
 }
 
 function fsdLpkPtrMark(el) {
-  fsdLpkPtrConsumed = el ? { el: el, t: Date.now() } : null;
+  /* v0.6.414：記 el＋act＋較長 TTL——防 click 遲過 600ms／DOM 換掣令 Took 失手 → 雙 toggle 關模式 */
+  if (!el) { fsdLpkPtrConsumed = null; return; }
+  fsdLpkPtrConsumed = { el: el, act: (el.dataset && el.dataset.act) || '', t: Date.now() };
 }
 function fsdLpkPtrTook(el) {
   const c = fsdLpkPtrConsumed;
-  if (!c || !el || c.el !== el) return false;
-  if ((Date.now() - (c.t | 0)) > 600) return false;
+  if (!c || !el) return false;
+  const act = (el.dataset && el.dataset.act) || '';
+  const same = (c.el === el) || (c.act && act && c.act === act);
+  if (!same) return false;
+  if ((Date.now() - (c.t | 0)) > 2000) return false;
   fsdLpkPtrConsumed = null;
   return true;
 }
@@ -5862,6 +5872,15 @@ document.addEventListener('pointerup', e => {
   fsdLpkPtrMark(b);
 }, { capture: true });
 document.addEventListener('pointercancel', () => { fsdLivePickPtr = null; }, true);
+/* v0.6.414：pointerup 已處理 → capture 殺 click，唔靠 actions 遲 Took（防雙 toggle） */
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest && e.target.closest('#livepick .lpk[data-act], #fsdna .lpk[data-act], #fsdyes .lpk[data-act], #qteach .lpk[data-act]');
+  if (b && typeof fsdLpkPtrTook === 'function' && fsdLpkPtrTook(b)) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+}, true);
 document.addEventListener('click', e => {
   const t = e.target && e.target.closest && e.target.closest('main.haslive .liveform [data-act]');
   if (!t) return;
@@ -5917,6 +5936,13 @@ document.addEventListener('click', e => {
   const im = e.target && e.target.closest && e.target.closest('#fsdLive .halive-pg');
   if (!im) return;
   const teaching = !!(qTeachActive && qTeachActive.parts && qTeachActive.parts.length && typeof cur !== 'undefined' && cur.step === 'q');
+  /* v0.6.414：pointerup 已處理 → 吞 click，防雙寫 */
+  if (fsdPdfPtrConsumed && (Date.now() - (fsdPdfPtrConsumed.t | 0)) < 2000) {
+    fsdPdfPtrConsumed = null;
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   if (teaching) {
     const hit = qTeachHitTest(im, e.clientX, e.clientY);
     if (!hit) {
@@ -5968,6 +5994,60 @@ document.addEventListener('click', e => {
   e.stopPropagation();
   fsdPdfApplyHit(hit);
 }, true);
+/* v0.6.414：PDF 格 pointerup——電話上 click 遲／被殺時仍可剔（教／預設不適用／預設是／普通） */
+document.addEventListener('pointerdown', e => {
+  const im = e.target && e.target.closest && e.target.closest('#fsdLive .halive-pg');
+  if (!im) { fsdPdfPtr = null; return; }
+  const teaching = !!(typeof qTeachActive !== 'undefined' && qTeachActive && qTeachActive.parts && qTeachActive.parts.length && typeof cur !== 'undefined' && cur.step === 'q');
+  const naOn = !!(typeof fsdNaMode !== 'undefined' && fsdNaMode);
+  const yesOn = !!(typeof fsdYesMode !== 'undefined' && fsdYesMode);
+  const st0 = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
+  const editOk = st0.startsWith('FSD-') || st0 === 'q';
+  if (!(teaching || naOn || yesOn || editOk)) { fsdPdfPtr = null; return; }
+  fsdPdfPtr = { im, x: e.clientX | 0, y: e.clientY | 0, id: e.pointerId, teaching, naOn, yesOn };
+}, { capture: true, passive: true });
+document.addEventListener('pointerup', e => {
+  const st = fsdPdfPtr;
+  fsdPdfPtr = null;
+  if (!st || !st.im) return;
+  if (st.id != null && e.pointerId !== st.id) return;
+  const dx = Math.abs((e.clientX | 0) - st.x), dy = Math.abs((e.clientY | 0) - st.y);
+  if (dx > 14 || dy > 14) return;
+  const im = st.im;
+  const cx = e.clientX, cy = e.clientY;
+  if (st.teaching) {
+    const hit = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
+    if (!hit) return;
+    fsdPdfPtrConsumed = { t: Date.now() };
+    if (typeof qTeachApplyHit === 'function') qTeachApplyHit(hit);
+    return;
+  }
+  if (st.naOn) {
+    const stNa = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
+    if (!(stNa.startsWith('FSD-') || stNa === 'q')) return;
+    const hitNa = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
+    if (!hitNa) return;
+    fsdPdfPtrConsumed = { t: Date.now() };
+    if (typeof fsdNaApplyHit === 'function') fsdNaApplyHit(hitNa);
+    return;
+  }
+  if (st.yesOn) {
+    const stY = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
+    if (!(stY.startsWith('FSD-') || stY === 'q')) return;
+    const hitY = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
+    if (!hitY) return;
+    fsdPdfPtrConsumed = { t: Date.now() };
+    if (typeof fsdYesApplyHit === 'function') fsdYesApplyHit(hitY);
+    return;
+  }
+  const stE = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
+  if (!(stE.startsWith('FSD-') || stE === 'q')) return;
+  const hit = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
+  if (!hit) return;
+  fsdPdfPtrConsumed = { t: Date.now() };
+  if (typeof fsdPdfApplyHit === 'function') fsdPdfApplyHit(hit);
+}, { capture: true });
+document.addEventListener('pointercancel', () => { fsdPdfPtr = null; }, true);
 /* v0.6.348：撳答案／段即 pin 頁碼；render 期間唔俾 keep.p 蓋返舊 PDF 位（電話窄屏致命） */
 let fsdLiveFollowForceUntil = 0;
 const FSD_LIVE_FOLLOW_FORCE_MS = 900;
@@ -7173,6 +7253,65 @@ function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
   }
   ctx.restore();
 }
+function fsdDrawNaOv(ctx, box, scale, seed, inkRgb) {
+  /* v0.6.414：mode=y 只有 yes 框時，不適用畫斜線（紙本無獨立 NA 格） */
+  if (!box) return;
+  const rnd = (typeof xHwRng === 'function')
+    ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ovna:' + box.x + ':' + box.y))) : 1)
+    : (() => { let n = 1; return () => { n = (n * 1103515245 + 12345) >>> 0; return (n >>> 8) / 16777216; }; })();
+  const u = () => rnd() - 0.5;
+  const boxS = (box.s || 9.5) * scale;
+  const s = boxS * (1.15 + rnd() * 0.35);
+  const cx = box.x * scale + u() * boxS * 0.25;
+  const cy = box.y * scale + u() * boxS * 0.22;
+  let rC = 71, gC = 85, bC = 105; /* slate #475569 */
+  if (inkRgb && inkRgb.length >= 3) {
+    const inkK = 0.92 + rnd() * 0.12;
+    rC = Math.round(Math.min(255, Math.max(0, inkRgb[0] * inkK)));
+    gC = Math.round(Math.min(255, Math.max(0, inkRgb[1] * inkK)));
+    bC = Math.round(Math.min(255, Math.max(0, inkRgb[2] * inkK)));
+  }
+  const wd = Math.max(1.3, s * (0.07 + rnd() * 0.04));
+  ctx.save();
+  ctx.strokeStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
+  ctx.lineWidth = wd;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.55, cy + s * 0.22);
+  ctx.lineTo(cx + s * 0.55, cy - s * 0.42);
+  ctx.stroke();
+  ctx.restore();
+}
+function fsdDrawXOv(ctx, box, scale, seed, inkRgb) {
+  /* v0.6.414：mode=y 紙本無 no 框時，「否」畫 X 喺 yes 框 */
+  if (!box) return;
+  const rnd = (typeof xHwRng === 'function')
+    ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ovx:' + box.x + ':' + box.y))) : 2)
+    : (() => { let n = 2; return () => { n = (n * 1103515245 + 12345) >>> 0; return (n >>> 8) / 16777216; }; })();
+  const u = () => rnd() - 0.5;
+  const boxS = (box.s || 9.5) * scale;
+  const s = boxS * (1.05 + rnd() * 0.3);
+  const cx = box.x * scale + u() * boxS * 0.2;
+  const cy = box.y * scale + u() * boxS * 0.2;
+  let rC = 185, gC = 28, bC = 28;
+  if (inkRgb && inkRgb.length >= 3) {
+    rC = Math.round(Math.min(255, Math.max(0, inkRgb[0])));
+    gC = Math.round(Math.min(255, Math.max(0, inkRgb[1])));
+    bC = Math.round(Math.min(255, Math.max(0, inkRgb[2])));
+  }
+  const wd = Math.max(1.3, s * (0.07 + rnd() * 0.04));
+  const r = s * 0.48;
+  ctx.save();
+  ctx.strokeStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
+  ctx.lineWidth = wd;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
+  ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   /* best-effort 頭欄（掃瞄紙無 AcroForm；約位跟 OCR）
      v0.6.386–387：手寫；v0.6.397 wob0.95；
@@ -7398,7 +7537,10 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
         else if (onNa) ink = qAnsColorRgb('不適用');
       }
       if (m.mode === 'y') {
+        /* v0.6.414：紙本只有 yes 框——是＝剔；不適用＝斜線；否＝X（清單 ynn 可寫 NA／N） */
         if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y', ink);
+        else if (onNa) fsdDrawNaOv(ctx, m.yes, scale, key + ':' + ik + ':na', ink);
+        else if (onN) fsdDrawXOv(ctx, m.yes, scale, key + ':' + ik + ':n', ink);
       } else {
         if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y', ink);
         if (onN) fsdDrawTickOv(ctx, m.no, scale, key + ':' + ik + ':n', ink);
