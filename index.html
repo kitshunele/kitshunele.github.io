@@ -632,10 +632,7 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.416';
-/* v0.6.416：偵測／全表 NA hit——itemMode 遞迴 subs；ynn／NA 一律寫 NA；hit 半徑×3；render／refresh 保 fsdna bar（fsdna-hit） */
-/* v0.6.415：spr 空 skip 段（§2／§3 花灑泵如有）tickmap.skips→段 id；預設不適用可撳「不適用」框；fsdOvSkipHitList 多框 hit（fsdna-sprskip） */
-/* v0.6.413：livepick「預設不適用／預設是／單一／要齊」pointerup 可撳（fsdna-ptr；唔再只靠被殺嘅 click）；ynn＋tickmap-y 寫 NA */
+const APP_VERSION = '0.6.412';
 /* v0.6.412：FD/FA_BATT_QTY＞0 → 偵測 fds §1.d「是」（Q_HARD_FSD gt0；＝0／未答唔剔）；CL-D d 已有 gt0 */
 /* v0.6.411：偵測 fds 頭欄「完成年檢日期」手寫 baseline 118→123.5（橫線≈128；只調日期） */
 /* v0.6.410：D|f Q_HARD yn_any←F27＋FA_CUT（根因：FAN／Excel 跟 F27「有冇Cut VAC?」，409 只睇 FA_CUT） */
@@ -1888,21 +1885,6 @@ function render(toTop) {
     if (typeof haLiveSchedule === 'function') haLiveSchedule(Store.get(cur.id));
     if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(Store.get(cur.id));
     if (typeof liveSplitInit === 'function') liveSplitInit();
-    /* v0.6.416：render 重掛 DOM 後還原預設不適用／預設是 mode＋bar */
-    try {
-      if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
-        const b = (typeof $ === 'function') ? $('#fsdLive') : null;
-        if (b) { b.classList.add('fsdna-mode'); b.classList.remove('fsdyes-mode'); }
-        if (typeof fsdNaRefreshBar === 'function') fsdNaRefreshBar();
-        if (typeof fsdNaRefreshBtn === 'function') fsdNaRefreshBtn();
-      }
-      if (typeof fsdYesMode !== 'undefined' && fsdYesMode) {
-        const b = (typeof $ === 'function') ? $('#fsdLive') : null;
-        if (b) { b.classList.add('fsdyes-mode'); b.classList.remove('fsdna-mode'); }
-        if (typeof fsdYesRefreshBar === 'function') fsdYesRefreshBar();
-        if (typeof fsdYesRefreshBtn === 'function') fsdYesRefreshBtn();
-      }
-    } catch (eNaR) {}
     if (typeof qReorderBind === 'function') qReorderBind(); /* v0.6.355 問卷拉次序 */
     /* v0.6.346／347：換步驟重置跟頁；同頁重畫保留 fsdLiveFollowPi；還原 scroll 後再 sync */
     if (typeof fsdLiveFollowBind === 'function') {
@@ -5088,9 +5070,6 @@ let fsdLivePickQuietUntil = 0; /* v0.6.371／372：短 quiet 只擋 pane collaps
 let fsdLivePickLockTok = 0;
 let fsdLivePickNoFollow = false; /* v0.6.372：揀 checklist 後禁自動 FollowScroll／Sync，直至用戶撳表單 */
 let fsdLivePickPtr = null; /* v0.6.372：pointerdown→up 認掣（唔靠可能被殺嘅 click） */
-let fsdLpkPtrConsumed = null; /* v0.6.413：{el,t} pointerup 已處理 → click 唔再 toggle */
-let fsdPdfPtr = null; /* v0.6.414：PDF 格 pointer */
-let fsdPdfPtrConsumed = null;
 function fsdLivePickQuietActive() {
   return !!fsdLivePickHoldScroll || Date.now() < (fsdLivePickQuietUntil | 0);
 }
@@ -5296,43 +5275,13 @@ function fsdYesRefreshBar() {
   if (old) old.replaceWith(neu);
   else fsdDefInsertBar(neu);
 }
-function fsdNaItemMode(key, ik) {
-  /* v0.6.416：遞迴 sections＋subs 找 checklist mode（嵌套 ynn 唔漏） */
-  try {
-    const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
-    if (!c) return null;
-    let found = null;
-    const walk = (secs) => {
-      (secs || []).forEach(s => {
-        if (found != null) return;
-        (s.items || []).forEach(it => {
-          if (found != null) return;
-          if (it && it.k === ik) found = it.mode || null;
-        });
-        if (found == null) walk(s.subs);
-      });
-    };
-    walk(c.sections);
-    return found;
-  } catch (e) { return null; }
-}
 function fsdNaApplyHit(hit) {
-  /* v0.6.364：強制 NA；段 skip 跟現有 __skip__／d.skip；剔選項（mode y）清剔／提示
-     v0.6.413：tickmap mode=y 但 checklist 其實 ynn（例 fds 1.b／1.c／1.d）→ 寫 NA
-     v0.6.416：NA／ynn 一律寫 NA；itemMode 遞迴 subs */
+  /* v0.6.364：強制 NA；段 skip 跟現有 __skip__／d.skip；剔選項（mode y）清剔／提示 */
   if (!hit) return false;
   const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
   if (sid != null) return fsdPdfApplyHit(hit);
-  /* 預設不適用：已命中 NA 框／ynn 列 → 一律寫 NA（唔入 mode=y 清剔） */
-  if (hit.v === 'NA' || hit.mode === 'ynn') {
-    return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'NA', mode: hit.mode === 'ynn' ? 'ynn' : (hit.mode || 'ynn') });
-  }
   if (hit.mode === 'y' || hit.v === 'T') {
-    const itemMode = typeof fsdNaItemMode === 'function' ? fsdNaItemMode(hit.key, hit.ik) : null;
-    if (itemMode === 'ynn') {
-      return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'NA', mode: 'ynn' });
-    }
-    /* 真剔選項無「不適用」欄——清已剔；否則提示用段跳過 */
+    /* 剔選項無「不適用」欄——清已剔；否則提示用段跳過 */
     if (!hit || typeof fsdRec !== 'function') return false;
     const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
     if (!r) return false;
@@ -5487,7 +5436,7 @@ function qTeachHitTest(im, clientX, clientY) {
   let best = null, bestD = 1e9;
   const tryBox = (box, ik, v, mode) => {
     if (!box) return;
-    const s = Math.max(16, (box.s || 9.5) * 3); /* v0.6.416：加闊 hit（≥16pt／×3），偵測紙本細框／手指易中 */
+    const s = (box.s || 9.5) * 2.25; /* v0.6.362：略闊 hit，§2 不適用／其他框易撳中 */
     const dx = xPt - box.x, dy = yPt - box.y;
     if (Math.abs(dx) <= s && Math.abs(dy) <= s) {
       const d = dx * dx + dy * dy;
@@ -5500,13 +5449,8 @@ function qTeachHitTest(im, clientX, clientY) {
     if (m.mode === 'y') tryBox(m.yes, ik, 'T', 'y');
     else { tryBox(m.yes, ik, 'Y', m.mode); tryBox(m.no, ik, 'N', m.mode); tryBox(m.na, ik, 'NA', m.mode); }
   });
-  /* v0.6.363／0.6.415：段「如不適用，跳往…」NA 框亦可教／剔（含空段多框） */
-  if (typeof fsdOvSkipHitList === 'function') {
-    fsdOvSkipHitList(key, tm).forEach(ent => {
-      if (!ent || !ent.sk || !ent.sk.na || (ent.sk.page | 0) !== (pi | 0)) return;
-      tryBox(ent.sk.na, qTeachSkipIk(ent.sid), 'NA', 'secskip');
-    });
-  } else if (typeof fsdOvSkipMap === 'function') {
+  /* v0.6.363：段「如不適用，跳往…」NA 框亦可教／剔（所有 skip 段） */
+  if (typeof fsdOvSkipMap === 'function') {
     const skipMap = fsdOvSkipMap(key, tm);
     Object.keys(skipMap || {}).forEach(sid => {
       const sk = skipMap[sid];
@@ -5556,8 +5500,7 @@ function qTeachPaintMarkers() {
       return;
     }
     const m = tm.items[e.ik]; if (!m) return;
-    let b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
-    if (!b && (e.v === 'N' || e.v === 'NA')) b = m.yes; /* v0.6.414 mode=y 無 na／no */
+    const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
     if (!b) return;
     pushMark(m.page, b, e.v, e.ik, false, e.ik + '=' + e.v, ansCol, false);
   });
@@ -5589,8 +5532,7 @@ function qTeachPaintMarkers() {
           return;
         }
         const m = tm.items[e.ik]; if (!m) return;
-        let b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
-        if (!b && (e.v === 'N' || e.v === 'NA')) b = m.yes; /* v0.6.414 mode=y 無 na／no */
+        const b = e.v === 'N' ? m.no : e.v === 'NA' ? m.na : m.yes;
         if (!b) return;
         pushMark(m.page, b, e.v, e.ik, locked || ghost, tip + ' · ' + e.ik, oCol, ghost);
       });
@@ -5793,105 +5735,16 @@ function fsdLivePickApply(k) {
   setTimeout(() => fsdLivePickHoldRestore(), 280);
   return true;
 }
-
-function fsdLpkPtrMark(el) {
-  /* v0.6.414：記 el＋act＋較長 TTL——防 click 遲過 600ms／DOM 換掣令 Took 失手 → 雙 toggle 關模式 */
-  if (!el) { fsdLpkPtrConsumed = null; return; }
-  fsdLpkPtrConsumed = { el: el, act: (el.dataset && el.dataset.act) || '', t: Date.now() };
-}
-function fsdLpkPtrTook(el) {
-  const c = fsdLpkPtrConsumed;
-  if (!c || !el) return false;
-  const act = (el.dataset && el.dataset.act) || '';
-  const same = (c.el === el) || (c.act && act && c.act === act);
-  if (!same) return false;
-  if ((Date.now() - (c.t | 0)) > 2000) return false;
-  fsdLpkPtrConsumed = null;
-  return true;
-}
-/* v0.6.413：livepick／fsdna／fsdyes／qteach 掣共用（pointerup＋click；避免只靠被殺嘅 click） */
-function fsdLivePickBarAct(el) {
-  if (!el || !el.dataset) return false;
-  const act = el.dataset.act;
-  if (act === 'fsdlivepick') {
-    if (typeof fsdLivePickApply === 'function') fsdLivePickApply(el.dataset.k);
-    return true;
-  }
-  if (act === 'fsdnamode') {
-    if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
-      if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
-    } else if (typeof fsdNaActivate === 'function') fsdNaActivate();
-    return true;
-  }
-  if (act === 'fsdnadone') {
-    if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
-    return true;
-  }
-  if (act === 'fsdyesmode') {
-    if (typeof fsdYesMode !== 'undefined' && fsdYesMode) {
-      if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
-    } else if (typeof fsdYesActivate === 'function') fsdYesActivate();
-    return true;
-  }
-  if (act === 'fsdyesdone') {
-    if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
-    return true;
-  }
-  if (act === 'qteachneed') {
-    if (typeof qTeachSetNeed === 'function') qTeachSetNeed(el.dataset.n);
-    return true;
-  }
-  if (act === 'qteachdone') {
-    if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
-    return true;
-  }
-  if (act === 'qteachclear') {
-    if (typeof qTeachActive === 'undefined' || !qTeachActive || !qTeachActive.parts || !qTeachActive.parts.length) return true;
-    const parts = qTeachActive.parts.slice();
-    const need = qTeachActive.need || 1;
-    const ka = (parts.length >= need && typeof qTeachMakeKey === 'function')
-      ? qTeachMakeKey(parts.slice(0, need))
-      : (typeof qTeachMakeKey === 'function' ? qTeachMakeKey(parts) : null);
-    const lab = (typeof qTeachLabel === 'function') ? qTeachLabel(parts) : (qTeachActive.cell + '＝' + qTeachActive.ans);
-    const r = (typeof Store !== 'undefined' && typeof cur !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
-    if (ka && r && typeof qTeachClearEntries === 'function' && typeof qTeachListKey === 'function') {
-      qTeachClearEntries(r, qTeachListKey(ka));
-    } else if (r && typeof qTeachApplyToRec === 'function' && qTeachActive.cell) {
-      qTeachApplyToRec(r, qTeachActive.cell, '', qTeachActive.ans);
-    }
-    if (ka && typeof qTeachSaveKey === 'function') qTeachSaveKey(ka, []);
-    else if (typeof qTeachSave === 'function') qTeachSave(qTeachActive.cell, qTeachActive.ans, []);
-    if (r) {
-      try {
-        (typeof FSD !== 'undefined' ? FSD : []).forEach(c => {
-          if (typeof fsdMigrateStale === 'function') fsdMigrateStale(r, c);
-        });
-      } catch (eM) {}
-      Store.touch(r);
-      if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(r);
-      else if (typeof render === 'function') render();
-    }
-    if (typeof qTeachRefreshBar === 'function') qTeachRefreshBar();
-    if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers();
-    if (typeof toast === 'function') toast('已清除 ' + lab + ' 教過嘅對應', 2000);
-    return true;
-  }
-  return false;
-}
-/* v0.6.372／0.6.413：唔再 preventDefault（touch／pointerdown 會殺 click）
-   pointerdown：fsdlivepick 記 scroll；mode／教掣唔改 ManualKey
-   pointerup：移動 ≤14px → fsdLivePickBarAct（含 fsdnamode／fsdyesmode／qteachneed／完成／清組） */
+/* v0.6.372：唔再 preventDefault（touchstart／pointerdown 會殺 click → 偵測／火警鐘掣冇反應）
+   pointerdown 只記 scroll；pointerup 直接 Apply（移動細過 14px 先當撳；橫掃唔算） */
 document.addEventListener('pointerdown', e => {
-  const b = e.target && e.target.closest && e.target.closest('#livepick .lpk[data-act], #fsdna .lpk[data-act], #fsdyes .lpk[data-act], #qteach .lpk[data-act]');
+  const b = e.target && e.target.closest && e.target.closest('#livepick .lpk[data-act="fsdlivepick"]');
   if (!b) { fsdLivePickPtr = null; return; }
   fsdLivePickPtr = { b, x: e.clientX | 0, y: e.clientY | 0, id: e.pointerId };
-  /* 只 fsdlivepick 記 scroll／Hold——mode 掣唔改 ManualKey／NoFollow */
-  if (b.dataset && b.dataset.act === 'fsdlivepick') {
-    try {
-      fsdLivePickScrollKeep = fsdLivePickCaptureScroll();
-      fsdLivePickHoldKeep = fsdLivePickScrollKeep;
-    } catch (e1) { fsdLivePickScrollKeep = null; }
-  }
+  try {
+    fsdLivePickScrollKeep = fsdLivePickCaptureScroll();
+    fsdLivePickHoldKeep = fsdLivePickScrollKeep;
+  } catch (e1) { fsdLivePickScrollKeep = null; }
 }, { capture: true, passive: true });
 document.addEventListener('pointerup', e => {
   const st = fsdLivePickPtr;
@@ -5903,19 +5756,9 @@ document.addEventListener('pointerup', e => {
   const b = st.b;
   try { b.blur(); } catch (e0) {}
   try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e1) {}
-  if (typeof fsdLivePickBarAct === 'function') fsdLivePickBarAct(b);
-  fsdLpkPtrMark(b);
+  if (typeof fsdLivePickApply === 'function') fsdLivePickApply(b.dataset.k);
 }, { capture: true });
 document.addEventListener('pointercancel', () => { fsdLivePickPtr = null; }, true);
-/* v0.6.414：pointerup 已處理 → capture 殺 click，唔靠 actions 遲 Took（防雙 toggle） */
-document.addEventListener('click', e => {
-  const b = e.target && e.target.closest && e.target.closest('#livepick .lpk[data-act], #fsdna .lpk[data-act], #fsdyes .lpk[data-act], #qteach .lpk[data-act]');
-  if (b && typeof fsdLpkPtrTook === 'function' && fsdLpkPtrTook(b)) {
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
-}, true);
 document.addEventListener('click', e => {
   const t = e.target && e.target.closest && e.target.closest('main.haslive .liveform [data-act]');
   if (!t) return;
@@ -5971,13 +5814,6 @@ document.addEventListener('click', e => {
   const im = e.target && e.target.closest && e.target.closest('#fsdLive .halive-pg');
   if (!im) return;
   const teaching = !!(qTeachActive && qTeachActive.parts && qTeachActive.parts.length && typeof cur !== 'undefined' && cur.step === 'q');
-  /* v0.6.414：pointerup 已處理 → 吞 click，防雙寫 */
-  if (fsdPdfPtrConsumed && (Date.now() - (fsdPdfPtrConsumed.t | 0)) < 2000) {
-    fsdPdfPtrConsumed = null;
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
   if (teaching) {
     const hit = qTeachHitTest(im, e.clientX, e.clientY);
     if (!hit) {
@@ -6029,63 +5865,6 @@ document.addEventListener('click', e => {
   e.stopPropagation();
   fsdPdfApplyHit(hit);
 }, true);
-/* v0.6.414：PDF 格 pointerup——電話上 click 遲／被殺時仍可剔（教／預設不適用／預設是／普通） */
-document.addEventListener('pointerdown', e => {
-  const im = e.target && e.target.closest && e.target.closest('#fsdLive .halive-pg');
-  if (!im) { fsdPdfPtr = null; return; }
-  const teaching = !!(typeof qTeachActive !== 'undefined' && qTeachActive && qTeachActive.parts && qTeachActive.parts.length && typeof cur !== 'undefined' && cur.step === 'q');
-  const naOn = !!(typeof fsdNaMode !== 'undefined' && fsdNaMode);
-  const yesOn = !!(typeof fsdYesMode !== 'undefined' && fsdYesMode);
-  const st0 = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
-  const editOk = st0.startsWith('FSD-') || st0 === 'q';
-  if (!(teaching || naOn || yesOn || editOk)) { fsdPdfPtr = null; return; }
-  fsdPdfPtr = { im, x: e.clientX | 0, y: e.clientY | 0, id: e.pointerId, teaching, naOn, yesOn };
-}, { capture: true, passive: true });
-document.addEventListener('pointerup', e => {
-  const st = fsdPdfPtr;
-  fsdPdfPtr = null;
-  if (!st || !st.im) return;
-  if (st.id != null && e.pointerId !== st.id) return;
-  const dx = Math.abs((e.clientX | 0) - st.x), dy = Math.abs((e.clientY | 0) - st.y);
-  if (dx > 14 || dy > 14) return;
-  const im = st.im;
-  const cx = e.clientX, cy = e.clientY;
-  if (st.teaching) {
-    const hit = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
-    if (!hit) return;
-    fsdPdfPtrConsumed = { t: Date.now() };
-    if (typeof qTeachApplyHit === 'function') qTeachApplyHit(hit);
-    return;
-  }
-  if (st.naOn) {
-    const stNa = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
-    if (!(stNa.startsWith('FSD-') || stNa === 'q')) return;
-    const hitNa = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
-    if (!hitNa) {
-      if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
-      return;
-    }
-    fsdPdfPtrConsumed = { t: Date.now() };
-    if (typeof fsdNaApplyHit === 'function') fsdNaApplyHit(hitNa);
-    return;
-  }
-  if (st.yesOn) {
-    const stY = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
-    if (!(stY.startsWith('FSD-') || stY === 'q')) return;
-    const hitY = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
-    if (!hitY) return;
-    fsdPdfPtrConsumed = { t: Date.now() };
-    if (typeof fsdYesApplyHit === 'function') fsdYesApplyHit(hitY);
-    return;
-  }
-  const stE = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
-  if (!(stE.startsWith('FSD-') || stE === 'q')) return;
-  const hit = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
-  if (!hit) return;
-  fsdPdfPtrConsumed = { t: Date.now() };
-  if (typeof fsdPdfApplyHit === 'function') fsdPdfApplyHit(hit);
-}, { capture: true });
-document.addEventListener('pointercancel', () => { fsdPdfPtr = null; }, true);
 /* v0.6.348：撳答案／段即 pin 頁碼；render 期間唔俾 keep.p 蓋返舊 PDF 位（電話窄屏致命） */
 let fsdLiveFollowForceUntil = 0;
 const FSD_LIVE_FOLLOW_FORCE_MS = 900;
@@ -6714,16 +6493,8 @@ async function fsdLiveRefresh(r) {
     if (typeof qTeachActive !== 'undefined' && qTeachActive) { const b = $('#fsdLive'); if (b) b.classList.add('qteach-mode'); }
     /* v0.6.366：每次刷新右欄都畫已教暗淡標記（問答未揀都見） */
     setTimeout(() => { if (typeof qTeachPaintMarkersSoon === 'function') qTeachPaintMarkersSoon(); else if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers(); }, 30);
-    if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
-      const b2 = $('#fsdLive'); if (b2) { b2.classList.add('fsdna-mode'); b2.classList.remove('fsdyes-mode'); }
-      if (typeof fsdNaRefreshBar === 'function') fsdNaRefreshBar();
-      if (typeof fsdNaRefreshBtn === 'function') fsdNaRefreshBtn();
-    }
-    if (typeof fsdYesMode !== 'undefined' && fsdYesMode) {
-      const b3 = $('#fsdLive'); if (b3) { b3.classList.add('fsdyes-mode'); b3.classList.remove('fsdna-mode'); }
-      if (typeof fsdYesRefreshBar === 'function') fsdYesRefreshBar();
-      if (typeof fsdYesRefreshBtn === 'function') fsdYesRefreshBtn();
-    }
+    if (typeof fsdNaMode !== 'undefined' && fsdNaMode) { const b2 = $('#fsdLive'); if (b2) { b2.classList.add('fsdna-mode'); b2.classList.remove('fsdyes-mode'); } }
+    if (typeof fsdYesMode !== 'undefined' && fsdYesMode) { const b3 = $('#fsdLive'); if (b3) { b3.classList.add('fsdyes-mode'); b3.classList.remove('fsdna-mode'); } }
   } catch (e) {
     if (tok !== fsdLiveTok) return;
     box.innerHTML = `<div class="halive-msg" style="color:#b91c1c">實時 PDF 出錯：${esc(e.message || e)}</div>`;
@@ -7299,65 +7070,6 @@ function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
   }
   ctx.restore();
 }
-function fsdDrawNaOv(ctx, box, scale, seed, inkRgb) {
-  /* v0.6.414：mode=y 只有 yes 框時，不適用畫斜線（紙本無獨立 NA 格） */
-  if (!box) return;
-  const rnd = (typeof xHwRng === 'function')
-    ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ovna:' + box.x + ':' + box.y))) : 1)
-    : (() => { let n = 1; return () => { n = (n * 1103515245 + 12345) >>> 0; return (n >>> 8) / 16777216; }; })();
-  const u = () => rnd() - 0.5;
-  const boxS = (box.s || 9.5) * scale;
-  const s = boxS * (1.15 + rnd() * 0.35);
-  const cx = box.x * scale + u() * boxS * 0.25;
-  const cy = box.y * scale + u() * boxS * 0.22;
-  let rC = 71, gC = 85, bC = 105; /* slate #475569 */
-  if (inkRgb && inkRgb.length >= 3) {
-    const inkK = 0.92 + rnd() * 0.12;
-    rC = Math.round(Math.min(255, Math.max(0, inkRgb[0] * inkK)));
-    gC = Math.round(Math.min(255, Math.max(0, inkRgb[1] * inkK)));
-    bC = Math.round(Math.min(255, Math.max(0, inkRgb[2] * inkK)));
-  }
-  const wd = Math.max(1.3, s * (0.07 + rnd() * 0.04));
-  ctx.save();
-  ctx.strokeStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
-  ctx.lineWidth = wd;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(cx - s * 0.55, cy + s * 0.22);
-  ctx.lineTo(cx + s * 0.55, cy - s * 0.42);
-  ctx.stroke();
-  ctx.restore();
-}
-function fsdDrawXOv(ctx, box, scale, seed, inkRgb) {
-  /* v0.6.414：mode=y 紙本無 no 框時，「否」畫 X 喺 yes 框 */
-  if (!box) return;
-  const rnd = (typeof xHwRng === 'function')
-    ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ovx:' + box.x + ':' + box.y))) : 2)
-    : (() => { let n = 2; return () => { n = (n * 1103515245 + 12345) >>> 0; return (n >>> 8) / 16777216; }; })();
-  const u = () => rnd() - 0.5;
-  const boxS = (box.s || 9.5) * scale;
-  const s = boxS * (1.05 + rnd() * 0.3);
-  const cx = box.x * scale + u() * boxS * 0.2;
-  const cy = box.y * scale + u() * boxS * 0.2;
-  let rC = 185, gC = 28, bC = 28;
-  if (inkRgb && inkRgb.length >= 3) {
-    rC = Math.round(Math.min(255, Math.max(0, inkRgb[0])));
-    gC = Math.round(Math.min(255, Math.max(0, inkRgb[1])));
-    bC = Math.round(Math.min(255, Math.max(0, inkRgb[2])));
-  }
-  const wd = Math.max(1.3, s * (0.07 + rnd() * 0.04));
-  const r = s * 0.48;
-  ctx.save();
-  ctx.strokeStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
-  ctx.lineWidth = wd;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
-  ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
-  ctx.stroke();
-  ctx.restore();
-}
-
 function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
   /* best-effort 頭欄（掃瞄紙無 AcroForm；約位跟 OCR）
      v0.6.386–387：手寫；v0.6.397 wob0.95；
@@ -7394,126 +7106,34 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
 }
 
 function fsdOvSkipMap(key, tm) {
-  /* v0.6.339：跳過框 ↔ 段 id（tickmaps.skips 無 id；用「段首頁、子項最低 y 之上最近一個 NA 框」對）
-     v0.6.415：空 skip 段（0 tickmap 子項，例 spr §2／§3 花灑泵「如有」）——用上下鄰近有子項段夾住未用 skip 框；多框按 y 均分 */
+  /* v0.6.339：跳過框 ↔ 段 id（tickmaps.skips 無 id；用「段首頁、子項最低 y 之上最近一個 NA 框」對） */
   const out = {}, items = (tm && tm.items) || {}, skips = (tm && tm.skips) || [];
   const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
-  if (!c) return out;
-  const flat = [];
-  const walkFlat = (ss) => {
+  const walk = (ss) => {
     (ss || []).forEach(s => {
-      const ks = (s.items || []).map(it => it.k).filter(k => items[k]);
-      let firstPage = null, minY = null, lastPage = null, maxY = null;
-      if (ks.length) {
-        const pages = ks.map(k => items[k].page);
-        firstPage = Math.min.apply(null, pages);
-        lastPage = Math.max.apply(null, pages);
-        const ysFirst = ks.filter(k => items[k].page === firstPage).map(k => {
-          const m = items[k]; return (m.yes || m.na || m.no || {}).y;
-        }).filter(y => y != null);
-        const ysLast = ks.filter(k => items[k].page === lastPage).map(k => {
-          const m = items[k]; return (m.yes || m.na || m.no || {}).y;
-        }).filter(y => y != null);
-        if (ysFirst.length) minY = Math.min.apply(null, ysFirst);
-        if (ysLast.length) maxY = Math.max.apply(null, ysLast);
+      if (s.skip) {
+        const ks = (s.items || []).map(it => it.k).filter(k => items[k]);
+        if (ks.length) {
+          const pages = ks.map(k => items[k].page);
+          const firstPage = Math.min.apply(null, pages);
+          const ys = ks.filter(k => items[k].page === firstPage).map(k => {
+            const m = items[k]; return (m.yes || m.na || m.no || {}).y;
+          }).filter(y => y != null);
+          if (ys.length) {
+            const minY = Math.min.apply(null, ys);
+            const cands = skips.filter(sk => sk.page === firstPage && sk.na && sk.na.y < minY - 2);
+            if (cands.length) {
+              cands.sort((a, b) => b.na.y - a.na.y);
+              out[s.id] = cands[0];
+            }
+          }
+        }
       }
-      flat.push({ id: s.id, skip: !!s.skip, ks: ks, firstPage: firstPage, minY: minY, lastPage: lastPage, maxY: maxY });
-      walkFlat(s.subs);
+      walk(s.subs);
     });
   };
-  walkFlat(c.sections);
-  const used = new Set();
-  /* Pass 1：有子項嘅 skip 段——沿用「首頁、子項最低 y 之上最近」 */
-  flat.forEach(s => {
-    if (!s.skip || !s.ks.length || s.minY == null) return;
-    const cands = [];
-    skips.forEach((sk, i) => {
-      if (used.has(i) || !sk || !sk.na) return;
-      if ((sk.page | 0) === (s.firstPage | 0) && sk.na.y < s.minY - 2) cands.push(i);
-    });
-    if (!cands.length) return;
-    cands.sort((a, b) => skips[b].na.y - skips[a].na.y);
-    used.add(cands[0]);
-    out[s.id] = skips[cands[0]];
-  });
-  const prevContent = (idx) => {
-    for (let i = idx - 1; i >= 0; i--) if (flat[i].ks.length && flat[i].minY != null) return flat[i];
-    return null;
-  };
-  const nextContent = (idx) => {
-    for (let i = idx + 1; i < flat.length; i++) if (flat[i].ks.length && flat[i].minY != null) return flat[i];
-    return null;
-  };
-  const emptyIdxs = [];
-  flat.forEach((s, idx) => {
-    if (s.skip && !s.ks.length && !out[s.id]) emptyIdxs.push(idx);
-  });
-  let gi = 0;
-  while (gi < emptyIdxs.length) {
-    const i0 = emptyIdxs[gi];
-    const prev = prevContent(i0), next = nextContent(i0);
-    let gj = gi + 1;
-    while (gj < emptyIdxs.length) {
-      const i1 = emptyIdxs[gj];
-      if (prevContent(i1) !== prev || nextContent(i1) !== next) break;
-      gj++;
-    }
-    const group = emptyIdxs.slice(gi, gj).map(i => flat[i]);
-    gi = gj;
-    const cands = [];
-    skips.forEach((sk, i) => {
-      if (used.has(i) || !sk || !sk.na) return;
-      const y = sk.na.y, p = sk.page | 0;
-      /* 下界用 prev 首頁／最低 y（唔用 lastPage）——spr §1 跨頁時 §2／§3 不適用框仍喺頁 0 中段 */
-      if (prev) {
-        if (p < (prev.firstPage | 0)) return;
-        if (p === (prev.firstPage | 0) && y <= (prev.minY || 0) + 2) return;
-      }
-      if (next) {
-        if (p > (next.firstPage | 0)) return;
-        if (p === (next.firstPage | 0) && y >= (next.minY || 0) - 2) return;
-      }
-      cands.push(i);
-    });
-    cands.sort((a, b) => ((skips[a].page | 0) - (skips[b].page | 0)) || (skips[a].na.y - skips[b].na.y));
-    if (!cands.length) continue;
-    const n = group.length, m = cands.length;
-    for (let j = 0; j < n; j++) {
-      const a = Math.floor(j * m / n);
-      if (a >= m) break;
-      used.add(cands[a]);
-      out[group[j].id] = skips[cands[a]];
-    }
-  }
+  if (c) walk(c.sections);
   return out;
-}
-function fsdOvSkipHitList(key, tm) {
-  /* v0.6.415：hit 用——同一段可有多個「不適用／跳往」框（空段多行）；未入 map 但貼近已對框嘅 raw skip 跟同一 sid */
-  const map = fsdOvSkipMap(key, tm);
-  const skips = (tm && tm.skips) || [];
-  const list = [];
-  const mapped = new Set();
-  Object.keys(map || {}).forEach(sid => {
-    const sk = map[sid];
-    if (!sk || !sk.na) return;
-    list.push({ sid: sid, sk: sk });
-    const ix = skips.indexOf(sk);
-    if (ix >= 0) mapped.add(ix);
-  });
-  skips.forEach((sk, i) => {
-    if (mapped.has(i) || !sk || !sk.na) return;
-    let bestSid = null, bestD = 1e9;
-    Object.keys(map || {}).forEach(sid => {
-      const m = map[sid];
-      if (!m || !m.na || (m.page | 0) !== (sk.page | 0)) return;
-      /* 跟「主框喺呢格上面／同一行」嘅段（唔好搶下一段） */
-      if (m.na.y - 2 > sk.na.y) return;
-      const d = sk.na.y - m.na.y;
-      if (d < bestD && d < 88) { bestD = d; bestSid = sid; }
-    });
-    if (bestSid != null) list.push({ sid: bestSid, sk: sk });
-  });
-  return list;
 }
 /* v0.6.390／391／392 Fan：表一←問卷；0→唔疊；N→只疊 a…N（紙本 a–e／a–b／a／a–e 封頂）
    欄：位置／覆蓋／備註／用作主板 */
@@ -7675,10 +7295,7 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
         else if (onNa) ink = qAnsColorRgb('不適用');
       }
       if (m.mode === 'y') {
-        /* v0.6.414：紙本只有 yes 框——是＝剔；不適用＝斜線；否＝X（清單 ynn 可寫 NA／N） */
         if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y', ink);
-        else if (onNa) fsdDrawNaOv(ctx, m.yes, scale, key + ':' + ik + ':na', ink);
-        else if (onN) fsdDrawXOv(ctx, m.yes, scale, key + ':' + ik + ':n', ink);
       } else {
         if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y', ink);
         if (onN) fsdDrawTickOv(ctx, m.no, scale, key + ':' + ik + ':n', ink);
@@ -16216,16 +15833,59 @@ document.addEventListener('click', async e => {
         if (typeof haLiveSchedule === 'function') haLiveSchedule(r);
       }
       return; }
-    case 'fsdlivepick': /* v0.6.353／0.6.413：右欄揀 checklist（pointerup 優先；click 防雙觸發） */
-    case 'fsdnamode':
-    case 'fsdnadone':
-    case 'fsdyesmode':
-    case 'fsdyesdone':
-    case 'qteachdone':
-    case 'qteachneed':
-    case 'qteachclear': {
-      if (typeof fsdLpkPtrTook === 'function' && fsdLpkPtrTook(el)) return;
-      if (typeof fsdLivePickBarAct === 'function') fsdLivePickBarAct(el);
+    case 'fsdlivepick': { /* v0.6.353：右欄揀邊份消防處 checklist PDF */
+      if (typeof fsdLivePickApply === 'function') fsdLivePickApply(el.dataset.k);
+      return; }
+    case 'fsdnamode': { /* v0.6.364／0.6.366：核對表「預設不適用」模式掣 */
+      if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
+        if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
+      } else if (typeof fsdNaActivate === 'function') fsdNaActivate();
+      return; }
+    case 'fsdnadone': { /* v0.6.364／0.6.366：關閉預設不適用模式 */
+      if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
+      return; }
+    case 'fsdyesmode': { /* v0.6.366：核對表「預設是」模式掣 */
+      if (typeof fsdYesMode !== 'undefined' && fsdYesMode) {
+        if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
+      } else if (typeof fsdYesActivate === 'function') fsdYesActivate();
+      return; }
+    case 'fsdyesdone': { /* v0.6.366：關閉預設是模式 */
+      if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
+      return; }
+    case 'qteachdone': { /* v0.6.356：完成教對應 */
+      if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
+      return; }
+    case 'qteachneed': { /* v0.6.365／0.6.366：教對應要齊 1／2／3（掣喺 livepick 預設不適用／預設是隔離） */
+      if (typeof qTeachSetNeed === 'function') qTeachSetNeed(el.dataset.n);
+      return; }
+    case 'qteachclear': { /* v0.6.356／0.6.365：清除呢組（單一或 AND）教過嘅對應 */
+      if (typeof qTeachActive === 'undefined' || !qTeachActive || !qTeachActive.parts || !qTeachActive.parts.length) return;
+      const parts = qTeachActive.parts.slice();
+      const need = qTeachActive.need || 1;
+      const ka = (parts.length >= need && typeof qTeachMakeKey === 'function')
+        ? qTeachMakeKey(parts.slice(0, need))
+        : (typeof qTeachMakeKey === 'function' ? qTeachMakeKey(parts) : null);
+      const lab = (typeof qTeachLabel === 'function') ? qTeachLabel(parts) : (qTeachActive.cell + '＝' + qTeachActive.ans);
+      if (ka && r && typeof qTeachClearEntries === 'function' && typeof qTeachListKey === 'function') {
+        qTeachClearEntries(r, qTeachListKey(ka));
+      } else if (r && typeof qTeachApplyToRec === 'function' && qTeachActive.cell) {
+        qTeachApplyToRec(r, qTeachActive.cell, '', qTeachActive.ans);
+      }
+      if (ka && typeof qTeachSaveKey === 'function') qTeachSaveKey(ka, []);
+      else if (typeof qTeachSave === 'function') qTeachSave(qTeachActive.cell, qTeachActive.ans, []);
+      if (r) {
+        try {
+          (typeof FSD !== 'undefined' ? FSD : []).forEach(c => {
+            if (typeof fsdMigrateStale === 'function') fsdMigrateStale(r, c);
+          });
+        } catch (eM) {}
+        Store.touch(r);
+        if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(r);
+        else render();
+      }
+      if (typeof qTeachRefreshBar === 'function') qTeachRefreshBar();
+      if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers();
+      if (typeof toast === 'function') toast('已清除 ' + lab + ' 教過嘅對應', 2000);
       return; }
     case 'lkpdf': return pdfLookup();
     case 'waphotos': return phDay(r);
