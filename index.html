@@ -641,7 +641,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.425';
+const APP_VERSION = '0.6.426';
+/* v0.6.426：有冇情境下 mode=y「是否不適用」可剔——合成 NA hit＋是欄循環 ✓↔不適用（#qynna 已取消）；保留 424 ynn 跟撳格／423 hit */
 /* v0.6.425：取消問答頂層／一般系統「是不適用」#qynna（FAN 唔要）；保留 423／424 PDF mode=y hit＋ynn 跟撳格 */
 /* v0.6.424：#qynna 開住時 ynn「有冇」跟撳格（唔再逼 Y／NA）；mode=y 仍強制是／不適用；保留 423 hit／422 promote */
 /* v0.6.423：mode=y 是／不適用可 hit／畫 NA；#qynna pointer；保留 422 promote p6／6.b */
@@ -5510,13 +5511,34 @@ function qTeachHitTest(im, clientX, clientY) {
       if (d < bestD) { bestD = d; best = { key: key, ik: ik, v: v, mode: mode || 'ynn' }; }
     }
   };
+  /* v0.6.426：mode=y 紙本多無 m.na；按同表／同頁 ynn 欄距合成不適用 hit——有冇情境下「是否不適用」可剔 */
+  const med = (arr) => {
+    if (!arr || !arr.length) return null;
+    const a = arr.slice().sort((x, y) => x - y);
+    return a[(a.length - 1) >> 1];
+  };
+  const pageDNa = {}, formDNa = [];
+  Object.keys(tm.items).forEach(ik0 => {
+    const m0 = tm.items[ik0];
+    if (!m0 || m0.mode === 'y' || !m0.yes || !m0.na) return;
+    const d = m0.na.x - m0.yes.x;
+    if (!isFinite(d) || d < 20 || d > 140) return;
+    formDNa.push(d);
+    const p0 = m0.page | 0;
+    (pageDNa[p0] || (pageDNa[p0] = [])).push(d);
+  });
+  const formMed = med(formDNa);
   Object.keys(tm.items).forEach(ik => {
     const m = tm.items[ik];
     if ((m.page | 0) !== (pi | 0)) return;
-    /* v0.6.423：mode=y（是／不適用）都要 hit NA／N（有框先試）；唔再淨係 yes→T */
+    /* v0.6.423／0.6.426：mode=y（是／不適用）hit yes→T；有 m.na 用真框，否則合成 NA 欄 */
     if (m.mode === 'y') {
       tryBox(m.yes, ik, 'T', 'y');
       if (m.na) tryBox(m.na, ik, 'NA', 'y');
+      else if (m.yes) {
+        const dNa = med(pageDNa[pi]) || formMed || 56;
+        tryBox({ x: m.yes.x + dNa, y: m.yes.y, s: m.yes.s || 9.5 }, ik, 'NA', 'y');
+      }
       if (m.no) tryBox(m.no, ik, 'N', 'y');
     } else {
       tryBox(m.yes, ik, 'Y', m.mode); tryBox(m.no, ik, 'N', m.mode); tryBox(m.na, ik, 'NA', m.mode);
@@ -5973,6 +5995,27 @@ function fsdPdfApplyHit(hit) {
   }
   const a = d.a[hit.ik] || {};
   const lab = ({ Y: '是', N: '否', NA: '不適用', T: '✓' })[hit.v] || hit.v;
+  /* v0.6.426：mode=y 單欄（無獨立 NA 框）——撳「是」循環 空→✓→不適用→空；有冇／無 #qynna 都可剔不適用 */
+  if (hit.mode === 'y' && hit.v === 'T' && a.by === 'technician') {
+    if (a.v === 'T') {
+      a.v = 'NA'; a.by = 'technician'; d.a[hit.ik] = a;
+      Store.touch(r);
+      if (typeof toast === 'function') toast('已改 ' + hit.key + ' ' + hit.ik + '＝不適用（記住）', 1800);
+      if (typeof render === 'function') render();
+      else if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
+      return true;
+    }
+    if (a.v === 'NA') {
+      delete a.v; delete a.by;
+      if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
+      else d.a[hit.ik] = a;
+      Store.touch(r);
+      if (typeof toast === 'function') toast('已清 ' + hit.key + ' ' + hit.ik + '（返預設／空）', 1800);
+      if (typeof render === 'function') render();
+      else if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
+      return true;
+    }
+  }
   if (a.v === hit.v && a.by === 'technician') {
     delete a.v; delete a.by;
     if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
