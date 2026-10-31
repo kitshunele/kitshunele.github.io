@@ -641,7 +641,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.423';
+const APP_VERSION = '0.6.424';
+/* v0.6.424：#qynna 開住時 ynn「有冇」跟撳格（唔再逼 Y／NA）；mode=y 仍強制是／不適用；保留 423 hit／422 promote */
 /* v0.6.423：mode=y 是／不適用可 hit／畫 NA；#qynna pointer；保留 422 promote p6／6.b */
 /* v0.6.419：是／不適用（tickmap mode=y）預設不適用同有冇一樣寫 NA（fsdna-sf-na；唔經 416 半徑／bar 重掛） */
 /* v0.6.417：問答「是或不適用」（預設是／預設不適用）；花灑／livepick 隔離兩個掣刪走（q-yn-or-na） */
@@ -5204,9 +5205,9 @@ function qYnNaToolbarHtml() {
   const yesOn = !!(typeof fsdYesMode !== 'undefined' && fsdYesMode);
   const any = naOn || yesOn;
   const hint = naOn
-    ? '已開<strong>不適用</strong>：撳右欄「是／否／不適用」格 → 剔為不適用 · 段跳過'
+    ? '已開<strong>不適用</strong>：「是／不適用」題撳框→不適用 · 「有冇」跟撳格 · 段跳過'
     : (yesOn
-      ? '已開<strong>是</strong>：撳右欄框 → 剔為是／剔選項打剔'
+      ? '已開<strong>是</strong>：「是／不適用」題撳框→是／打剔 · 「有冇」跟撳格（是／否／不適用）'
       : '開「是」或「不適用」後，撳右欄 PDF 框套用');
   const doneAct = naOn ? 'fsdnadone' : (yesOn ? 'fsdyesdone' : '');
   return `<div class="qynna" id="qynna" role="toolbar" aria-label="是或不適用"><div class="qynna-lab">是或不適用 · ${hint}</div><div class="qynna-row"><button type="button" class="lpk yes-mode${yesOn ? ' on' : ''}" data-act="fsdyesmode" title="撳開後喺 PDF 剔為「是」／剔選項打剔" aria-pressed="${yesOn ? 'true' : 'false'}">是</button><button type="button" class="lpk na-mode${naOn ? ' on' : ''}" data-act="fsdnamode" title="撳開後喺 PDF 剔為不適用／段跳過" aria-pressed="${naOn ? 'true' : 'false'}">不適用</button>${any && doneAct ? `<button type="button" class="lpk" data-act="${doneAct}">完成</button>` : ''}</div></div>`;
@@ -5363,15 +5364,20 @@ function fsdNaItemMode(key, ik) {
 }
 function fsdNaApplyHit(hit) {
   /* v0.6.364：強制 NA；段 skip 跟現有 __skip__／d.skip
-     v0.6.419：mode=y（紙本「是／不適用」只有 yes 框；例 fds 1.b／fa 1.a）同 ynn「有冇」一樣寫 NA（overlay 斜線／不適用欄）；唔再清剔／擋
-     （撤 413／416 分支：itemMode===ynn 先寫、真 y 清剔——會令「是不適用」剔唔到） */
+     v0.6.419：mode=y（紙本「是／不適用」只有 yes 框；例 fds 1.b／fa 1.a）寫 NA（overlay 斜線／不適用欄）；唔再清剔／擋
+     （撤 413／416 分支：itemMode===ynn 先寫、真 y 清剔——會令「是不適用」剔唔到）
+     v0.6.424：ynn「有冇」跟實際撳格（Y／N／NA）；只有 mode=y／T／secskip 先強制 NA——頂層「是不適用」開住下面有冇都有反應 */
   if (!hit) return false;
   const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
   if (sid != null) return fsdPdfApplyHit(hit);
-  return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'NA', mode: hit.mode || 'ynn' });
+  if (hit.mode === 'y' || hit.v === 'T') {
+    return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'NA', mode: hit.mode || 'y' });
+  }
+  return fsdPdfApplyHit(hit); /* ynn：跟撳格 */
 }
 function fsdYesApplyHit(hit) {
-  /* v0.6.366：強制「是」；剔選項打剔；段 skip 唔跟預設是 */
+  /* v0.6.366：強制「是」；剔選項打剔；段 skip 唔跟預設是
+     v0.6.424：ynn「有冇」跟實際撳格（Y／N／NA），唔再全逼成 Y——頂層「是不適用」開住下面有冇先有反應 */
   if (!hit) return false;
   const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
   if (sid != null) {
@@ -5381,7 +5387,7 @@ function fsdYesApplyHit(hit) {
   if (hit.mode === 'y' || hit.v === 'T') {
     return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'T', mode: hit.mode || 'y' });
   }
-  return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'Y', mode: hit.mode || 'ynn' });
+  return fsdPdfApplyHit(hit); /* ynn：跟撳格 */
 }
 function qTeachSetActive(parts, need) {
   const arr = (parts || []).filter(p => p && p.cell && p.ans != null && p.ans !== '')
