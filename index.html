@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.412';
+const APP_VERSION = '0.6.413';
+/* v0.6.413：livepick「預設不適用／預設是／單一／要齊」pointerup 可撳（fsdna-ptr；唔再只靠被殺嘅 click）；ynn＋tickmap-y 寫 NA */
 /* v0.6.412：FD/FA_BATT_QTY＞0 → 偵測 fds §1.d「是」（Q_HARD_FSD gt0；＝0／未答唔剔）；CL-D d 已有 gt0 */
 /* v0.6.411：偵測 fds 頭欄「完成年檢日期」手寫 baseline 118→123.5（橫線≈128；只調日期） */
 /* v0.6.410：D|f Q_HARD yn_any←F27＋FA_CUT（根因：FAN／Excel 跟 F27「有冇Cut VAC?」，409 只睇 FA_CUT） */
@@ -5070,6 +5071,7 @@ let fsdLivePickQuietUntil = 0; /* v0.6.371／372：短 quiet 只擋 pane collaps
 let fsdLivePickLockTok = 0;
 let fsdLivePickNoFollow = false; /* v0.6.372：揀 checklist 後禁自動 FollowScroll／Sync，直至用戶撳表單 */
 let fsdLivePickPtr = null; /* v0.6.372：pointerdown→up 認掣（唔靠可能被殺嘅 click） */
+let fsdLpkPtrConsumed = null; /* v0.6.413：{el,t} pointerup 已處理 → click 唔再 toggle */
 function fsdLivePickQuietActive() {
   return !!fsdLivePickHoldScroll || Date.now() < (fsdLivePickQuietUntil | 0);
 }
@@ -5276,12 +5278,28 @@ function fsdYesRefreshBar() {
   else fsdDefInsertBar(neu);
 }
 function fsdNaApplyHit(hit) {
-  /* v0.6.364：強制 NA；段 skip 跟現有 __skip__／d.skip；剔選項（mode y）清剔／提示 */
+  /* v0.6.364：強制 NA；段 skip 跟現有 __skip__／d.skip；剔選項（mode y）清剔／提示
+     v0.6.413：tickmap mode=y 但 checklist 其實 ynn（例 fds 1.b／1.c／1.d）→ 寫 NA */
   if (!hit) return false;
   const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
   if (sid != null) return fsdPdfApplyHit(hit);
   if (hit.mode === 'y' || hit.v === 'T') {
-    /* 剔選項無「不適用」欄——清已剔；否則提示用段跳過 */
+    let itemMode = null;
+    try {
+      const c = (typeof FSD_BY !== 'undefined' && FSD_BY[hit.key]) || null;
+      const secs = (c && c.sections) || [];
+      for (let si = 0; si < secs.length; si++) {
+        const items = secs[si].items || [];
+        for (let ii = 0; ii < items.length; ii++) {
+          if (items[ii] && items[ii].k === hit.ik) { itemMode = items[ii].mode; break; }
+        }
+        if (itemMode != null) break;
+      }
+    } catch (eIm) {}
+    if (itemMode === 'ynn') {
+      return fsdPdfApplyHit({ key: hit.key, ik: hit.ik, v: 'NA', mode: 'ynn' });
+    }
+    /* 真剔選項無「不適用」欄——清已剔；否則提示用段跳過 */
     if (!hit || typeof fsdRec !== 'function') return false;
     const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
     if (!r) return false;
@@ -5735,16 +5753,100 @@ function fsdLivePickApply(k) {
   setTimeout(() => fsdLivePickHoldRestore(), 280);
   return true;
 }
-/* v0.6.372：唔再 preventDefault（touchstart／pointerdown 會殺 click → 偵測／火警鐘掣冇反應）
-   pointerdown 只記 scroll；pointerup 直接 Apply（移動細過 14px 先當撳；橫掃唔算） */
+
+function fsdLpkPtrMark(el) {
+  fsdLpkPtrConsumed = el ? { el: el, t: Date.now() } : null;
+}
+function fsdLpkPtrTook(el) {
+  const c = fsdLpkPtrConsumed;
+  if (!c || !el || c.el !== el) return false;
+  if ((Date.now() - (c.t | 0)) > 600) return false;
+  fsdLpkPtrConsumed = null;
+  return true;
+}
+/* v0.6.413：livepick／fsdna／fsdyes／qteach 掣共用（pointerup＋click；避免只靠被殺嘅 click） */
+function fsdLivePickBarAct(el) {
+  if (!el || !el.dataset) return false;
+  const act = el.dataset.act;
+  if (act === 'fsdlivepick') {
+    if (typeof fsdLivePickApply === 'function') fsdLivePickApply(el.dataset.k);
+    return true;
+  }
+  if (act === 'fsdnamode') {
+    if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
+      if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
+    } else if (typeof fsdNaActivate === 'function') fsdNaActivate();
+    return true;
+  }
+  if (act === 'fsdnadone') {
+    if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
+    return true;
+  }
+  if (act === 'fsdyesmode') {
+    if (typeof fsdYesMode !== 'undefined' && fsdYesMode) {
+      if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
+    } else if (typeof fsdYesActivate === 'function') fsdYesActivate();
+    return true;
+  }
+  if (act === 'fsdyesdone') {
+    if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
+    return true;
+  }
+  if (act === 'qteachneed') {
+    if (typeof qTeachSetNeed === 'function') qTeachSetNeed(el.dataset.n);
+    return true;
+  }
+  if (act === 'qteachdone') {
+    if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
+    return true;
+  }
+  if (act === 'qteachclear') {
+    if (typeof qTeachActive === 'undefined' || !qTeachActive || !qTeachActive.parts || !qTeachActive.parts.length) return true;
+    const parts = qTeachActive.parts.slice();
+    const need = qTeachActive.need || 1;
+    const ka = (parts.length >= need && typeof qTeachMakeKey === 'function')
+      ? qTeachMakeKey(parts.slice(0, need))
+      : (typeof qTeachMakeKey === 'function' ? qTeachMakeKey(parts) : null);
+    const lab = (typeof qTeachLabel === 'function') ? qTeachLabel(parts) : (qTeachActive.cell + '＝' + qTeachActive.ans);
+    const r = (typeof Store !== 'undefined' && typeof cur !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
+    if (ka && r && typeof qTeachClearEntries === 'function' && typeof qTeachListKey === 'function') {
+      qTeachClearEntries(r, qTeachListKey(ka));
+    } else if (r && typeof qTeachApplyToRec === 'function' && qTeachActive.cell) {
+      qTeachApplyToRec(r, qTeachActive.cell, '', qTeachActive.ans);
+    }
+    if (ka && typeof qTeachSaveKey === 'function') qTeachSaveKey(ka, []);
+    else if (typeof qTeachSave === 'function') qTeachSave(qTeachActive.cell, qTeachActive.ans, []);
+    if (r) {
+      try {
+        (typeof FSD !== 'undefined' ? FSD : []).forEach(c => {
+          if (typeof fsdMigrateStale === 'function') fsdMigrateStale(r, c);
+        });
+      } catch (eM) {}
+      Store.touch(r);
+      if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(r);
+      else if (typeof render === 'function') render();
+    }
+    if (typeof qTeachRefreshBar === 'function') qTeachRefreshBar();
+    if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers();
+    if (typeof toast === 'function') toast('已清除 ' + lab + ' 教過嘅對應', 2000);
+    return true;
+  }
+  return false;
+}
+/* v0.6.372／0.6.413：唔再 preventDefault（touch／pointerdown 會殺 click）
+   pointerdown：fsdlivepick 記 scroll；mode／教掣唔改 ManualKey
+   pointerup：移動 ≤14px → fsdLivePickBarAct（含 fsdnamode／fsdyesmode／qteachneed／完成／清組） */
 document.addEventListener('pointerdown', e => {
-  const b = e.target && e.target.closest && e.target.closest('#livepick .lpk[data-act="fsdlivepick"]');
+  const b = e.target && e.target.closest && e.target.closest('#livepick .lpk[data-act], #fsdna .lpk[data-act], #fsdyes .lpk[data-act], #qteach .lpk[data-act]');
   if (!b) { fsdLivePickPtr = null; return; }
   fsdLivePickPtr = { b, x: e.clientX | 0, y: e.clientY | 0, id: e.pointerId };
-  try {
-    fsdLivePickScrollKeep = fsdLivePickCaptureScroll();
-    fsdLivePickHoldKeep = fsdLivePickScrollKeep;
-  } catch (e1) { fsdLivePickScrollKeep = null; }
+  /* 只 fsdlivepick 記 scroll／Hold——mode 掣唔改 ManualKey／NoFollow */
+  if (b.dataset && b.dataset.act === 'fsdlivepick') {
+    try {
+      fsdLivePickScrollKeep = fsdLivePickCaptureScroll();
+      fsdLivePickHoldKeep = fsdLivePickScrollKeep;
+    } catch (e1) { fsdLivePickScrollKeep = null; }
+  }
 }, { capture: true, passive: true });
 document.addEventListener('pointerup', e => {
   const st = fsdLivePickPtr;
@@ -5756,7 +5858,8 @@ document.addEventListener('pointerup', e => {
   const b = st.b;
   try { b.blur(); } catch (e0) {}
   try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e1) {}
-  if (typeof fsdLivePickApply === 'function') fsdLivePickApply(b.dataset.k);
+  if (typeof fsdLivePickBarAct === 'function') fsdLivePickBarAct(b);
+  fsdLpkPtrMark(b);
 }, { capture: true });
 document.addEventListener('pointercancel', () => { fsdLivePickPtr = null; }, true);
 document.addEventListener('click', e => {
@@ -15833,59 +15936,16 @@ document.addEventListener('click', async e => {
         if (typeof haLiveSchedule === 'function') haLiveSchedule(r);
       }
       return; }
-    case 'fsdlivepick': { /* v0.6.353：右欄揀邊份消防處 checklist PDF */
-      if (typeof fsdLivePickApply === 'function') fsdLivePickApply(el.dataset.k);
-      return; }
-    case 'fsdnamode': { /* v0.6.364／0.6.366：核對表「預設不適用」模式掣 */
-      if (typeof fsdNaMode !== 'undefined' && fsdNaMode) {
-        if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
-      } else if (typeof fsdNaActivate === 'function') fsdNaActivate();
-      return; }
-    case 'fsdnadone': { /* v0.6.364／0.6.366：關閉預設不適用模式 */
-      if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
-      return; }
-    case 'fsdyesmode': { /* v0.6.366：核對表「預設是」模式掣 */
-      if (typeof fsdYesMode !== 'undefined' && fsdYesMode) {
-        if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
-      } else if (typeof fsdYesActivate === 'function') fsdYesActivate();
-      return; }
-    case 'fsdyesdone': { /* v0.6.366：關閉預設是模式 */
-      if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
-      return; }
-    case 'qteachdone': { /* v0.6.356：完成教對應 */
-      if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
-      return; }
-    case 'qteachneed': { /* v0.6.365／0.6.366：教對應要齊 1／2／3（掣喺 livepick 預設不適用／預設是隔離） */
-      if (typeof qTeachSetNeed === 'function') qTeachSetNeed(el.dataset.n);
-      return; }
-    case 'qteachclear': { /* v0.6.356／0.6.365：清除呢組（單一或 AND）教過嘅對應 */
-      if (typeof qTeachActive === 'undefined' || !qTeachActive || !qTeachActive.parts || !qTeachActive.parts.length) return;
-      const parts = qTeachActive.parts.slice();
-      const need = qTeachActive.need || 1;
-      const ka = (parts.length >= need && typeof qTeachMakeKey === 'function')
-        ? qTeachMakeKey(parts.slice(0, need))
-        : (typeof qTeachMakeKey === 'function' ? qTeachMakeKey(parts) : null);
-      const lab = (typeof qTeachLabel === 'function') ? qTeachLabel(parts) : (qTeachActive.cell + '＝' + qTeachActive.ans);
-      if (ka && r && typeof qTeachClearEntries === 'function' && typeof qTeachListKey === 'function') {
-        qTeachClearEntries(r, qTeachListKey(ka));
-      } else if (r && typeof qTeachApplyToRec === 'function' && qTeachActive.cell) {
-        qTeachApplyToRec(r, qTeachActive.cell, '', qTeachActive.ans);
-      }
-      if (ka && typeof qTeachSaveKey === 'function') qTeachSaveKey(ka, []);
-      else if (typeof qTeachSave === 'function') qTeachSave(qTeachActive.cell, qTeachActive.ans, []);
-      if (r) {
-        try {
-          (typeof FSD !== 'undefined' ? FSD : []).forEach(c => {
-            if (typeof fsdMigrateStale === 'function') fsdMigrateStale(r, c);
-          });
-        } catch (eM) {}
-        Store.touch(r);
-        if (typeof fsdLiveSchedule === 'function') fsdLiveSchedule(r);
-        else render();
-      }
-      if (typeof qTeachRefreshBar === 'function') qTeachRefreshBar();
-      if (typeof qTeachPaintMarkers === 'function') qTeachPaintMarkers();
-      if (typeof toast === 'function') toast('已清除 ' + lab + ' 教過嘅對應', 2000);
+    case 'fsdlivepick': /* v0.6.353／0.6.413：右欄揀 checklist（pointerup 優先；click 防雙觸發） */
+    case 'fsdnamode':
+    case 'fsdnadone':
+    case 'fsdyesmode':
+    case 'fsdyesdone':
+    case 'qteachdone':
+    case 'qteachneed':
+    case 'qteachclear': {
+      if (typeof fsdLpkPtrTook === 'function' && fsdLpkPtrTook(el)) return;
+      if (typeof fsdLivePickBarAct === 'function') fsdLivePickBarAct(el);
       return; }
     case 'lkpdf': return pdfLookup();
     case 'waphotos': return phDay(r);
