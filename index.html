@@ -641,8 +641,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.421';
-/* v0.6.421：FD/FA_BATT_QTY＞0→偵測 fds §5.l／5.m「是」、＝0→不適用；tickmap 6.b NA x 對齊（PDF 第七頁） */
+const APP_VERSION = '0.6.422';
+/* v0.6.422：偵測第七頁 6.b lone-NA 誤 skip→整頁＋第八頁錯位；promote p6 重對 tickmap；保留 421 電池→5.l／5.m */
 /* v0.6.419：是／不適用（tickmap mode=y）預設不適用同有冇一樣寫 NA（fsdna-sf-na；唔經 416 半徑／bar 重掛） */
 /* v0.6.417：問答「是或不適用」（預設是／預設不適用）；花灑／livepick 隔離兩個掣刪走（q-yn-or-na） */
 /* ROLLBACK LIVE 2026-10-31：FAN 要求返 0.6.412（416 令全部不適用死）；pwa_hosting 由 Pages cfeec73 還原，唔經 build（src 仍可能有 413–416 WIP） */
