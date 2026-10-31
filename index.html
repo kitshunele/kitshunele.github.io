@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.409';
+const APP_VERSION = '0.6.410';
+/* v0.6.410：D|f Q_HARD yn_any←F27＋FA_CUT（根因：FAN／Excel 跟 F27「有冇Cut VAC?」，409 只睇 FA_CUT） */
 /* v0.6.409：Q_HARD_CL D|e←F23、D|f←FA_CUT_LIFT_VAC；FA_CUT 搬 F9 下 */
 /* v0.6.408：F9 下 FD_FIRELINK↔F23 兩向；qGlueUnder F9（同 F15） */
 /* v0.6.407：Q_HARD_CL＋CL-D：FD_EOL→b3、F10→b4、FD/FA_BATT_QTY gt0→d；F15 子題顯示膠合喺 F15 下 */
@@ -1043,7 +1044,7 @@ const Q_HARD_CL = {
   'D|b4': { cell: 'F10', defaultNa: false },    /* v0.6.407：stand alone 頭；未答空白 */
   'D|d':  { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0' }, /* v0.6.407：外置充電器及電池＞0→✓；＝0→NA；未答空白 */
   'D|e':  { cell: 'F23', defaultNa: false },    /* v0.6.409：消防直線（↔FD_FIRELINK 跟 F23）；有＝✓、冇＝NA、未答空白；E|e2 照舊 */
-  'D|f':  { cell: 'FA_CUT_LIFT_VAC', defaultNa: false }, /* v0.6.409：cut𨋢／cut vac／門鎖等；有＝✓、冇＝NA、未答空白 */
+  'D|f':  { cells: ['F27', 'FA_CUT_LIFT_VAC'], mode: 'yn_any', defaultNa: false }, /* v0.6.410：F27「有冇Cut VAC?」＋FA_CUT（F9）；任一有＝✓、任一冇且冇有＝NA、未答空白；範本 D!H24 跟 F27 */
 };
 function qHardSpec(it) {
   if (!it || !it.sheet || !it.id) return null;
@@ -1068,11 +1069,28 @@ function qHardGt0(r, hs) {
   if (!anyHas) return '';
   return maxPos > 0 ? 'yes' : 'no';
 }
-function itemDef(r, it) { /* v0.6.359 空白；v0.6.393／0.6.407 Q_HARD_CL（含 gt0） */
+/* v0.6.410：多格 yn——任一「有」→yes；冇「有」但有「冇」→no；都未答→''（defaultNa 時未答亦 no） */
+function qHardYnAny(r, hs) {
+  const cells = (hs && hs.cells) || (hs && hs.cell ? [hs.cell] : []);
+  let anyYes = false, anyNo = false, anyHas = false;
+  for (let i = 0; i < cells.length; i++) {
+    const ans = qA(r, cells[i]);
+    if (!has(ans)) continue;
+    anyHas = true;
+    if (ans === '有') anyYes = true;
+    else if (ans === '冇') anyNo = true;
+  }
+  if (anyYes) return 'yes';
+  if (anyNo) return 'no';
+  if (!anyHas) return hs && hs.defaultNa ? 'no' : '';
+  return '';
+}
+function itemDef(r, it) { /* v0.6.359 空白；v0.6.393／0.6.407／0.6.410 Q_HARD_CL（gt0／yn_any） */
   const hs = qHardSpec(it);
   if (!hs) return '';
   if (itemMode(r, it) !== 'ask') return '';
   if (hs.mode === 'gt0') return qHardGt0(r, hs) === 'yes' ? '✓' : '';
+  if (hs.mode === 'yn_any') return qHardYnAny(r, hs) === 'yes' ? '✓' : '';
   return qA(r, hs.cell) === '有' ? '✓' : '';
 }
 function defWhy(r, k, it) { const cs = [FORMS[k].show_if].concat(FORMS[k].need || [], it.na_any || (it.na_unless ? [it.na_unless] : []), it.na_lt ? [it.na_lt[0]] : []).filter(Boolean); return it.tdef === 'NA' ? '範本預設 NA' : '問卷 ' + cs.map(c => c + '＝' + (r.q[c] || '')).join('、'); }
@@ -1120,9 +1138,10 @@ function itemMode(r, it) {
   if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8／0.6.240 半年檢：CL-E *k–*n／CL-D *g–*h（REW）只限年檢 → 隱藏、記 NA
   /* v0.6.359：取消問卷驅動自動 NA（na_any／na_if／na_lt／na_unless）；空白直至師傅揀。保留冇花灑水缸結構隱藏 */
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏 */
-  { const hs = qHardSpec(it); /* v0.6.393／394／407／409：E e2–g＋D b3／b4／d(gt0)／e／f */
+  { const hs = qHardSpec(it); /* v0.6.393／394／407／409／410：E e2–g＋D b3／b4／d(gt0)／e／f(yn_any) */
     if (hs) {
       if (hs.mode === 'gt0') { if (qHardGt0(r, hs) === 'no') return 'autona'; }
+      else if (hs.mode === 'yn_any') { if (qHardYnAny(r, hs) === 'no') return 'autona'; }
       else { const ans = qA(r, hs.cell); if (ans === '冇' || (hs.defaultNa && ans !== '有')) return 'autona'; }
     } }
   if (it.measure) return 'measure';
