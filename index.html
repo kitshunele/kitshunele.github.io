@@ -641,7 +641,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.428';
+const APP_VERSION = '0.6.429';
+/* v0.6.429：有冇教中撳 NA 要記住唔好「已取消」——①NA／段skip 用 set 唔用 toggle-off ②揀有冇唔關 fsdNaMode；開是否不適用唔關教 ③教優先於 NA mode（已記入教圖）；保留 428 FollowGo */
 /* v0.6.428：有冇→是否不適用死剔——①FollowGo 唔再喺 fsdNa/YesMode 開教搶走模式 ②PDF pointer/click 預設不適用／是優先於教 ③教 mode=y 單欄＋冇／不適用答 → T hit 當 NA（426 synth 唔中紙本斜線格）；唔還原頂層 #qynna */
 /* v0.6.427：還原一般系統「是否不適用」#qynna（418）＋livepick「預設不適用／預設是」（花灑／各表）；保留 426 synth／循環、424 ynn passthrough；唔還原問答頂層 #qynna */
 /* v0.6.426：有冇情境下 mode=y「是否不適用」可剔——合成 NA hit＋是欄循環 ✓↔不適用（#qynna 已取消）；保留 424 ynn 跟撳格／423 hit */
@@ -2845,6 +2846,16 @@ function qTeachToggleKey(ka, fsdKey, ik, v) {
   const i = cur.findIndex(e => e && e.key === fsdKey && e.ik === ik);
   if (i >= 0 && cur[i].v === v) cur.splice(i, 1);
   else if (i >= 0) cur[i] = { key: fsdKey, ik: ik, v: v };
+  else cur.push({ key: fsdKey, ik: ik, v: v });
+  qTeachSaveKey(ka, cur);
+  return cur;
+}
+function qTeachSetKey(ka, fsdKey, ik, v) {
+  /* v0.6.429：寫入／改值，唔因同值再撳而刪（NA 教要記住） */
+  if (!ka) return [];
+  const cur = qTeachListKey(ka).slice();
+  const i = cur.findIndex(e => e && e.key === fsdKey && e.ik === ik);
+  if (i >= 0) cur[i] = { key: fsdKey, ik: ik, v: v };
   else cur.push({ key: fsdKey, ik: ik, v: v });
   qTeachSaveKey(ka, cur);
   return cur;
@@ -5271,7 +5282,7 @@ function fsdYesBarHtml() {
   return `<div class="fsdyes" id="fsdyes" role="status"><div class="fsdyes-lab">預設是：撳右欄「是／否／不適用」格 → 剔為<strong>是</strong> · 剔選項 → 打剔 · 段「如不適用」唔適用呢個模式 · 再撳同一格取消 · 撳「完成」關模式</div><div class="fsdyes-row"><button type="button" class="lpk" data-act="fsdyesdone">完成</button></div></div>`;
 }
 function fsdNaActivate() {
-  if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
+  /* v0.6.429：唔關教對應——有冇教中可同時開是否不適用；PDF 撳格教優先寫入教圖 */
   if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate();
   fsdNaMode = true;
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
@@ -5288,7 +5299,7 @@ function fsdNaDeactivate() {
   fsdNaRefreshBtn();
 }
 function fsdYesActivate() {
-  if (typeof qTeachDeactivate === 'function') qTeachDeactivate();
+  /* v0.6.429：唔關教對應（同上） */
   if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate();
   fsdYesMode = true;
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
@@ -5415,8 +5426,7 @@ function qTeachSetActive(parts, need) {
 }
 function qTeachActivate(cell, ans) {
   if (!cell || ans == null || ans === '') { qTeachDeactivate(); return; }
-  if (typeof fsdNaDeactivate === 'function') fsdNaDeactivate(); /* v0.6.364：同預設不適用互斥 */
-  if (typeof fsdYesDeactivate === 'function') fsdYesDeactivate(); /* v0.6.366：同預設是互斥 */
+  /* v0.6.429：揀有冇唔再關是否不適用／預設不適用（FAN：教中仍要打 NA）；衝突由 pointer 教優先處理 */
   const c = String(cell), a = String(ans);
   /* v0.6.365：need≥2 時加／改組內呢題；need＝1 或未開教 → 換做單一 */
   if (qTeachActive && (qTeachActive.need || 1) > 1 && Array.isArray(qTeachActive.parts)) {
@@ -5729,10 +5739,17 @@ function qTeachApplyHit(hit) {
   if ((hit.mode === 'y' || hit.v === 'T') && hit.v === 'T' && typeof qTeachAnsMeansNa === 'function' && qTeachAnsMeansNa(qTeachActive.ans)) {
     hit = { key: hit.key, ik: hit.ik, v: 'NA', mode: hit.mode || 'y' };
   }
-  /* v0.6.375：取消跨組獨佔鎖——同一格可畀唔同答各自教（例 F15|有→是、F15|冇→不適用）；唔再 toast 擋；唔使先清嗰組 */
-  const list = (typeof qTeachToggleKey === 'function')
-    ? qTeachToggleKey(ka, hit.key, hit.ik, hit.v)
-    : qTeachToggle(cell, qTeachActive.ans, hit.key, hit.ik, hit.v);
+  /* v0.6.429：NA／段 skip → set（唔 toggle 刪）——有冇教中撳不適用要「已記住」；是／否／✓ 仍可再撳取消 */
+  const sidPre = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
+  const naWrite = (hit.v === 'NA' || sidPre != null);
+  let list;
+  if (naWrite && typeof qTeachSetKey === 'function') {
+    list = qTeachSetKey(ka, hit.key, hit.ik, hit.v);
+  } else if (typeof qTeachToggleKey === 'function') {
+    list = qTeachToggleKey(ka, hit.key, hit.ik, hit.v);
+  } else {
+    list = qTeachToggle(cell, qTeachActive.ans, hit.key, hit.ik, hit.v);
+  }
   const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
   const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
   if (r && typeof fsdRec === 'function') {
@@ -6069,7 +6086,18 @@ document.addEventListener('click', e => {
     e.stopPropagation();
     return;
   }
-  /* v0.6.428：預設不適用／是優先於教（跟 pointerup；防 Follow 搶教後仍想用 NA） */
+  /* v0.6.429：教優先（有冇教中 NA 入教圖）；無教先預設不適用／是 */
+  if (teaching) {
+    const hitT = qTeachHitTest(im, e.clientX, e.clientY);
+    if (!hitT) {
+      if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    qTeachApplyHit(hitT);
+    return;
+  }
   if (fsdNaMode) {
     if (typeof cur === 'undefined' || !cur.step) return;
     const stNa = String(cur.step || '');
@@ -6097,17 +6125,6 @@ document.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
     fsdYesApplyHit(hitY);
-    return;
-  }
-  if (teaching) {
-    const hitT = qTeachHitTest(im, e.clientX, e.clientY);
-    if (!hitT) {
-      if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    qTeachApplyHit(hitT);
     return;
   }
   /* 非教：FSD 步或問卷右欄 —— 撳剔位改寫已填／預設 */
@@ -6141,10 +6158,20 @@ document.addEventListener('pointerup', e => {
   if (dx > 14 || dy > 14) return;
   const im = st.im;
   const cx = e.clientX, cy = e.clientY;
-  /* v0.6.428：用當下 mode（唔只 pointerdown snapshot）；NA／Yes 優先於教 */
+  /* v0.6.429：教優先（有冇教中 NA 要入教圖）；無教先 NA／Yes。保留 live mode 判斷 */
   const naOnNow = !!(typeof fsdNaMode !== 'undefined' && fsdNaMode) || !!st.naOn;
   const yesOnNow = !!(typeof fsdYesMode !== 'undefined' && fsdYesMode) || !!st.yesOn;
   const teachingNow = !!(typeof qTeachActive !== 'undefined' && qTeachActive && qTeachActive.parts && qTeachActive.parts.length && typeof cur !== 'undefined' && cur.step === 'q') || !!st.teaching;
+  if (teachingNow) {
+    const hit = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
+    if (!hit) {
+      if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
+      return;
+    }
+    fsdPdfPtrConsumed = { t: Date.now() };
+    if (typeof qTeachApplyHit === 'function') qTeachApplyHit(hit);
+    return;
+  }
   if (naOnNow) {
     const stNa = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
     if (!(stNa.startsWith('FSD-') || stNa === 'q')) return;
@@ -6167,16 +6194,6 @@ document.addEventListener('pointerup', e => {
     }
     fsdPdfPtrConsumed = { t: Date.now() };
     if (typeof fsdYesApplyHit === 'function') fsdYesApplyHit(hitY);
-    return;
-  }
-  if (teachingNow) {
-    const hit = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
-    if (!hit) {
-      if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
-      return;
-    }
-    fsdPdfPtrConsumed = { t: Date.now() };
-    if (typeof qTeachApplyHit === 'function') qTeachApplyHit(hit);
     return;
   }
   const stE = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
