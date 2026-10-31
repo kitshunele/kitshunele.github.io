@@ -480,7 +480,16 @@ main.haslive .livepane .halive-pg{max-width:100%}
 .livepick .lpk.need-mode{border-color:#d97706;color:#92400e}
 .livepick .lpk.need-mode.on{border-color:#b45309;background:#f59e0b;color:#fff}
 .livepick .lpk:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
-/* v0.6.364／0.6.366：右欄「預設不適用」／「預設是」剔模式 */
+/* v0.6.417：問答「是或不適用」；v0.6.364／0.6.366：模式 bar（搬離 livepick） */
+.qynna{position:sticky;top:0;z-index:5;margin:0 0 10px;padding:8px 10px;background:linear-gradient(#fff 80%,rgba(255,255,255,.92));border:2px solid #64748b;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.qynna-lab{font-size:13px;font-weight:700;color:#334155;margin:0 0 6px;line-height:1.35}
+.qynna-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.qynna .lpk{flex:0 0 auto;border:2px solid var(--line);background:#fff;border-radius:999px;min-height:36px;padding:0 12px;font:inherit;font-size:13px;font-weight:800;color:#334155;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.qynna .lpk.na-mode{border-color:#94a3b8;color:#475569}
+.qynna .lpk.na-mode.on{border-color:#64748b;background:#64748b;color:#fff}
+.qynna .lpk.yes-mode{border-color:#60a5fa;color:#1d4ed8}
+.qynna .lpk.yes-mode.on{border-color:#2563eb;background:#2563eb;color:#fff}
+.qynna .lpk:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
 .fsdna{margin:0 0 8px;padding:8px 10px;background:#f8fafc;border:2px solid #64748b;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
 .fsdna-lab{font-size:13px;font-weight:700;color:#334155;margin:0 0 6px;line-height:1.35}
 .fsdna-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -632,7 +641,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.412';
+const APP_VERSION = '0.6.417';
+/* v0.6.417：問答「是或不適用」（預設是／預設不適用）；花灑／livepick 隔離兩個掣刪走（q-yn-or-na） */
 /* v0.6.412：FD/FA_BATT_QTY＞0 → 偵測 fds §1.d「是」（Q_HARD_FSD gt0；＝0／未答唔剔）；CL-D d 已有 gt0 */
 /* v0.6.411：偵測 fds 頭欄「完成年檢日期」手寫 baseline 118→123.5（橫線≈128；只調日期） */
 /* v0.6.410：D|f Q_HARD yn_any←F27＋FA_CUT（根因：FAN／Excel 跟 F27「有冇Cut VAC?」，409 只睇 FA_CUT） */
@@ -2311,7 +2321,8 @@ function stepQ(r) {
     const pi = tg && tg.pi != null && tg.pi !== '' ? ` data-live-pi="${esc(String(tg.pi))}"` : '';
     return ` data-live-qcell="${esc(cell)}" data-live-key="${esc(key)}"${ik}${sec}${pi}`;
   };
-  return `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺頂欄「CL-A」。下半（電話）／右欄即時 PDF＝消防處年檢核對表原 blank（預設跟問卷；右欄可揀偵測／火警鐘／栓轆／水缸／供水道／花灑，或撳「跟問卷」恢復自動）。撳題目會跟頁／切換系統。<b>撳住題目</b>或左嘅 <b>≡</b> 可拉上拉下調次序（鬆手自動儲存）。</div>` + QS.map(s => {
+  const ynNa = (typeof qYnNaToolbarHtml === 'function') ? qYnNaToolbarHtml() : '';
+  return ynNa + `<div class="hint">照公司 Excel「工作表2」問卷。答「冇」嘅系統，相關表格／項目會自動略過或者 NA。再撳一次已揀嘅掣可以取消。CL-A 總表喺頂欄「CL-A」。下半（電話）／右欄即時 PDF＝消防處年檢核對表原 blank（預設跟問卷；右欄可揀偵測／火警鐘／栓轆／水缸／供水道／花灑，或撳「跟問卷」恢復自動）。撳題目會跟頁／切換系統。<b>撳住題目</b>或左嘅 <b>≡</b> 可拉上拉下調次序（鬆手自動儲存）。</div>` + QS.map(s => {
     const items = qSortItems(s.items.filter(it => qVisible(r, it, s))), OM = optMap(r);
     const gateNo = s.gate && r.q[s.gate] === '冇';
     const p = items.filter(it => has(r.q[it.cell])).length, need = items.filter(it => has(r.q[it.cell]) || !OM.has('q.' + it.cell)).length;
@@ -5152,6 +5163,27 @@ function qTeachBarHtml() {
       : ('要齊 ' + need + ' 個答 · 仲差 <b>' + miss + '</b> 個——再喺左邊揀多題答案'));
   return `<div class="qteach" id="qteach" role="status" style="--ans:${esc(col)}"><div class="qteach-lab">教對應中：${partsHtml} · ${hint}</div><div class="qteach-row"><span class="qteach-n">${ready ? ('已記 ' + n + ' 項' + (items ? '：' + esc(items) : '') + ' · 自動儲存') : ('未齊——暫唔記剔（差 ' + miss + '）')}</span><button type="button" class="lpk" data-act="qteachclear">清除呢組教過</button><button type="button" class="lpk" data-act="qteachdone">完成</button></div></div>`;
 }
+function qYnNaToolbarHtml() {
+  /* v0.6.417：問答「是或不適用」——開「是」＝預設是；開「不適用」＝預設不適用；撳右欄 PDF 框 */
+  const naOn = !!(typeof fsdNaMode !== 'undefined' && fsdNaMode);
+  const yesOn = !!(typeof fsdYesMode !== 'undefined' && fsdYesMode);
+  const any = naOn || yesOn;
+  const hint = naOn
+    ? '已開<strong>不適用</strong>：撳右欄「是／否／不適用」格 → 剔為不適用 · 段跳過'
+    : (yesOn
+      ? '已開<strong>是</strong>：撳右欄框 → 剔為是／剔選項打剔'
+      : '開「是」或「不適用」後，撳右欄 PDF 框套用');
+  const doneAct = naOn ? 'fsdnadone' : (yesOn ? 'fsdyesdone' : '');
+  return `<div class="qynna" id="qynna" role="toolbar" aria-label="是或不適用"><div class="qynna-lab">是或不適用 · ${hint}</div><div class="qynna-row"><button type="button" class="lpk yes-mode${yesOn ? ' on' : ''}" data-act="fsdyesmode" title="撳開後喺 PDF 剔為「是」／剔選項打剔" aria-pressed="${yesOn ? 'true' : 'false'}">是</button><button type="button" class="lpk na-mode${naOn ? ' on' : ''}" data-act="fsdnamode" title="撳開後喺 PDF 剔為不適用／段跳過" aria-pressed="${naOn ? 'true' : 'false'}">不適用</button>${any && doneAct ? `<button type="button" class="lpk" data-act="${doneAct}">完成</button>` : ''}</div></div>`;
+}
+function qYnNaRefresh() {
+  const old = document.getElementById('qynna');
+  if (!old) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = qYnNaToolbarHtml();
+  const neu = wrap.firstElementChild;
+  if (neu) old.replaceWith(neu);
+}
 function fsdLivePickBarHtml(step) {
   const key = fsdLivePaneKey(step);
   if (!fsdLiveOk(key) && !(step === 'q' || (step && String(step).startsWith('FSD-')))) return '';
@@ -5166,11 +5198,7 @@ function fsdLivePickBarHtml(step) {
       const full = c.chip || c.title || lab;
       return `<button type="button" class="lpk${on ? ' on' : ''}" data-act="fsdlivepick" data-k="${k}" tabindex="-1" title="${esc(full)}" aria-pressed="${on ? 'true' : 'false'}">${esc(lab)}</button>`;
     }));
-  /* v0.6.364／0.6.366：核對表「預設不適用」＋「預設是」；旁邊單一／要齊2／要齊3 */
-  const naOn = !!fsdNaMode;
-  const yesOn = !!fsdYesMode;
-  btns.push(`<button type="button" class="lpk na-mode${naOn ? ' on' : ''}" data-act="fsdnamode" title="撳開後喺 PDF 剔為不適用／段跳過" aria-pressed="${naOn ? 'true' : 'false'}">預設不適用</button>`);
-  btns.push(`<button type="button" class="lpk yes-mode${yesOn ? ' on' : ''}" data-act="fsdyesmode" title="撳開後喺 PDF 剔為「是」／剔選項打剔" aria-pressed="${yesOn ? 'true' : 'false'}">預設是</button>`);
+  /* v0.6.417：預設是／不適用掣搬去問答「是或不適用」；livepick 只留 PDF 揀＋教對應 */
   if (step === 'q') {
     const needNow = (qTeachActive && qTeachActive.need) || 1;
     const teachOn = !!(qTeachActive && qTeachActive.parts && qTeachActive.parts.length);
@@ -5203,7 +5231,7 @@ function fsdNaActivate() {
   if (box) { box.classList.add('fsdna-mode'); box.classList.remove('fsdyes-mode'); }
   fsdNaRefreshBar();
   fsdNaRefreshBtn();
-  if (typeof toast === 'function') toast('預設不適用：撳右欄框剔為不適用', 2000);
+  if (typeof toast === 'function') toast('是或不適用 · 不適用：撳右欄框剔為不適用', 2000);
 }
 function fsdNaDeactivate() {
   fsdNaMode = false;
@@ -5220,7 +5248,7 @@ function fsdYesActivate() {
   if (box) { box.classList.add('fsdyes-mode'); box.classList.remove('fsdna-mode'); }
   fsdYesRefreshBar();
   fsdYesRefreshBtn();
-  if (typeof toast === 'function') toast('預設是：撳右欄框剔為「是」', 2000);
+  if (typeof toast === 'function') toast('是或不適用 · 是：撳右欄框剔為「是」', 2000);
 }
 function fsdYesDeactivate() {
   fsdYesMode = false;
@@ -5230,18 +5258,21 @@ function fsdYesDeactivate() {
   fsdYesRefreshBtn();
 }
 function fsdNaRefreshBtn() {
-  const btn = document.querySelector('#livepick .lpk.na-mode');
-  if (!btn) return;
-  const on = !!fsdNaMode;
-  btn.classList.toggle('on', on);
-  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  /* v0.6.417：掣喺問答 #qynna */
+  document.querySelectorAll('#qynna .lpk.na-mode').forEach(btn => {
+    const on = !!fsdNaMode;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  if (typeof qYnNaRefresh === 'function') qYnNaRefresh();
 }
 function fsdYesRefreshBtn() {
-  const btn = document.querySelector('#livepick .lpk.yes-mode');
-  if (!btn) return;
-  const on = !!fsdYesMode;
-  btn.classList.toggle('on', on);
-  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  document.querySelectorAll('#qynna .lpk.yes-mode').forEach(btn => {
+    const on = !!fsdYesMode;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  if (typeof qYnNaRefresh === 'function') qYnNaRefresh();
 }
 function fsdDefInsertBar(neu) {
   const teach = document.getElementById('qteach');
