@@ -632,8 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.414';
-/* v0.6.414：預設不適用——tickmap mode=y（fds 1.b／1.c／1.d 只有 yes 框）寫 NA 後 overlay 畫斜線；PDF pointerup 可剔；livepick 防雙 toggle（fsdna-fix） */
+const APP_VERSION = '0.6.415';
+/* v0.6.415：spr 空 skip 段（§2／§3 花灑泵如有）tickmap.skips→段 id；預設不適用可撳「不適用」框；fsdOvSkipHitList 多框 hit（fsdna-sprskip） */
 /* v0.6.413：livepick「預設不適用／預設是／單一／要齊」pointerup 可撳（fsdna-ptr；唔再只靠被殺嘅 click）；ynn＋tickmap-y 寫 NA */
 /* v0.6.412：FD/FA_BATT_QTY＞0 → 偵測 fds §1.d「是」（Q_HARD_FSD gt0；＝0／未答唔剔）；CL-D d 已有 gt0 */
 /* v0.6.411：偵測 fds 頭欄「完成年檢日期」手寫 baseline 118→123.5（橫線≈128；只調日期） */
@@ -5470,8 +5470,13 @@ function qTeachHitTest(im, clientX, clientY) {
     if (m.mode === 'y') tryBox(m.yes, ik, 'T', 'y');
     else { tryBox(m.yes, ik, 'Y', m.mode); tryBox(m.no, ik, 'N', m.mode); tryBox(m.na, ik, 'NA', m.mode); }
   });
-  /* v0.6.363：段「如不適用，跳往…」NA 框亦可教／剔（所有 skip 段） */
-  if (typeof fsdOvSkipMap === 'function') {
+  /* v0.6.363／0.6.415：段「如不適用，跳往…」NA 框亦可教／剔（含空段多框） */
+  if (typeof fsdOvSkipHitList === 'function') {
+    fsdOvSkipHitList(key, tm).forEach(ent => {
+      if (!ent || !ent.sk || !ent.sk.na || (ent.sk.page | 0) !== (pi | 0)) return;
+      tryBox(ent.sk.na, qTeachSkipIk(ent.sid), 'NA', 'secskip');
+    });
+  } else if (typeof fsdOvSkipMap === 'function') {
     const skipMap = fsdOvSkipMap(key, tm);
     Object.keys(skipMap || {}).forEach(sid => {
       const sk = skipMap[sid];
@@ -6026,7 +6031,10 @@ document.addEventListener('pointerup', e => {
     const stNa = (typeof cur !== 'undefined' && cur && cur.step) ? String(cur.step) : '';
     if (!(stNa.startsWith('FSD-') || stNa === 'q')) return;
     const hitNa = typeof qTeachHitTest === 'function' ? qTeachHitTest(im, cx, cy) : null;
-    if (!hitNa) return;
+    if (!hitNa) {
+      if (typeof toast === 'function') toast('撳唔中剔位——試吓撳「是／否／不適用」格中間', 1600);
+      return;
+    }
     fsdPdfPtrConsumed = { t: Date.now() };
     if (typeof fsdNaApplyHit === 'function') fsdNaApplyHit(hitNa);
     return;
@@ -7348,34 +7356,126 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
 }
 
 function fsdOvSkipMap(key, tm) {
-  /* v0.6.339：跳過框 ↔ 段 id（tickmaps.skips 無 id；用「段首頁、子項最低 y 之上最近一個 NA 框」對） */
+  /* v0.6.339：跳過框 ↔ 段 id（tickmaps.skips 無 id；用「段首頁、子項最低 y 之上最近一個 NA 框」對）
+     v0.6.415：空 skip 段（0 tickmap 子項，例 spr §2／§3 花灑泵「如有」）——用上下鄰近有子項段夾住未用 skip 框；多框按 y 均分 */
   const out = {}, items = (tm && tm.items) || {}, skips = (tm && tm.skips) || [];
   const c = (typeof FSD_BY !== 'undefined' && FSD_BY[key]) || null;
-  const walk = (ss) => {
+  if (!c) return out;
+  const flat = [];
+  const walkFlat = (ss) => {
     (ss || []).forEach(s => {
-      if (s.skip) {
-        const ks = (s.items || []).map(it => it.k).filter(k => items[k]);
-        if (ks.length) {
-          const pages = ks.map(k => items[k].page);
-          const firstPage = Math.min.apply(null, pages);
-          const ys = ks.filter(k => items[k].page === firstPage).map(k => {
-            const m = items[k]; return (m.yes || m.na || m.no || {}).y;
-          }).filter(y => y != null);
-          if (ys.length) {
-            const minY = Math.min.apply(null, ys);
-            const cands = skips.filter(sk => sk.page === firstPage && sk.na && sk.na.y < minY - 2);
-            if (cands.length) {
-              cands.sort((a, b) => b.na.y - a.na.y);
-              out[s.id] = cands[0];
-            }
-          }
-        }
+      const ks = (s.items || []).map(it => it.k).filter(k => items[k]);
+      let firstPage = null, minY = null, lastPage = null, maxY = null;
+      if (ks.length) {
+        const pages = ks.map(k => items[k].page);
+        firstPage = Math.min.apply(null, pages);
+        lastPage = Math.max.apply(null, pages);
+        const ysFirst = ks.filter(k => items[k].page === firstPage).map(k => {
+          const m = items[k]; return (m.yes || m.na || m.no || {}).y;
+        }).filter(y => y != null);
+        const ysLast = ks.filter(k => items[k].page === lastPage).map(k => {
+          const m = items[k]; return (m.yes || m.na || m.no || {}).y;
+        }).filter(y => y != null);
+        if (ysFirst.length) minY = Math.min.apply(null, ysFirst);
+        if (ysLast.length) maxY = Math.max.apply(null, ysLast);
       }
-      walk(s.subs);
+      flat.push({ id: s.id, skip: !!s.skip, ks: ks, firstPage: firstPage, minY: minY, lastPage: lastPage, maxY: maxY });
+      walkFlat(s.subs);
     });
   };
-  if (c) walk(c.sections);
+  walkFlat(c.sections);
+  const used = new Set();
+  /* Pass 1：有子項嘅 skip 段——沿用「首頁、子項最低 y 之上最近」 */
+  flat.forEach(s => {
+    if (!s.skip || !s.ks.length || s.minY == null) return;
+    const cands = [];
+    skips.forEach((sk, i) => {
+      if (used.has(i) || !sk || !sk.na) return;
+      if ((sk.page | 0) === (s.firstPage | 0) && sk.na.y < s.minY - 2) cands.push(i);
+    });
+    if (!cands.length) return;
+    cands.sort((a, b) => skips[b].na.y - skips[a].na.y);
+    used.add(cands[0]);
+    out[s.id] = skips[cands[0]];
+  });
+  const prevContent = (idx) => {
+    for (let i = idx - 1; i >= 0; i--) if (flat[i].ks.length && flat[i].minY != null) return flat[i];
+    return null;
+  };
+  const nextContent = (idx) => {
+    for (let i = idx + 1; i < flat.length; i++) if (flat[i].ks.length && flat[i].minY != null) return flat[i];
+    return null;
+  };
+  const emptyIdxs = [];
+  flat.forEach((s, idx) => {
+    if (s.skip && !s.ks.length && !out[s.id]) emptyIdxs.push(idx);
+  });
+  let gi = 0;
+  while (gi < emptyIdxs.length) {
+    const i0 = emptyIdxs[gi];
+    const prev = prevContent(i0), next = nextContent(i0);
+    let gj = gi + 1;
+    while (gj < emptyIdxs.length) {
+      const i1 = emptyIdxs[gj];
+      if (prevContent(i1) !== prev || nextContent(i1) !== next) break;
+      gj++;
+    }
+    const group = emptyIdxs.slice(gi, gj).map(i => flat[i]);
+    gi = gj;
+    const cands = [];
+    skips.forEach((sk, i) => {
+      if (used.has(i) || !sk || !sk.na) return;
+      const y = sk.na.y, p = sk.page | 0;
+      /* 下界用 prev 首頁／最低 y（唔用 lastPage）——spr §1 跨頁時 §2／§3 不適用框仍喺頁 0 中段 */
+      if (prev) {
+        if (p < (prev.firstPage | 0)) return;
+        if (p === (prev.firstPage | 0) && y <= (prev.minY || 0) + 2) return;
+      }
+      if (next) {
+        if (p > (next.firstPage | 0)) return;
+        if (p === (next.firstPage | 0) && y >= (next.minY || 0) - 2) return;
+      }
+      cands.push(i);
+    });
+    cands.sort((a, b) => ((skips[a].page | 0) - (skips[b].page | 0)) || (skips[a].na.y - skips[b].na.y));
+    if (!cands.length) continue;
+    const n = group.length, m = cands.length;
+    for (let j = 0; j < n; j++) {
+      const a = Math.floor(j * m / n);
+      if (a >= m) break;
+      used.add(cands[a]);
+      out[group[j].id] = skips[cands[a]];
+    }
+  }
   return out;
+}
+function fsdOvSkipHitList(key, tm) {
+  /* v0.6.415：hit 用——同一段可有多個「不適用／跳往」框（空段多行）；未入 map 但貼近已對框嘅 raw skip 跟同一 sid */
+  const map = fsdOvSkipMap(key, tm);
+  const skips = (tm && tm.skips) || [];
+  const list = [];
+  const mapped = new Set();
+  Object.keys(map || {}).forEach(sid => {
+    const sk = map[sid];
+    if (!sk || !sk.na) return;
+    list.push({ sid: sid, sk: sk });
+    const ix = skips.indexOf(sk);
+    if (ix >= 0) mapped.add(ix);
+  });
+  skips.forEach((sk, i) => {
+    if (mapped.has(i) || !sk || !sk.na) return;
+    let bestSid = null, bestD = 1e9;
+    Object.keys(map || {}).forEach(sid => {
+      const m = map[sid];
+      if (!m || !m.na || (m.page | 0) !== (sk.page | 0)) return;
+      /* 跟「主框喺呢格上面／同一行」嘅段（唔好搶下一段） */
+      if (m.na.y - 2 > sk.na.y) return;
+      const d = sk.na.y - m.na.y;
+      if (d < bestD && d < 88) { bestD = d; bestSid = sid; }
+    });
+    if (bestSid != null) list.push({ sid: bestSid, sk: sk });
+  });
+  return list;
 }
 /* v0.6.390／391／392 Fan：表一←問卷；0→唔疊；N→只疊 a…N（紙本 a–e／a–b／a／a–e 封頂）
    欄：位置／覆蓋／備註／用作主板 */
