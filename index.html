@@ -641,8 +641,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.430';
-/* v0.6.430：第八頁 FA ynn N–NA hit 重疊→優先 NA；有／冇教中一律 SetKey（唔 toggle「已取消」）；保留 429 set-NA／教優先／FollowGo */
+const APP_VERSION = '0.6.431';
+/* v0.6.431：教剔再撳同值可取消（ToggleKey）；保留 430 prefer-NA（重疊唔誤 cancel）；有冇首撳仍記 是／不適用 */
 /* v0.6.428：有冇→是否不適用死剔——①FollowGo 唔再喺 fsdNa/YesMode 開教搶走模式 ②PDF pointer/click 預設不適用／是優先於教 ③教 mode=y 單欄＋冇／不適用答 → T hit 當 NA（426 synth 唔中紙本斜線格）；唔還原頂層 #qynna */
 /* v0.6.427：還原一般系統「是否不適用」#qynna（418）＋livepick「預設不適用／預設是」（花灑／各表）；保留 426 synth／循環、424 ynn passthrough；唔還原問答頂層 #qynna */
 /* v0.6.426：有冇情境下 mode=y「是否不適用」可剔——合成 NA hit＋是欄循環 ✓↔不適用（#qynna 已取消）；保留 424 ynn 跟撳格／423 hit */
@@ -5729,7 +5729,7 @@ function qTeachAnsMeansNa(ans) {
   return a === '冇' || a === '無' || a === '不適用' || /^n\/?a$/i.test(a);
 }
 function qTeachAnsMeansYnnTeach(ans) {
-  /* v0.6.430：有／冇教中一律 set——唔因 hit 落喺重疊 N／再撳而 toggle「已取消」 */
+  /* v0.6.430／0.6.431：有／冇教識別（431 起 ApplyHit 改回 ToggleKey；取消靠 prefer-NA 防誤中） */
   const a = String(ans == null ? '' : ans).trim();
   return a === '有' || a === '冇' || a === '無' || a === '有冇' || a === '不適用' || /^n\/?a$/i.test(a);
 }
@@ -5748,14 +5748,10 @@ function qTeachApplyHit(hit) {
   if ((hit.mode === 'y' || hit.v === 'T') && hit.v === 'T' && typeof qTeachAnsMeansNa === 'function' && qTeachAnsMeansNa(qTeachActive.ans)) {
     hit = { key: hit.key, ik: hit.ik, v: 'NA', mode: hit.mode || 'y' };
   }
-  /* v0.6.429／0.6.430：NA／段 skip → set；有／冇教中任何 hit 都 set（唔 toggle 刪）——第八頁 N/NA 重疊誤中否都唔會「已取消」 */
-  const sidPre = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
-  const naWrite = (hit.v === 'NA' || sidPre != null);
-  const ynnTeach = typeof qTeachAnsMeansYnnTeach === 'function' && qTeachAnsMeansYnnTeach(qTeachActive.ans);
+  /* v0.6.431：一律 ToggleKey——空／改值＝已記住；再撳同值＝取消（FAN：剔咗要取消得）；
+     保留 430 prefer-NA：重疊區唔會誤中 N 再 toggle 甩 NA。qTeachSetKey 留低畀其他用。 */
   let list;
-  if ((naWrite || ynnTeach) && typeof qTeachSetKey === 'function') {
-    list = qTeachSetKey(ka, hit.key, hit.ik, hit.v);
-  } else if (typeof qTeachToggleKey === 'function') {
+  if (typeof qTeachToggleKey === 'function') {
     list = qTeachToggleKey(ka, hit.key, hit.ik, hit.v);
   } else {
     list = qTeachToggle(cell, qTeachActive.ans, hit.key, hit.ik, hit.v);
