@@ -641,8 +641,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.429';
-/* v0.6.429：有冇教中撳 NA 要記住唔好「已取消」——①NA／段skip 用 set 唔用 toggle-off ②揀有冇唔關 fsdNaMode；開是否不適用唔關教 ③教優先於 NA mode（已記入教圖）；保留 428 FollowGo */
+const APP_VERSION = '0.6.430';
+/* v0.6.430：第八頁 FA ynn N–NA hit 重疊→優先 NA；有／冇教中一律 SetKey（唔 toggle「已取消」）；保留 429 set-NA／教優先／FollowGo */
 /* v0.6.428：有冇→是否不適用死剔——①FollowGo 唔再喺 fsdNa/YesMode 開教搶走模式 ②PDF pointer/click 預設不適用／是優先於教 ③教 mode=y 單欄＋冇／不適用答 → T hit 當 NA（426 synth 唔中紙本斜線格）；唔還原頂層 #qynna */
 /* v0.6.427：還原一般系統「是否不適用」#qynna（418）＋livepick「預設不適用／預設是」（花灑／各表）；保留 426 synth／循環、424 ynn passthrough；唔還原問答頂層 #qynna */
 /* v0.6.426：有冇情境下 mode=y「是否不適用」可剔——合成 NA hit＋是欄循環 ✓↔不適用（#qynna 已取消）；保留 424 ynn 跟撳格／423 hit */
@@ -5536,6 +5536,10 @@ function qTeachHitTest(im, clientX, clientY) {
     if (Math.abs(dx) <= s && Math.abs(dy) <= s) {
       const d = dx * dx + dy * dy;
       if (d < bestD) { bestD = d; best = { key: key, ik: ik, v: v, mode: mode || 'ynn' }; }
+      else if (v === 'NA' && best && best.ik === ik && (best.v === 'Y' || best.v === 'N' || best.v === 'T')) {
+        /* v0.6.430：同一項 Y/N 同 NA hit 重疊（FA 第八頁 N–NA≈39pt、hit×3=28.5）→ 優先不適用，避免有冇教中誤中否再 toggle「已取消」 */
+        bestD = d; best = { key: key, ik: ik, v: 'NA', mode: mode || 'ynn' };
+      }
     }
   };
   /* v0.6.426：mode=y 紙本多無 m.na；按同表／同頁 ynn 欄距合成不適用 hit——有冇情境下「是否不適用」可剔 */
@@ -5724,6 +5728,11 @@ function qTeachAnsMeansNa(ans) {
   const a = String(ans == null ? '' : ans).trim();
   return a === '冇' || a === '無' || a === '不適用' || /^n\/?a$/i.test(a);
 }
+function qTeachAnsMeansYnnTeach(ans) {
+  /* v0.6.430：有／冇教中一律 set——唔因 hit 落喺重疊 N／再撳而 toggle「已取消」 */
+  const a = String(ans == null ? '' : ans).trim();
+  return a === '有' || a === '冇' || a === '無' || a === '有冇' || a === '不適用' || /^n\/?a$/i.test(a);
+}
 function qTeachApplyHit(hit) {
   if (!qTeachActive || !hit) return;
   const need = qTeachActive.need || 1;
@@ -5739,11 +5748,12 @@ function qTeachApplyHit(hit) {
   if ((hit.mode === 'y' || hit.v === 'T') && hit.v === 'T' && typeof qTeachAnsMeansNa === 'function' && qTeachAnsMeansNa(qTeachActive.ans)) {
     hit = { key: hit.key, ik: hit.ik, v: 'NA', mode: hit.mode || 'y' };
   }
-  /* v0.6.429：NA／段 skip → set（唔 toggle 刪）——有冇教中撳不適用要「已記住」；是／否／✓ 仍可再撳取消 */
+  /* v0.6.429／0.6.430：NA／段 skip → set；有／冇教中任何 hit 都 set（唔 toggle 刪）——第八頁 N/NA 重疊誤中否都唔會「已取消」 */
   const sidPre = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
   const naWrite = (hit.v === 'NA' || sidPre != null);
+  const ynnTeach = typeof qTeachAnsMeansYnnTeach === 'function' && qTeachAnsMeansYnnTeach(qTeachActive.ans);
   let list;
-  if (naWrite && typeof qTeachSetKey === 'function') {
+  if ((naWrite || ynnTeach) && typeof qTeachSetKey === 'function') {
     list = qTeachSetKey(ka, hit.key, hit.ik, hit.v);
   } else if (typeof qTeachToggleKey === 'function') {
     list = qTeachToggleKey(ka, hit.key, hit.ik, hit.v);
