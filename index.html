@@ -641,9 +641,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.434';
+const APP_VERSION = '0.6.435';
 /* v0.6.422：偵測第七頁 6.b lone-NA 誤 skip→整頁＋第八頁錯位；promote p6 重對 tickmap；保留 421 電池→5.l／5.m */
-/* v0.6.434：任何 PDF／左欄同值再撳清空（technician 空蓋教預設）；全 PDF pointerup-only＋Took；保留 433 teach／430 prefer-NA */
+/* v0.6.435：教模式同值清亦寫 technician 空（唔刪 a，擋 Q 預設彈返）；保留 434 普通／左欄／page9+ 同值清＋pointerup-only＋prefer-NA */
 /* v0.6.433：教／NA／Yes PDF click 唔 Apply（只 pointerup）；Apply 內再設 fsdPdfPtrConsumed；Took 1200ms；保留 432 hybrid＋430 prefer-NA */
 /* v0.6.432：教 Set-or-same-clear＋Took TTL；保留 430 prefer-NA */
 /* v0.6.428：NA／Yes 優先於教；FollowGo 唔搶 fsdNaMode；教 mode=y＋冇→NA */
@@ -5809,8 +5809,8 @@ function qTeachApplyHit(hit) {
   qTeachApplyTook = { sig: sig, t: now };
   /* v0.6.433：成功開 Apply 即標 consumed——晚到 click 一律吞（即使 pointerup 漏設） */
   fsdPdfPtrConsumed = { t: now };
-  /* v0.6.432：無／改值 → SetKey（已記住）；已係同 ik+v → ToggleKey 清（已取消）。
-     保留 430 prefer-NA；唔再一律 Toggle 令雙事件即設即甩。 */
+  /* v0.6.432／0.6.435：無／改值 → SetKey（已記住）；已係同 ik+v → ToggleKey 清（已取消）。
+     清時寫 technician 空（唔刪 a），否則 Q 預設／liveMerge 彈返剔；保留 430 prefer-NA。 */
   let list;
   const cur0 = (typeof qTeachListKey === 'function') ? qTeachListKey(ka) : [];
   const i0 = cur0.findIndex(e => e && e.key === hit.key && e.ik === hit.ik);
@@ -5836,10 +5836,12 @@ function qTeachApplyHit(hit) {
     } else {
       const a = d.a[hit.ik] || {};
       if (still) { a.v = still.v; a.by = 'default'; d.a[hit.ik] = a; }
-      else if (a.by === 'default' || !a.by) {
-        delete a.v; delete a.by;
-        if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
-        else d.a[hit.ik] = a;
+      else if (a.by === 'technician' && a.v) {
+        /* 已有師傅實值：只清教圖，保留覆寫 */
+      } else {
+        /* v0.6.435：教模式同值再撳清 —— 寫 technician 空（唔刪 key），擋 Q／教預設彈返剔 */
+        if (typeof fsdClearToEmpty === 'function') fsdClearToEmpty(d, hit.ik, a);
+        else { delete a.v; a.by = 'technician'; d.a[hit.ik] = a; }
       }
     }
     Store.touch(r);
