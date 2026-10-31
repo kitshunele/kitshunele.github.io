@@ -641,8 +641,9 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.433';
+const APP_VERSION = '0.6.434';
 /* v0.6.422：偵測第七頁 6.b lone-NA 誤 skip→整頁＋第八頁錯位；promote p6 重對 tickmap；保留 421 電池→5.l／5.m */
+/* v0.6.434：任何 PDF／左欄同值再撳清空（technician 空蓋教預設）；全 PDF pointerup-only＋Took；保留 433 teach／430 prefer-NA */
 /* v0.6.433：教／NA／Yes PDF click 唔 Apply（只 pointerup）；Apply 內再設 fsdPdfPtrConsumed；Took 1200ms；保留 432 hybrid＋430 prefer-NA */
 /* v0.6.432：教 Set-or-same-clear＋Took TTL；保留 430 prefer-NA */
 /* v0.6.428：NA／Yes 優先於教；FollowGo 唔搶 fsdNaMode；教 mode=y＋冇→NA */
@@ -3072,14 +3073,59 @@ const fsdDefault = (r, c, s, it, M) => {
 const fsdEff = (r, c, s, it, M) => {
   const a = (fsdGet(r, c.key).a || {})[it.k] || {};
   const def = fsdDefault(r, c, s, it, M);
-  /* v0.6.358：師傅覆寫優先於 lock／預設（表內已填都可改） */
-  if (a.v && a.by === 'technician') return { v: a.v, by: 'technician' };
+  /* v0.6.358：師傅覆寫優先於 lock／預設（表內已填都可改）
+     v0.6.434：by=technician 即使無 v＝刻意清空，蓋過教／硬碼預設（再撳同值可取消） */
+  if (a.by === 'technician') return { v: a.v || '', by: 'technician' };
   if (def.by === 'lock') return def; /* 未覆寫先跟問卷禁剔建議 */
   /* bulk／legacy（無 by）若同 def_v／q_def 預設唔同 → 跟預設（例如 NA 蓋過舊「是」） */
   if (a.v && (a.by === 'bulk' || !a.by) && def.v && def.v !== a.v) return def;
   if (a.v) return { v: a.v, by: a.by === 'bulk' ? 'bulk' : 'technician' };
   return def;
 };
+/* v0.6.434：用 key+ik 搵 [c,s,it]（PDF／左欄同值清要用 fsdEff） */
+function fsdLookupItem(key, ik) {
+  try {
+    const c = FSD_BY[key];
+    if (!c || ik == null || ik === '') return null;
+    let found = null;
+    const walk = (secs) => {
+      (secs || []).forEach(s => {
+        if (found) return;
+        (s.items || []).forEach(it => {
+          if (found) return;
+          if (it && it.k === ik) found = [c, s, it];
+        });
+        if (!found) walk(s.subs);
+      });
+    };
+    walk(c.sections);
+    return found;
+  } catch (e) { return null; }
+}
+function fsdShownV(r, key, ik) {
+  /* 畫面而家顯示嘅值（跟 fsdEff；無 item 時跟 a／教） */
+  if (!r || !key || ik == null || ik === '') return '';
+  const a = ((fsdGet(r, key).a) || {})[ik] || {};
+  if (a.by === 'technician') return a.v || '';
+  const pair = typeof fsdLookupItem === 'function' ? fsdLookupItem(key, ik) : null;
+  if (pair && typeof fsdEff === 'function') {
+    try { return (fsdEff(r, pair[0], pair[1], pair[2]) || {}).v || ''; } catch (e0) {}
+  }
+  if (a.v) return a.v;
+  if (typeof qTeachForItem === 'function') {
+    const t = qTeachForItem(r, key, ik);
+    if (t) return t;
+  }
+  return '';
+}
+function fsdClearToEmpty(d, ik, a0) {
+  /* 刻意清空：保留 by=technician、唔刪 key（否則教預設會彈返） */
+  const a = a0 || (d.a[ik] || {});
+  delete a.v;
+  a.by = 'technician';
+  d.a[ik] = a;
+  return a;
+}
 /* 開頁清走同預設衝突嘅 bulk／legacy a.v，令不適用真係顯示同埋存得住 */
 function fsdMigrateStale(r, c) {
   const d = fsdRec(r, c.key); let ch = false;
@@ -3779,8 +3825,9 @@ function stepFsd(r, key) {
 async function fsdAct(act, el, r) {
   const key = el.dataset.c, c = FSD_BY[key]; if (!c || !r) return;
   if (act === 'fsdv') { const d = fsdRec(r, key), k = el.dataset.k, a = d.a[k] || {}, tap = el.dataset.v;
-    /* v0.6.358：已填／預設／禁剔都可改；寫 technician 覆寫並記住 */
-    if (a.v === tap && a.by === 'technician') { delete a.v; delete a.by; if (!has(a.note)) delete d.a[k]; else d.a[k] = a; }
+    /* v0.6.358／0.6.434：跟畫面有效值——已係同值再撳 → 刻意清空（蓋過教預設）；唔同值 → technician 覆寫 */
+    const shown = (typeof fsdShownV === 'function') ? fsdShownV(r, key, k) : ((a.by === 'technician') ? (a.v || '') : (a.v || ''));
+    if (shown && shown === tap) { fsdClearToEmpty(d, k, a); }
     else { a.v = tap; a.by = 'technician'; d.a[k] = a; }
     Store.touch(r); render(); if (tap === 'N' && (d.a[k] || {}).v === 'N') setTimeout(() => { const t = $(`#${fsdDom(key, k)} textarea`); if (t) t.focus(); }, 50); return; }
   if (act === 'fsdskip') {
@@ -3849,8 +3896,10 @@ function fsdExport(r) {
     Object.keys(d.a || {}).forEach(ik => {
       if (items[ik]) return;
       const a = d.a[ik];
-      if (!a || !a.v) return;
-      const o = { section: '', id: ik, text: '', result: FSD_V[a.v] || null };
+      if (!a) return;
+      /* v0.6.434：technician 空都要導出（擋 live teach merge 彈返預設） */
+      if (!a.v && a.by !== 'technician') return;
+      const o = { section: '', id: ik, text: '', result: a.v ? (FSD_V[a.v] || null) : null };
       if (a.by) o.set_by = a.by;
       if (has((a.note || '').trim())) o.remark = a.note.trim();
       items[ik] = o;
@@ -6046,12 +6095,23 @@ document.addEventListener('scroll', e => {
 }, true);
 /* v0.6.356：問卷教對應——撳右欄 PDF 剔位
    v0.6.358：非教模式亦可撳 PDF 已填／空剔位 → 師傅覆寫（記住） */
+let fsdPdfApplyTook = null; /* v0.6.434：普通 PDF Apply 防雙寫（同 teach Took） */
 function fsdPdfApplyHit(hit) {
+  /* v0.6.434：任何已選同值再撳 → 刻意清空（technician 空蓋過教／硬碼預設）；
+     唔再 T→NA 循環；pointerup 唯一 Apply＋Took／click 吞防即設即甩 */
   if (!hit || typeof fsdRec !== 'function') return false;
   const r = (typeof Store !== 'undefined' && cur && cur.id) ? Store.get(cur.id) : null;
   if (!r) return false;
   const d = fsdRec(r, hit.key);
   const sid = typeof qTeachParseSkipIk === 'function' ? qTeachParseSkipIk(hit.ik) : null;
+  const now = Date.now();
+  const sig = String(hit.key) + '\0' + String(hit.ik) + '\0' + String(sid != null ? ('skip:' + sid) : hit.v);
+  if (fsdPdfApplyTook && fsdPdfApplyTook.sig === sig && (now - (fsdPdfApplyTook.t | 0)) < 1200) {
+    fsdPdfPtrConsumed = { t: now };
+    return false;
+  }
+  fsdPdfApplyTook = { sig: sig, t: now };
+  fsdPdfPtrConsumed = { t: now };
   if (sid != null) {
     /* v0.6.363：右欄撳段「如不適用，跳往…」＝ toggling d.skip */
     if (d.skip[sid]) { delete d.skip[sid]; if (typeof toast === 'function') toast('已清跳過 §' + sid, 1800); }
@@ -6063,33 +6123,14 @@ function fsdPdfApplyHit(hit) {
   }
   const a = d.a[hit.ik] || {};
   const lab = ({ Y: '是', N: '否', NA: '不適用', T: '✓' })[hit.v] || hit.v;
-  /* v0.6.426：mode=y 單欄（無獨立 NA 框）——撳「是」循環 空→✓→不適用→空；有冇／無 #qynna 都可剔不適用 */
-  if (hit.mode === 'y' && hit.v === 'T' && a.by === 'technician') {
-    if (a.v === 'T') {
-      a.v = 'NA'; a.by = 'technician'; d.a[hit.ik] = a;
-      Store.touch(r);
-      if (typeof toast === 'function') toast('已改 ' + hit.key + ' ' + hit.ik + '＝不適用（記住）', 1800);
-      if (typeof render === 'function') render();
-      else if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
-      return true;
-    }
-    if (a.v === 'NA') {
-      delete a.v; delete a.by;
-      if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
-      else d.a[hit.ik] = a;
-      Store.touch(r);
-      if (typeof toast === 'function') toast('已清 ' + hit.key + ' ' + hit.ik + '（返預設／空）', 1800);
-      if (typeof render === 'function') render();
-      else if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
-      return true;
-    }
-  }
-  if (a.v === hit.v && a.by === 'technician') {
-    delete a.v; delete a.by;
-    if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[hit.ik];
-    else d.a[hit.ik] = a;
+  const shown = (typeof fsdShownV === 'function') ? fsdShownV(r, hit.key, hit.ik) : ((a.by === 'technician') ? (a.v || '') : (a.v || ''));
+  /* mode=y 單框：畫面係 NA 時撳 T 框＝取消該不適用（唔再逼轉 ✓） */
+  const sameClear = !!(shown && (shown === hit.v || (hit.mode === 'y' && hit.v === 'T' && shown === 'NA')));
+  if (sameClear) {
+    if (typeof fsdClearToEmpty === 'function') fsdClearToEmpty(d, hit.ik, a);
+    else { delete a.v; a.by = 'technician'; d.a[hit.ik] = a; }
     Store.touch(r);
-    if (typeof toast === 'function') toast('已清 ' + hit.key + ' ' + hit.ik + '（返預設／空）', 1800);
+    if (typeof toast === 'function') toast('已清 ' + hit.key + ' ' + hit.ik + '（空）', 1800);
   } else {
     a.v = hit.v; a.by = 'technician'; d.a[hit.ik] = a;
     Store.touch(r);
@@ -6103,32 +6144,10 @@ document.addEventListener('click', e => {
   if (e.target && e.target.closest && e.target.closest('[data-act]')) return; /* 按鈕交俾 actions */
   const im = e.target && e.target.closest && e.target.closest('#fsdLive .halive-pg');
   if (!im) return;
-  const teaching = !!(qTeachActive && qTeachActive.parts && qTeachActive.parts.length && typeof cur !== 'undefined' && cur.step === 'q');
-  const naOn = !!(typeof fsdNaMode !== 'undefined' && fsdNaMode);
-  const yesOn = !!(typeof fsdYesMode !== 'undefined' && fsdYesMode);
-  /* v0.6.414／0.6.432／0.6.433：pointerup 已處理 → 吞 click */
-  if (fsdPdfPtrConsumed && (Date.now() - (fsdPdfPtrConsumed.t | 0)) < 2000) {
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
-  /* v0.6.433：教／預設不適用／預設是 —— pointerup 係唯一 Apply 路；click 只吞、唔 Apply、唔「撳唔中」spam
-     （432 Took／consumed 喺 full click 仍漏第二下 → 即設即甩；呢度硬切） */
-  if (teaching || naOn || yesOn) {
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
-  fsdPdfPtrConsumed = null;
-  /* 非教：FSD 步或問卷右欄 —— 撳剔位改寫已填／預設（保留 click Apply） */
-  if (typeof cur === 'undefined' || !cur.step) return;
-  const st = String(cur.step || '');
-  if (!(st.startsWith('FSD-') || st === 'q')) return;
-  const hit = qTeachHitTest(im, e.clientX, e.clientY);
-  if (!hit) return; /* 唔 toast，避免跟頁誤觸嘈 */
+  /* v0.6.434：全部 PDF 剔（教／NA／Yes／普通）只 pointerup Apply；click 一律吞——防 full-click 即設即甩
+     （433 只擋教／NA／Yes；普通路徑同值清後第二下 click 會當「已選再撳」抹走） */
   e.preventDefault();
   e.stopPropagation();
-  fsdPdfApplyHit(hit);
 }, true);
 /* v0.6.414：PDF 格 pointerup——電話上 click 遲／被殺時仍可剔（教／預設不適用／預設是／普通） */
 document.addEventListener('pointerdown', e => {
@@ -6699,6 +6718,10 @@ function fsdLiveMergeTeach(cExp, r, key) {
         return;
       }
       const cur = items[e.ik];
+      /* v0.6.434：師傅刻意清空／覆寫（set_by=technician 或 d.a.by）唔再套教，否則清完即彈返 */
+      const aStore = (r.fsd && r.fsd[key] && r.fsd[key].a && r.fsd[key].a[e.ik]) || null;
+      if (aStore && aStore.by === 'technician') return;
+      if (cur && cur.set_by === 'technician') return;
       if (cur && cur.result) return; /* 匯出／師傅已有實結果優先 */
       const lab = (typeof FSD_V !== 'undefined' && FSD_V[e.v]) ? FSD_V[e.v] : (e.v === 'Y' ? '是' : e.v === 'N' ? '否' : e.v === 'NA' ? '不適用' : e.v === 'T' ? '✓' : null);
       if (!lab) return;
