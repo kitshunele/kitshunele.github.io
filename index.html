@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.406';
+const APP_VERSION = '0.6.407';
+/* v0.6.407：Q_HARD_CL＋CL-D：FD_EOL→b3、F10→b4、FD/FA_BATT_QTY gt0→d；F15 子題顯示膠合喺 F15 下 */
 /* v0.6.406：qty=0 表一 overlay 必空（FA+FD 一齊睇；ensureTables 唔抄 0 組舊料） */
 /* v0.6.405：可設 qty=0（表一唔顯示）；回填只限兩邊未答＋表一有舊料；明確 0 唔搶返 */
 /* v0.6.404：FACP／BATT 數量＝表一有資料行數回填；空 stepper 撳−唔變 0；FA↔FD 取較大正數 */
@@ -1036,17 +1037,39 @@ const Q_HARD_CL = {
   'E|e3': { cell: 'T8', defaultNa: true },   /* v0.6.394：未答／空白 → NA */
   'E|e4': { cell: 'F22', defaultNa: false }, /* Lift Homing；未答空白 */
   'E|g':  { cell: 'F21', defaultNa: false }, /* v0.6.394：閃燈；未答空白 */
+  'D|b3': { cell: 'FD_EOL', defaultNa: false }, /* v0.6.407：有冇頭要用電阻；未答空白 */
+  'D|b4': { cell: 'F10', defaultNa: false },    /* v0.6.407：stand alone 頭；未答空白 */
+  'D|d':  { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0' }, /* v0.6.407：外置充電器及電池＞0→✓；＝0→NA；未答空白 */
 };
 function qHardSpec(it) {
   if (!it || !it.sheet || !it.id) return null;
   return Q_HARD_CL[it.sheet + '|' + it.id] || null;
 }
-function qHardCell(it) { const s = qHardSpec(it); return s ? s.cell : null; }
-function itemDef(r, it) { /* v0.6.359 空白；v0.6.393 只恢復 Q_HARD_CL */
-  const hc = qHardCell(it);
-  if (!hc) return '';
+function qHardCell(it) {
+  const s = qHardSpec(it);
+  if (!s) return null;
+  return s.cell || (s.cells && s.cells[0]) || null;
+}
+/* v0.6.407：數量 gt0——FA+FD 一齊睇；有一邊＞0→yes；兩邊都寫入且冇正數→no；都未答→'' */
+function qHardGt0(r, hs) {
+  const cells = (hs && hs.cells) || (hs && hs.cell ? [hs.cell] : []);
+  let anyHas = false, maxPos = 0;
+  for (let i = 0; i < cells.length; i++) {
+    const raw = qA(r, cells[i]);
+    if (!has(raw)) continue;
+    anyHas = true;
+    const n = Number(raw);
+    if (!Number.isNaN(n) && n > 0) maxPos = Math.max(maxPos, n);
+  }
+  if (!anyHas) return '';
+  return maxPos > 0 ? 'yes' : 'no';
+}
+function itemDef(r, it) { /* v0.6.359 空白；v0.6.393／0.6.407 Q_HARD_CL（含 gt0） */
+  const hs = qHardSpec(it);
+  if (!hs) return '';
   if (itemMode(r, it) !== 'ask') return '';
-  return qA(r, hc) === '有' ? '✓' : '';
+  if (hs.mode === 'gt0') return qHardGt0(r, hs) === 'yes' ? '✓' : '';
+  return qA(r, hs.cell) === '有' ? '✓' : '';
 }
 function defWhy(r, k, it) { const cs = [FORMS[k].show_if].concat(FORMS[k].need || [], it.na_any || (it.na_unless ? [it.na_unless] : []), it.na_lt ? [it.na_lt[0]] : []).filter(Boolean); return it.tdef === 'NA' ? '範本預設 NA' : '問卷 ' + cs.map(c => c + '＝' + (r.q[c] || '')).join('、'); }
 function inInfo(r, k, it) { /* v0.6.245／0.6.359：數目／讀數；取消 ndef 預填，空白直至師傅填 */
@@ -1093,8 +1116,11 @@ function itemMode(r, it) {
   if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8／0.6.240 半年檢：CL-E *k–*n／CL-D *g–*h（REW）只限年檢 → 隱藏、記 NA
   /* v0.6.359：取消問卷驅動自動 NA（na_any／na_if／na_lt／na_unless）；空白直至師傅揀。保留冇花灑水缸結構隱藏 */
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏 */
-  { const hs = qHardSpec(it); /* v0.6.393／0.6.394：F23→e2／T8→e3／F22→e4／F21→g */
-    if (hs) { const ans = qA(r, hs.cell); if (ans === '冇' || (hs.defaultNa && ans !== '有')) return 'autona'; } }
+  { const hs = qHardSpec(it); /* v0.6.393／394／407：E e2–g＋D b3／b4／d(gt0) */
+    if (hs) {
+      if (hs.mode === 'gt0') { if (qHardGt0(r, hs) === 'no') return 'autona'; }
+      else { const ans = qA(r, hs.cell); if (ans === '冇' || (hs.defaultNa && ans !== '有')) return 'autona'; }
+    } }
   if (it.measure) return 'measure';
   if (it.input) return 'input';
   return 'ask';
@@ -2051,16 +2077,39 @@ function qOrderList() {
   const o = Store.prefs && Store.prefs.qOrder;
   return Array.isArray(o) ? o.map(String) : [];
 }
+/* v0.6.407：dep＝F15 嘅子題（FA_*／F20–F23 等）顯示時永遠膠喺 F15 下面（qOrder 唔拆散） */
+function qGlueUnder(items, parentCell) {
+  if (!items || !items.length || !parentCell) return items;
+  const isKid = it => !!(it && it.dep && it.dep[0] === parentCell);
+  const kids = items.filter(isKid);
+  if (!kids.length) return items;
+  const parent = items.find(it => it && it.cell === parentCell);
+  if (!parent) return items;
+  const out = [];
+  let placed = false;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.cell === parentCell || isKid(it)) {
+      if (!placed) { out.push(parent); for (let j = 0; j < kids.length; j++) out.push(kids[j]); placed = true; }
+      continue;
+    }
+    out.push(it);
+  }
+  return out;
+}
 function qSortItems(items) {
   const ord = qOrderList();
-  if (!ord.length || !items || !items.length) return items;
-  const rank = new Map(ord.map((c, i) => [c, i]));
-  return items.slice().sort((a, b) => {
-    const ra = rank.has(a.cell) ? rank.get(a.cell) : 1e9;
-    const rb = rank.has(b.cell) ? rank.get(b.cell) : 1e9;
-    if (ra !== rb) return ra - rb;
-    return 0;
-  });
+  let list = items;
+  if (ord.length && items && items.length) {
+    const rank = new Map(ord.map((c, i) => [c, i]));
+    list = items.slice().sort((a, b) => {
+      const ra = rank.has(a.cell) ? rank.get(a.cell) : 1e9;
+      const rb = rank.has(b.cell) ? rank.get(b.cell) : 1e9;
+      if (ra !== rb) return ra - rb;
+      return 0;
+    });
+  }
+  return qGlueUnder(list, 'F15');
 }
 function qOrderCommitSection(card) {
   if (!card) return false;
