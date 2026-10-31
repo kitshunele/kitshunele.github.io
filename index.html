@@ -632,7 +632,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.408';
+const APP_VERSION = '0.6.409';
+/* v0.6.409：Q_HARD_CL D|e←F23、D|f←FA_CUT_LIFT_VAC；FA_CUT 搬 F9 下 */
 /* v0.6.408：F9 下 FD_FIRELINK↔F23 兩向；qGlueUnder F9（同 F15） */
 /* v0.6.407：Q_HARD_CL＋CL-D：FD_EOL→b3、F10→b4、FD/FA_BATT_QTY gt0→d；F15 子題顯示膠合喺 F15 下 */
 /* v0.6.406：qty=0 表一 overlay 必空（FA+FD 一齊睇；ensureTables 唔抄 0 組舊料） */
@@ -657,7 +658,7 @@ const APP_VERSION = '0.6.408';
 /* v0.6.387：FA overlay 日期／註冊承辦商編號手寫；xHwText wob 令字唔平整打橫 */
 /* v0.6.386：FA overlay 地址樓名上移對齊橫線（y 148→136）＋ ChenYuluoyan 手寫 */
 /* v0.6.385：FA AIII 模擬面板 tickmap 錨去 bi12（唔再食附錄II）；AII→bi11 */
-/* v0.6.384：F15 下加 FA_CUT_LIFT_VAC「有冇cut𨋢cut vac及門鎖等等」（yn；dep F15有；喺 FA_OTHER_PANEL 後） */
+/* v0.6.384／0.6.409：FA_CUT_LIFT_VAC「有冇cut𨋢cut vac及門鎖等等」——原 F15 下，現搬 F9 下（dep F9有；→ D|f） */
 /* v0.6.383：F15 下「有冇火警訊號交其他panel」（FA_OTHER_PANEL）移到 FA_PANEL_ISO_DIAG 之後；label 無空格
    v0.6.382：FA A1.1.l「是否不適用」可撳——blank p7 lone-NA 誤當段 skip，promote 做 ynn（synth Y/N）並順手執返 A1.2／A1.3 行對齊
    v0.6.381：F15 下加 FA_PANEL_ISO_DIAG「panel隔離有冇圖」（有／冇；dep F15＝有；未硬編碼 FSD map）
@@ -1041,6 +1042,8 @@ const Q_HARD_CL = {
   'D|b3': { cell: 'FD_EOL', defaultNa: false }, /* v0.6.407：有冇頭要用電阻；未答空白 */
   'D|b4': { cell: 'F10', defaultNa: false },    /* v0.6.407：stand alone 頭；未答空白 */
   'D|d':  { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0' }, /* v0.6.407：外置充電器及電池＞0→✓；＝0→NA；未答空白 */
+  'D|e':  { cell: 'F23', defaultNa: false },    /* v0.6.409：消防直線（↔FD_FIRELINK 跟 F23）；有＝✓、冇＝NA、未答空白；E|e2 照舊 */
+  'D|f':  { cell: 'FA_CUT_LIFT_VAC', defaultNa: false }, /* v0.6.409：cut𨋢／cut vac／門鎖等；有＝✓、冇＝NA、未答空白 */
 };
 function qHardSpec(it) {
   if (!it || !it.sheet || !it.id) return null;
@@ -1117,7 +1120,7 @@ function itemMode(r, it) {
   if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8／0.6.240 半年檢：CL-E *k–*n／CL-D *g–*h（REW）只限年檢 → 隱藏、記 NA
   /* v0.6.359：取消問卷驅動自動 NA（na_any／na_if／na_lt／na_unless）；空白直至師傅揀。保留冇花灑水缸結構隱藏 */
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏 */
-  { const hs = qHardSpec(it); /* v0.6.393／394／407：E e2–g＋D b3／b4／d(gt0) */
+  { const hs = qHardSpec(it); /* v0.6.393／394／407／409：E e2–g＋D b3／b4／d(gt0)／e／f */
     if (hs) {
       if (hs.mode === 'gt0') { if (qHardGt0(r, hs) === 'no') return 'autona'; }
       else { const ans = qA(r, hs.cell); if (ans === '冇' || (hs.defaultNa && ans !== '有')) return 'autona'; }
@@ -2118,7 +2121,7 @@ function qSortItems(items) {
     });
   }
   list = qGlueUnder(list, 'F15');
-  return qGlueUnder(list, 'F9', ['F10']); /* v0.6.408：F9 子題（FD_*／F10／FD_FIRELINK 等）永遠膠喺 F9 下；F10 無 dep 亦 sticky */
+  return qGlueUnder(list, 'F9', ['F10']); /* v0.6.408／409：F9 子題（FD_*／F10／FD_FIRELINK／FA_CUT_LIFT_VAC 等）膠喺 F9 下；F10 sticky */
 }
 
 function qOrderCommitSection(card) {
