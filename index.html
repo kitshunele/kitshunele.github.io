@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.443';
+const APP_VERSION = '0.6.444';
+/* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
@@ -7762,12 +7763,21 @@ const FSD_T1_OV = {
     mainYes: { x: 688, s: 9 },
     mainNo: { x: 738, s: 9 }
   },
-  /* baseline y（pt）量度 blank fa.pdf p6／fds.pdf p19 橫線 */
+  /* baseline y（pt）= 行底橫線 −4（同 FA 量度法）
+     v0.6.444：base 按表分開——舊共用 FA（fa.pdf p6）；FDS 表一（PDF 第19頁＝maps page18）整頁內容較 FA 低 ≈23–24pt（同 addr／bldg），共用會整表上移一行 */
   base: {
-    '1.a': 190, '1.b': 208, '1.c': 226.5, '1.d': 245, '1.e': 263,
-    '2.a': 299.5, '2.b': 318,
-    '3.a': 354.5,
-    '4.a': 391, '4.b': 409.5, '4.c': 427.5, '4.d': 446, '4.e': 464.5
+    fa: {
+      '1.a': 190, '1.b': 208, '1.c': 226.5, '1.d': 245, '1.e': 263,
+      '2.a': 299.5, '2.b': 318,
+      '3.a': 354.5,
+      '4.a': 391, '4.b': 409.5, '4.c': 427.5, '4.d': 446, '4.e': 464.5
+    },
+    fds: {
+      '1.a': 213.3, '1.b': 231.7, '1.c': 250.0, '1.d': 268.3, '1.e': 286.7,
+      '2.a': 323.7, '2.b': 342.0,
+      '3.a': 378.3,
+      '4.a': 415.0, '4.b': 433.3, '4.c': 451.7, '4.d': 470.0, '4.e': 488.3
+    }
   },
   maxLetter: { '1': 5, '2': 2, '3': 1, '4': 5 }
 };
@@ -7801,7 +7811,9 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
   const bldgBox = (FSD_T1_OV.bldg && FSD_T1_OV.bldg[key]) || FSD_T1_OV.bldg;
   put(addr, addrBox.x, addrBox.y, addrBox.maxW);
   put(bldg, bldgBox.x, bldgBox.y, bldgBox.maxW);
-  const cols = FSD_T1_OV.cols, base = FSD_T1_OV.base, maxL = FSD_T1_OV.maxLetter;
+  const cols = FSD_T1_OV.cols;
+  const base = (FSD_T1_OV.base && FSD_T1_OV.base[key]) || FSD_T1_OV.base;
+  const maxL = FSD_T1_OV.maxLetter;
   const letters = 'abcdefghij';
   const qa = (cell) => { const x = (o && o.questionnaire || {})[cell]; return x && typeof x === 'object' ? x.a : x; };
   const qHasRep = () => qa('FD_REP') === '有' || qa('FA_REPEATER') === '有';
