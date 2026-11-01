@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.438';
+const APP_VERSION = '0.6.439';
+/* v0.6.439：殼版號升一級逼 have:''（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
 /* v0.6.438b：FA_CUT_DOOR 移到 F15 子題前段＋逼新 app_data Drive id（修 appd_fid 黏舊 bak） */
 /* v0.6.437：F9 下 FD_BATT_SOCK↔F20 兩向（電池叉咀；CL-N／§1.d 跟 F20） */
