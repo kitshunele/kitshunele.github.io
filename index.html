@@ -541,6 +541,56 @@ main.liveopen .livepane{
 }
 main.liveopen .livepeek{position:fixed;top:10px;right:10px;left:auto;bottom:auto;width:auto;z-index:50;margin:0;order:unset;align-self:auto}
 main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
+/* v0.6.436：電話問答（.ls-cols）左右分欄——左問卷／右 checklist PDF；其他 haslive 窄屏仍上下 */
+@media (max-width:999.98px){
+  main.haslive.ls-cols{
+    display:grid;
+    grid-template-columns:minmax(112px,var(--ls-form-pct,40%)) 10px minmax(140px,1fr);
+    grid-template-rows:auto minmax(0,1fr);
+    gap:0 4px;align-items:stretch;
+    width:100%;
+    max-width:100%;
+    overflow:hidden;
+    padding:6px 4px 8px;
+    box-sizing:border-box;
+  }
+  main.haslive.ls-cols > .revbar{grid-column:1/-1;grid-row:1;order:unset;flex:unset}
+  main.haslive.ls-cols .liveform{
+    grid-column:1;grid-row:2;min-width:0;min-height:0;order:unset;flex:unset;
+    overflow:auto;-webkit-overflow-scrolling:touch;max-height:none;
+    padding-right:2px;
+  }
+  main.haslive.ls-cols .livepeek{display:none!important}
+  main.haslive.ls-cols .livesplit{
+    grid-column:2;grid-row:2;order:unset;flex:unset;
+    width:10px;margin:0;height:auto;min-height:0;align-self:stretch;
+    position:relative;top:auto;border-radius:999px;
+    cursor:col-resize;
+    background:linear-gradient(90deg,#e2e8f0,#94a3b8 45%,#e2e8f0);
+  }
+  main.haslive.ls-cols .livesplit::before{
+    width:4px;height:36px;
+    box-shadow:-4px 0 0 #64748b,4px 0 0 #64748b;
+  }
+  main.haslive.ls-cols.ls-dragging{cursor:col-resize}
+  main.haslive.ls-cols .livepane,
+  main.haslive.ls-cols:not(.liveopen) .livepane{
+    grid-column:3;grid-row:2;
+    display:block;position:relative;top:auto;order:unset;flex:unset;
+    height:auto;max-height:none;min-height:0;min-width:0;align-self:stretch;
+    overflow:auto;-webkit-overflow-scrolling:touch;
+    padding:0 0 8px;background:transparent;inset:auto;z-index:auto;
+    margin:0;border:0;border-radius:0;box-shadow:none;
+  }
+  main.haslive.ls-cols .livepane .halive{
+    margin:0;padding:6px 6px 12px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc;border-top:1px solid #cbd5e1;
+  }
+  main.haslive.ls-cols .livepane .halive-pg{max-width:100%}
+  main.haslive.ls-cols .livepick{margin:0 0 6px;padding:6px 6px 8px;border-radius:10px}
+  main.haslive.ls-cols .livepick .lpk{min-height:32px;font-size:12px;padding:0 8px}
+  main.haslive.ls-cols .liveform .q{font-size:13px}
+  main.haslive.ls-cols .liveform .ql{font-size:13px}
+}
 @media (min-width:1000px){
   .livepeek{display:none!important}
   /* v0.6.352：闊屏＝兩個獨立畫面（左 liveform／右 livepane 各自 overflow:auto）；加闊用盡螢幕；唔再 sticky＋window 一齊捲 */
@@ -641,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.435';
+const APP_VERSION = '0.6.436';
+/* v0.6.436：電話問答 checklist 左右分欄（.ls-cols）；闊屏／教清／retap／#qynna 唔改 */
 /* v0.6.422：偵測第七頁 6.b lone-NA 誤 skip→整頁＋第八頁錯位；promote p6 重對 tickmap；保留 421 電池→5.l／5.m */
 /* v0.6.435：教模式同值清亦寫 technician 空（唔刪 a，擋 Q 預設彈返）；保留 434 普通／左欄／page9+ 同值清＋pointerup-only＋prefer-NA */
 /* v0.6.433：教／NA／Yes PDF click 唔 Apply（只 pointerup）；Apply 內再設 fsdPdfPtrConsumed；Took 1200ms；保留 432 hybrid＋430 prefer-NA */
@@ -2020,16 +2071,18 @@ function viewRec(r) {
   const liveSlot = !!(haSlot || fsdSlot);
   if (typeof LIVE_PEEK_STEP !== 'undefined' && LIVE_PEEK_STEP !== cur.step) { LIVE_PEEK = false; LIVE_PEEK_STEP = cur.step; }
   const liveOpen = liveSlot && (typeof LIVE_PEEK !== 'undefined') && LIVE_PEEK;
+  /* v0.6.436：問卷步驟電話亦左右分欄（.ls-cols）；其他 haslive 窄屏仍上下 */
+  const qCols = liveSlot && cur.step === 'q';
   const prev = steps[i - 1], next = steps[i + 1];
   const rev = r.rev ? `<div class="revbar">✏️ 修改中：原上傳 ${esc(r.rev.prev_uploaded_hkt || '')} HKT（第 ${r.rev.prev_revision} 版）· 提交後係第 ${r.rev.revision} 版${r.rev.photos_kept ? ` · ${r.rev.photos_kept} 張原有相喺 Drive` : ''}</div>` : '';
   const peek = liveSlot ? `<button type="button" class="btn sm livepeek" data-act="livepeek">${liveOpen ? '✕ 關閉放大' : '📄 即時預覽'}</button>` : '';
-  const split = liveSlot ? `<div class="livesplit" id="livesplit" role="separator" aria-orientation="horizontal" aria-label="拉住調整表單同 PDF 大細" tabindex="0"></div>` : '';
+  const split = liveSlot ? `<div class="livesplit" id="livesplit" role="separator" aria-orientation="${qCols ? 'vertical' : 'horizontal'}" aria-label="${qCols ? '拉住左右調整問卷同 checklist 大細' : '拉住調整表單同 PDF 大細'}" tabindex="0"></div>` : '';
   const mainInner = liveSlot
     ? `${rev}<div class="liveform">${html}</div>${peek}${split}<aside class="livepane" id="livepane" aria-label="即時 PDF 預覽">${pickBar}${haSlot}${fsdSlot}</aside>`
     : `${rev}${html}`;
   return `<div class="top"><div class="bar"><button data-act="home" aria-label="返消防檢查核對表">‹ 返回</button><div class="ttl">${esc(recTitle(r))} <span class="badge ${st}" style="font-size:12px;vertical-align:middle">${BADGE[st]}</span><small>${esc(r.date || '')} · <span id="saved">✓ 已自動儲存</span></small></div>${canEditCancel(r) ? '<button class="cxe" data-act="canceledit" aria-label="取消修改">✕ 取消修改</button>' : ''}</div>
   <nav class="steps">${chips}</nav></div>
-  <main class="${liveSlot ? 'haslive' : ''}${liveOpen ? ' liveopen' : ''}">${mainInner}</main>
+  <main class="${liveSlot ? 'haslive' : ''}${liveOpen ? ' liveopen' : ''}${qCols ? ' ls-cols' : ''}">${mainInner}</main>
   <div class="foot"><div class="in"><button class="btn" data-act="step" data-k="${prev ? prev.k : ''}" ${prev ? '' : 'disabled'}>‹ ${prev ? esc(prev.t) : '上一步'}</button>${next ? `<button class="btn pri" data-act="next" data-k="${next.k}" data-t="${esc(next.t)}">${esc(next.t)} ›</button>` : `<button class="btn" data-act="home">返主頁</button>`}</div></div>`;
 }
 /* ----- step: basic ----- */
@@ -4859,28 +4912,47 @@ const HA_LIVE_STEPS = new Set(['CL-A', 'C1U', 'TR-C2U', 'C1', 'TR-C2', 'C1S', 'T
 function haLiveStepOk(step) { return HA_LIVE_STEPS.has(step); }
 let LIVE_PEEK = false, LIVE_PEEK_STEP = ''; /* v0.6.340／342：可選放大全屏；換步驟關；窄屏 pane 永遠可見唔靠呢個 */
 /* v0.6.344：中間分隔拖曳——撳下唔跳；用 pointerdown 當下實測比例做起點；唔再用 pointer-events:none 搞亂 scroll */
-const LS_SPLIT_N = 'fsapp20259005.livesplit.n.v1', LS_SPLIT_W = 'fsapp20259005.livesplit.w.v1';
+const LS_SPLIT_N = 'fsapp20259005.livesplit.n.v1', LS_SPLIT_W = 'fsapp20259005.livesplit.w.v1', LS_SPLIT_P = 'fsapp20259005.livesplit.p.v1';
 const LS_SPLIT_MIN = 0.22, LS_SPLIT_MAX = 0.78;
 let _lsDrag = null, _lsBound = false;
-function liveSplitWide() { return window.matchMedia('(min-width:1000px)').matches; }
-function liveSplitDefault() { return liveSplitWide() ? 0.42 : 0.55; } /* v0.6.352：闊屏預設左窄啲，PDF 欄更闊 */
-function liveSplitClamp(v) {
+/* v0.6.436：cols＝闊屏 或 電話問答 .ls-cols（左右）；窄屏其他步驟仍上下 */
+function liveSplitIsWideViewport() {
+  try { return window.matchMedia('(min-width:1000px)').matches; } catch (e) { return false; }
+}
+function liveSplitIsPhoneCols(main) {
+  main = main || document.querySelector('main.haslive');
+  return !!(main && main.classList.contains('ls-cols') && !liveSplitIsWideViewport());
+}
+function liveSplitWide(main) { /* 名沿用：true＝左右欄（闊屏或電話問答） */
+  return liveSplitIsWideViewport() || liveSplitIsPhoneCols(main);
+}
+function liveSplitStoreKey(main) {
+  if (liveSplitIsWideViewport()) return LS_SPLIT_W;
+  if (liveSplitIsPhoneCols(main)) return LS_SPLIT_P;
+  return LS_SPLIT_N;
+}
+function liveSplitDefault(main) {
+  if (liveSplitIsWideViewport()) return 0.42; /* v0.6.352 */
+  if (liveSplitIsPhoneCols(main)) return 0.40; /* v0.6.436 電話問答預設左 40% */
+  return 0.55;
+}
+function liveSplitClamp(v, main) {
   v = Number(v);
-  if (!Number.isFinite(v)) return liveSplitDefault();
+  if (!Number.isFinite(v)) return liveSplitDefault(main);
   return Math.min(LS_SPLIT_MAX, Math.max(LS_SPLIT_MIN, v));
 }
-function liveSplitRead() {
+function liveSplitRead(main) {
   try {
-    const raw = localStorage.getItem(liveSplitWide() ? LS_SPLIT_W : LS_SPLIT_N);
-    if (raw == null || raw === '') return liveSplitDefault();
+    const raw = localStorage.getItem(liveSplitStoreKey(main));
+    if (raw == null || raw === '') return liveSplitDefault(main);
     const n = parseFloat(raw);
-    if (!Number.isFinite(n)) return liveSplitDefault();
-    return liveSplitClamp(n);
-  } catch (e) { return liveSplitDefault(); }
+    if (!Number.isFinite(n)) return liveSplitDefault(main);
+    return liveSplitClamp(n, main);
+  } catch (e) { return liveSplitDefault(main); }
 }
-function liveSplitSave(formFrac) {
-  const v = liveSplitClamp(formFrac);
-  try { localStorage.setItem(liveSplitWide() ? LS_SPLIT_W : LS_SPLIT_N, String(Math.round(v * 1000) / 1000)); } catch (e) {}
+function liveSplitSave(formFrac, main) {
+  const v = liveSplitClamp(formFrac, main);
+  try { localStorage.setItem(liveSplitStoreKey(main), String(Math.round(v * 1000) / 1000)); } catch (e) {}
   return v;
 }
 function liveSplitPaint(main, formFrac, wide) {
@@ -4917,10 +4989,13 @@ function liveSplitApply() {
     if (paneEl) { paneEl.style.flex = ''; paneEl.style.width = ''; paneEl.style.height = ''; paneEl.style.maxHeight = ''; }
     return;
   }
-  const formFrac = liveSplitRead();
-  const wide = liveSplitWide();
+  const formFrac = liveSplitRead(main);
+  const wide = liveSplitWide(main);
   liveSplitPaint(main, formFrac, wide);
-  if (split) split.setAttribute('aria-orientation', wide ? 'vertical' : 'horizontal');
+  if (split) {
+    split.setAttribute('aria-orientation', wide ? 'vertical' : 'horizontal');
+    split.setAttribute('aria-label', wide ? '拉住左右調整問卷同 checklist 大細' : '拉住上下調整表單同 PDF 大細');
+  }
 }
 function liveSplitOnPointerDown(ev) {
   if (ev.button != null && ev.button !== 0) return;
@@ -4935,7 +5010,8 @@ function liveSplitOnPointerDown(ev) {
   if (typeof split.blur === 'function' && document.activeElement === split) {
     try { split.blur(); } catch (e) {}
   }
-  const wide = liveSplitWide();
+  const wide = liveSplitWide(main);
+  const phoneCols = liveSplitIsPhoneCols(main);
   const fr = formEl.getBoundingClientRect();
   const pr = paneEl.getBoundingClientRect();
   const formPx = wide ? fr.width : fr.height;
@@ -4945,7 +5021,7 @@ function liveSplitOnPointerDown(ev) {
   const minPx = total * LS_SPLIT_MIN;
   const maxPx = total * LS_SPLIT_MAX;
   _lsDrag = {
-    wide, main, split, formEl, paneEl,
+    wide, phoneCols, main, split, formEl, paneEl,
     startPos: wide ? ev.clientX : ev.clientY,
     startFormPx: formPx,
     total, minPx, maxPx,
@@ -4962,7 +5038,9 @@ function liveSplitDragPixels(d, formPx) {
   const panePx = d.total - formPx;
   if (d.wide) {
     /* 拖緊用 px grid，跟住手指；鬆手先寫返 % —— 第一像素都唔會 snap 去 storage % */
-    d.main.style.gridTemplateColumns = formPx.toFixed(1) + 'px 14px minmax(260px,1fr)';
+    const gut = d.phoneCols ? 10 : 14;
+    const minR = d.phoneCols ? 120 : 260;
+    d.main.style.gridTemplateColumns = formPx.toFixed(1) + 'px ' + gut + 'px minmax(' + minR + 'px,1fr)';
   } else {
     d.formEl.style.flex = '0 0 ' + formPx.toFixed(1) + 'px';
     d.paneEl.style.flex = '0 0 ' + panePx.toFixed(1) + 'px';
@@ -4989,13 +5067,14 @@ function liveSplitOnPointerUp(ev) {
   const d = _lsDrag;
   try { d.split.releasePointerCapture(ev.pointerId); } catch (e) {}
   if (d.moved) {
-    /* 闊屏 % 相對成個 main（含 14px gutter）；窄屏 grow 相對 form+pane */
+    /* 闊屏／電話問答 % 相對成個 main（含 gutter）；窄屏上下 grow 相對 form+pane */
     let formFrac;
     if (d.wide) {
-      const mainW = d.main.getBoundingClientRect().width || (d.total + 14);
-      formFrac = liveSplitSave(d.lastFormPx / mainW);
+      const gut = d.phoneCols ? 10 : 14;
+      const mainW = d.main.getBoundingClientRect().width || (d.total + gut);
+      formFrac = liveSplitSave(d.lastFormPx / mainW, d.main);
     } else {
-      formFrac = liveSplitSave(d.lastFormPx / d.total);
+      formFrac = liveSplitSave(d.lastFormPx / d.total, d.main);
     }
     liveSplitPaint(d.main, formFrac, d.wide); /* 清 px inline，寫返 grow／% */
     if (d.formEl) d.formEl.scrollTop = d.formScroll;
@@ -5007,14 +5086,14 @@ function liveSplitOnPointerUp(ev) {
 function liveSplitOnKey(ev) {
   const main = document.querySelector('main.haslive');
   if (!main || main.classList.contains('liveopen')) return;
-  const wide = liveSplitWide();
+  const wide = liveSplitWide(main);
   const step = (ev.shiftKey ? 0.05 : 0.02) * (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp' ? -1 : 1);
   const want = wide
     ? (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')
     : (ev.key === 'ArrowUp' || ev.key === 'ArrowDown');
   if (!want) return;
   ev.preventDefault();
-  const formFrac = liveSplitSave(liveSplitRead() + step);
+  const formFrac = liveSplitSave(liveSplitRead(main) + step, main);
   liveSplitPaint(main, formFrac, wide);
 }
 function liveSplitInit() {
