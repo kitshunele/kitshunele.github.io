@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.442';
+const APP_VERSION = '0.6.443';
+/* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
@@ -7750,8 +7751,10 @@ function fsdOvSkipHitList(key, tm) {
    欄：位置／覆蓋／備註／用作主板 */
 const FSD_T1_OV = {
   page: { fa: 5, fds: 18 },
-  addr: { x: 210, y: 96, maxW: 400 },
-  bldg: { x: 210, y: 114, maxW: 400 },
+  /* v0.6.443：addr／bldg 按表分開——舊值跟 FA blank 橫線（≈98／116→baseline 96／114）；
+     FDS 表一（PDF 第19頁＝maps page18）橫線 ≈121.3／139.3 → baseline 119／137；共用 FA 值會疊上「主要設備檢查記錄」／地址行 */
+  addr: { fa: { x: 210, y: 96, maxW: 400 }, fds: { x: 210, y: 119, maxW: 400 } },
+  bldg: { fa: { x: 210, y: 114, maxW: 400 }, fds: { x: 210, y: 137, maxW: 400 } },
   cols: {
     loc: { x: 98, maxW: 165 },
     cover: { x: 272, maxW: 210 },
@@ -7794,8 +7797,10 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
       ctx.restore();
     }
   };
-  put(addr, FSD_T1_OV.addr.x, FSD_T1_OV.addr.y, FSD_T1_OV.addr.maxW);
-  put(bldg, FSD_T1_OV.bldg.x, FSD_T1_OV.bldg.y, FSD_T1_OV.bldg.maxW);
+  const addrBox = (FSD_T1_OV.addr && FSD_T1_OV.addr[key]) || FSD_T1_OV.addr;
+  const bldgBox = (FSD_T1_OV.bldg && FSD_T1_OV.bldg[key]) || FSD_T1_OV.bldg;
+  put(addr, addrBox.x, addrBox.y, addrBox.maxW);
+  put(bldg, bldgBox.x, bldgBox.y, bldgBox.maxW);
   const cols = FSD_T1_OV.cols, base = FSD_T1_OV.base, maxL = FSD_T1_OV.maxLetter;
   const letters = 'abcdefghij';
   const qa = (cell) => { const x = (o && o.questionnaire || {})[cell]; return x && typeof x === 'object' ? x.a : x; };
