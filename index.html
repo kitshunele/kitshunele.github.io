@@ -691,12 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.462';
+const APP_VERSION = '0.6.463';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
+/* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
 /* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.12–0.25 隨機（t1160u／t1161u） */
 /* v0.6.461：T12 電流錶→C1.r／s；T20→c／f／g／j／l；T13→d（t1159u） */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
@@ -3073,7 +3074,7 @@ const qSkipLabel = s => {
   return `${qs[0]}＝${qs[1]}`;
 };
 /* v0.6.350：問卷 live PDF——閘／題目 → 消防處 blank key（唔用自畫紙本主路徑） */
-const FSD_GATE_KEY = { F9: 'fds', F15: 'fa', F6: 'fhhr', F24: 'tank', M6: 'ws', AA6: 'spr' };
+const FSD_GATE_KEY = { F9: 'fds', F15: 'fa', F6: 'fhhr', T6: 'fhhr', F24: 'tank', M6: 'ws', AA6: 'spr' }; /* v0.6.463：T6 有冇消防龍頭泵 → live／開 栓轆（FAN t1162u） */
 /* v0.6.391：表一問答格 → 年檢核對表表一頁（FA p6＝idx5／FDS p19＝idx18）；位置／覆蓋／備註／主板同店 */
 const FDS_T1_Q_CELLS = { FD_FACP_QTY: '1', FD_REP_QTY: '2', FD_REP: '2', FA_REPEATER: '2', FD_BATT_QTY: '4' };
 const FDS_T1_LIVE_PI = { fa: 5, fds: 18 };
@@ -3138,7 +3139,9 @@ function qLiveFsdKey(r, preferCell) {
   for (let i = 0; i < FSD_Q_LIVE_ORDER.length; i++) {
     const k = FSD_Q_LIVE_ORDER[i];
     const c = FSD_BY[k];
-    if (c && r && r.q && r.q[c.gate] === '有') return k;
+    if (!c || !r || !r.q) continue;
+    if (r.q[c.gate] === '有') return k;
+    if (k === 'fhhr' && r.q.T6 === '有') return k; /* v0.6.463 */
   }
   if (r && r.q && r.q.AA6 === '有') return 'spr';
   return 'fds'; /* 預設消防處·偵測 blank */
@@ -3152,7 +3155,13 @@ const fsdKeyOf = step => {
   }
   return null;
 };
-const fsdVisible = (r, c) => r.q[c.gate] === '有' && !isHalf(r); // v0.4.8：消防處年檢核對表只限年檢（CL-A B 部「FSD's Annual Inspection Checklists」半年檢係「-」）
+const fsdGateOn = (r, c) => { /* v0.6.463：主閘＝有；fhhr 另認 T6 有冇消防龍頭泵＝有（FAN t1162u） */
+  if (!r || !r.q || !c) return false;
+  if (r.q[c.gate] === '有') return true;
+  if (c.key === 'fhhr' && r.q.T6 === '有') return true;
+  return false;
+};
+const fsdVisible = (r, c) => fsdGateOn(r, c) && !isHalf(r); // v0.4.8：年檢先顯示；v0.6.463：栓轆＝F6∥T6
 /* v0.4.8：問卷「有」→ 是/否/不適用 項目預設「是」（✓ 剔選項目唔預設；可留空嘅互斥部分唔預設）；師傅揀過先記 technician */
 /* v0.6.128：it.q_def = [問卷 cell, {答:Y/NA}] → 跟問卷預設；未答唔跌落通用「是」 */
 /* v0.6.129：it.def_v（如 'NA'）靜態預設；s.q_skip／s.def_skip 部分自動不適用 */
