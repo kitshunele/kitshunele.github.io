@@ -691,13 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.459';
+const APP_VERSION = '0.6.460';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
-/* v0.6.459：T20 overload→C1.c／f／g／j；T13→C1.d（有＝✓、冇＝NA、未答空白；t1157u） */
+/* v0.6.460：T20 overload→C1.c／f／g／j／l；T13→C1.d（有＝✓、冇＝NA、未答空白；t1158u） */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
 /* v0.6.438b：FA_CUT_DOOR 移到 F15 子題前段＋逼新 app_data Drive id（修 appd_fid 黏舊 bak） */
@@ -718,6 +718,7 @@ const APP_VERSION = '0.6.459';
 /* v0.6.412：FD/FA_BATT_QTY＞0 → 偵測 fds §1.d「是」（Q_HARD_FSD gt0；＝0／未答唔剔）；CL-D d 已有 gt0 */
 /* v0.6.411：偵測 fds 頭欄「完成年檢日期」手寫 baseline 118→123.5（橫線≈128；只調日期） */
 /* v0.6.410：D|f Q_HARD yn_any←F27＋FA_CUT（根因：FAN／Excel 跟 F27「有冇Cut VAC?」，409 只睇 FA_CUT） */
+/* v0.6.460：Q_HARD_CL C1-1 FS Pump|c／f／g／j／l←T20；|d←T13（t1158u） */
 /* v0.6.459：Q_HARD_CL C1-1 FS Pump|c／f／g／j←T20；|d←T13（t1157u） */
 /* v0.6.458：Q_HARD_CL C1-1 FS Pump|c／f／g←T20；|d←T13（t1156u） */
 /* v0.6.457：Q_HARD_CL C1-1 FS Pump|c←T20 overload、|d←T13 急停掣（t1154u／t1155u） */
@@ -1132,10 +1133,11 @@ const Q_HARD_CL = {
   'D|d':  { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0' }, /* v0.6.407：外置充電器及電池＞0→✓；＝0→NA；未答空白 */
   'D|e':  { cell: 'F23', defaultNa: false },    /* v0.6.409：消防直線（↔FD_FIRELINK 跟 F23）；有＝✓、冇＝NA、未答空白；E|e2 照舊 */
   'D|f':  { cells: ['F27', 'FA_CUT_LIFT_VAC'], mode: 'yn_any', defaultNa: false }, /* v0.6.410：F27「有冇Cut VAC?」＋FA_CUT（F9）；任一有＝✓、任一冇且冇有＝NA、未答空白；範本 D!H24 跟 F27 */
-  'C1-1 FS Pump|c': { cell: 'T20', defaultNa: false }, /* v0.6.457／458／459：overload → C1.c */
-  'C1-1 FS Pump|f': { cell: 'T20', defaultNa: false }, /* v0.6.458／459：overload → C1.f */
-  'C1-1 FS Pump|g': { cell: 'T20', defaultNa: false }, /* v0.6.458／459：overload → C1.g */
-  'C1-1 FS Pump|j': { cell: 'T20', defaultNa: false }, /* v0.6.459：overload → C1.j（t1157u） */
+  'C1-1 FS Pump|c': { cell: 'T20', defaultNa: false }, /* v0.6.457–460：overload → C1.c */
+  'C1-1 FS Pump|f': { cell: 'T20', defaultNa: false }, /* v0.6.458–460：overload → C1.f */
+  'C1-1 FS Pump|g': { cell: 'T20', defaultNa: false }, /* v0.6.458–460：overload → C1.g */
+  'C1-1 FS Pump|j': { cell: 'T20', defaultNa: false }, /* v0.6.459／460：overload → C1.j */
+  'C1-1 FS Pump|l': { cell: 'T20', defaultNa: false }, /* v0.6.460：overload → C1.l（t1158u） */
   'C1-1 FS Pump|d': { cell: 'T13', defaultNa: false }, /* v0.6.457：急停掣 → C1.d（t1155u） */
 };
 function qHardSpec(it) {
@@ -1241,7 +1243,7 @@ function itemMode(r, it) {
   if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8／0.6.240 半年檢：CL-E *k–*n／CL-D *g–*h（REW）只限年檢 → 隱藏、記 NA
   /* v0.6.359：取消問卷驅動自動 NA（na_any／na_if／na_lt／na_unless）；空白直至師傅揀。保留冇花灑水缸結構隱藏 */
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏 */
-  { const hs = qHardSpec(it); /* v0.6.393／394／407／409／410／457／458／459：E／D＋C1-1 FS Pump c／d／f／g／j */
+  { const hs = qHardSpec(it); /* v0.6.393／394／407／409／410／457–460：E／D＋C1-1 FS Pump c／d／f／g／j／l */
     if (hs) {
       if (hs.mode === 'gt0') { if (qHardGt0(r, hs) === 'no') return 'autona'; }
       else if (hs.mode === 'yn_any') { if (qHardYnAny(r, hs) === 'no') return 'autona'; }
