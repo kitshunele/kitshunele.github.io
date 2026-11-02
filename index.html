@@ -691,13 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.450';
+const APP_VERSION = '0.6.451';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
-/* v0.6.450：CL-M Pass/Fail 留字（Fail 只劃 Fail；Pass #→√）；MΩ 只 ✓（t1140–41）；449 橫線疊字；448 隨機 0.11–0.20 */
+/* v0.6.451：CL-M 冇剔唔劃 Fail（清範本預設劃線）；剔 Fail 先劃（t1143u）；450 Pass/Fail 留字＋MΩ 只 ✓ */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
 /* v0.6.438b：FA_CUT_DOOR 移到 F15 子題前段＋逼新 app_data Drive id（修 appd_fid 黏舊 bak） */
@@ -4858,14 +4858,18 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
         xHwText(ctx, o.t, x, yy, fs * 0.95, xHwSeed(S.n + ':' + colL(o.c) + o.r), R[2] - R[0] - pad * 2); return;
       }
       let runs = (!fsdTick && !ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) ? rawc[0].rt.map(x => [x[0], x[1] || f0]) : [[o.t, f0]]; /* fsdTick：用已清 √ 嘅 o.t 畫 [ ] */
-      /* v0.6.450：CL-M H27/H28 Pass/Fail — Fail 只劃 Fail；Pass 將 #→√，兩字留低 */
-      const pf = B.pfMark && B.pfMark[S.n + '!' + colL(o.c) + o.r];
-      if (pf && !ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) {
-        runs = rawc[0].rt.map(x => { const f = (x[1] ? x[1].slice() : f0.slice()); let t = String(x[0]);
-          if (pf === 'pass' && t.charAt(0) === '#') t = '√' + t.slice(1);
-          else if (pf === 'fail' && t.charAt(0) === '#') t = ' ' + t.slice(1);
-          if (/^\s*Fail\s*$/i.test(t)) f[5] = pf === 'fail' ? 1 : 0; else f[5] = 0;
-          return [t, f]; });
+      /* v0.6.451：CL-M H27/H28 — 範本 Fail 預設劃線要清；冇剔唔劃；剔 Fail 先劃；Pass #→√（FAN t1143u） */
+      if (!ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) {
+        const rt0 = rawc[0].rt;
+        const isPf = rt0.some(x => /^\s*Fail\s*$/i.test(String(x[0]))) && rt0.some(x => /Pass/i.test(String(x[0])));
+        if (isPf) {
+          const pf = B.pfMark && B.pfMark[S.n + '!' + colL(o.c) + o.r];
+          runs = rt0.map(x => { const f = (x[1] ? x[1].slice() : f0.slice()); let t = String(x[0]);
+            if (pf === 'pass' && t.charAt(0) === '#') t = '√' + t.slice(1);
+            else if (pf === 'fail' && t.charAt(0) === '#') t = ' ' + t.slice(1);
+            if (/^\s*Fail\s*$/i.test(t)) f[5] = pf === 'fail' ? 1 : 0; else f[5] = 0;
+            return [t, f]; });
+        }
       }
       runs = runs.map(([t, f]) => [/wingdings/i.test(f[0] || '') ? String(t).split('').map(ch => XWD2[ch] || ch).join('') : String(t), f]);
       const pad = 2 * 0.75 * sc * K + (st.ind ? st.ind * 9 * 0.75 * sc * K : 0); const cw = R[2] - R[0] - pad * 2;
