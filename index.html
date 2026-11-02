@@ -691,13 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.446';
+const APP_VERSION = '0.6.447';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
-/* v0.6.446：CL-L/J 入數目即時刷新 haLive；CL-L j→I35（H35 缺格）；L-1/J-1 剔左「1)」類編號清走；v0.6.445：CL-L 編號剔改寫 I 欄 */
+/* v0.6.447：xFill 數目 H缺格→I（sticky bak H35）；J-1 I31 範本清 24；缺 I 格 overlay 抄 nos. style；新 Drive fid；v0.6.446：入數目 haLive＋CL-L j→I35 */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
 /* v0.6.438b：FA_CUT_DOOR 移到 F15 子題前段＋逼新 app_data Drive id（修 appd_fid 黏舊 bak） */
@@ -4440,7 +4440,13 @@ function xFill(o) {
     defs.forEach(it => { if (it.sheet && it.cell) mp[it.id] = [it.sheet, it.cell, it.input ? 2 : it.measure ? 1 : 0]; });
     if (!fo.applicable) { if (X_OFFNA.includes(fk) && fo.off_na) Object.values(mp).forEach(([sh, ref]) => put(sh, ref, 'NA')); return; }
     Object.keys(fo.items || {}).forEach(iid => { const it = fo.items[iid], m = mp[iid]; if (!m) return; const [sh, ref, meas] = m, res = it.result;
-      if (meas === 2) { const v = it.value; if (v !== null && v !== undefined && v !== '') put(sh, ref, v); else if (!it.optional) put(sh, ref, null); return; }
+      if (meas === 2) { /* v0.6.447：舊 app_data CL-L j→H35（L-1 無 H35）→ 改寫 I{n}（有就用；無都 overlay 闊欄） */
+        let ref2 = ref; const S0 = sh && XL_BY[sh];
+        if (S0 && S0.cells && ref2 && !(ref2 in S0.cells)) {
+          const hm = /^H(\d+)$/i.exec(ref2);
+          if (hm) ref2 = 'I' + hm[1];
+        }
+        const v = it.value; if (v !== null && v !== undefined && v !== '') put(sh, ref2, v); else if (!it.optional) put(sh, ref2, null); return; }
       if ((meas && !it.write) || (it.auto && !it.write) || !res) return;
       if (res === 'X') { anyX = true; (reasons[fk] = reasons[fk] || []).push([iid, it.reason || '']); }
       put(sh, ref, X_TICK[res] || res); }); });
@@ -4780,7 +4786,13 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
   /* 格：值＋樣式 */
   const cells = {}; Object.keys(S.cells).forEach(ref => { const p = xRC(ref); if (!p) return; const [r, c] = p; if (r < G.r1 || r > G.r2 || c < G.c1 || c > G.c2) return; const cl = S.cells[ref]; cells[r + ',' + c] = { r, c, s: cl.length > 1 ? cl[1] : 0 }; });
   (S.sr || []).forEach(([r, a, b, s]) => { for (let c = a; c <= b; c++) if (!cells[r + ',' + c] && r >= G.r1 && r <= G.r2 && c >= G.c1 && c <= G.c2) cells[r + ',' + c] = { r, c, s, empty: 1 }; });
-  if (B.ovs[S.n]) Object.keys(B.ovs[S.n]).forEach(ref => { const p = xRC(ref); if (!p) return; const k = p[0] + ',' + p[1]; if (!cells[k] && p[0] >= G.r1 && p[0] <= G.r2 && p[1] >= G.c1 && p[1] <= G.c2) cells[k] = { r: p[0], c: p[1], s: 0 }; });
+  if (B.ovs[S.n]) Object.keys(B.ovs[S.n]).forEach(ref => { const p = xRC(ref); if (!p) return; const k = p[0] + ',' + p[1]; if (!cells[k] && p[0] >= G.r1 && p[0] <= G.r2 && p[1] >= G.c1 && p[1] <= G.c2) {
+    let s = 0; /* v0.6.447：缺格 I 欄 overlay 抄 nos. style（L-1 bak 無 I35／無 nos 格都照顯示） */
+    if (p[1] === 9) {
+      if (S.cells) { for (const r2 of Object.keys(S.cells)) { if (r2.charAt(0) === 'I' && S.cells[r2] && S.cells[r2][1]) { const st = (XLS.styles || [])[S.cells[r2][1]]; if (st && st.nf && /nos/i.test(String(st.nf))) { s = S.cells[r2][1]; break; } } } }
+      if (!s && /^(L-|J-)/.test(S.n || '') && XLS.styles && XLS.styles[241] && XLS.styles[241].nf && /nos/i.test(String(XLS.styles[241].nf))) s = 241;
+    }
+    cells[k] = { r: p[0], c: p[1], s }; } });
   Object.values(cells).forEach(o => { if (o.empty) { o.t = ''; return; } const st = sty(o.s), v = B.get(S.n, colL(o.c) + o.r); o.v = v; let t = xFmt(v, st.nf, S.nz);
     if (/wingdings/i.test((st.f || [])[0] || '')) t = t.split('').map(ch => XWD2[ch] || ch).join(''); o.t = t; });
   const out = [];
