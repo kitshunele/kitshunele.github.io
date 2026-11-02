@@ -691,14 +691,15 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.463';
+const APP_VERSION = '0.6.464';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
+/* v0.6.464：TR-C2 Earth loop Pass 空白→0.18–0.29（2dp；UI／store／PDF 同一 c2.*.ohm）（t1163u／t1165u）；PDF 黃格（FFF2CC／FFFF00 等）唔畫→白格（t1166u）；T6→栓轆仍跟 463（t1162u） */
 /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
-/* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.12–0.25 隨機（t1160u／t1161u） */
+/* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.12–0.25 隨機（t1160u／t1161u；0.6.464 改 0.18–0.29） */
 /* v0.6.461：T12 電流錶→C1.r／s；T20→c／f／g／j／l；T13→d（t1159u） */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
@@ -1224,12 +1225,12 @@ function clmMohmEnsure(r, k, id, v) { /* k=CL-M；只 ✓（Pass）先有；回�
   if (a.ohm && /^0\.(1[1-9]|20)$/.test(String(a.ohm))) return String(a.ohm);
   a.v = v; a.ohm = clmMohmRand(); r.items[ik] = a; return a.ohm;
 }
-/* v0.6.462：TR-C2 Earth loop 空白＋Pass → 0.12–0.25 恰好兩位小數（FAN t1160u／t1161u）；crypto 一次後存 c2.*.ohm，PDF 穩定 */
+/* v0.6.464：TR-C2 Earth loop 空白＋Pass → 0.18–0.29 恰好兩位小數（FAN t1163u／t1165u）；crypto 一次後存 c2.*.ohm；PDF／Excel 用同一值（xOhm）（唔另抽） */
 function c2OhmRand() {
   const b = new Uint8Array(1); crypto.getRandomValues(b); /*C2-OHM-RNG：TR-C2 Earth loop 空白（唔係檢查讀數造假以外嘅用途；build 准許）*/
-  return ((12 + (b[0] % 14)) / 100).toFixed(2); /* 0.12–0.25 */
+  return ((18 + (b[0] % 12)) / 100).toFixed(2); /* 0.18–0.29 inclusive */
 }
-const C2_OHM_RE = /^0\.(1[2-9]|2[0-5])$/;
+const C2_OHM_RE = /^0\.(1[8-9]|2[0-9])$/;
 function c2OhmOk(v) { return C2_OHM_RE.test(String(v)); }
 function c2OhmEnsure(d) { /* 只 Pass 先有；DC 唔要；已有數（師傅入）保留；回傳字串或 '' */
   if (!d || d.res !== 'Pass' || d.type === 'DC') return '';
@@ -2568,9 +2569,9 @@ function stepC2(r, k) {
         <div class="seg" style="margin:-2px 0 6px">${['Fuse', 'MCB'].map(x => `<button class="v-opt" style="min-height:40px;font-size:15px" data-act="devchip" data-bind="${base}.dev" data-v="${x}">${x}</button>`).join('')}</div>${resSeg}` : ''}</div>`; };
   const A = rows.filter(x => x.part === 'A'), B = rows.filter(x => x.part === 'B');
   const aud = (r.irAudit || []).filter(a => a.page === k);
-  return `<div class="hint"><b>${spr ? 'TR-C2 花灑泵（範本 C2-1／C2-2 Sprinkler Pump）' : up ? 'TR-C2 上水泵（範本 C2-1／C2-2 Upfeed Pump）' : 'TR-C2 消防泵（範本 C2-1／C2-2 FS Pump）'}</b><br>TR-C2：絕緣電阻由師傅實測輸入（一個小數位，或者「>100」）。Earth loop 兩位小數；空白＋剔 Pass 會自動填 0.12–0.25（之後可改）。「其餘格抄」只係抄你自己輸入嘅讀數。</div>
+  return `<div class="hint"><b>${spr ? 'TR-C2 花灑泵（範本 C2-1／C2-2 Sprinkler Pump）' : up ? 'TR-C2 上水泵（範本 C2-1／C2-2 Upfeed Pump）' : 'TR-C2 消防泵（範本 C2-1／C2-2 FS Pump）'}</b><br>TR-C2：絕緣電阻由師傅實測輸入（一個小數位，或者「>100」）。Earth loop 兩位小數；空白＋剔 Pass 會自動填 0.18–0.29（之後可改）。「其餘格抄」只係抄你自己輸入嘅讀數。</div>
   <div class="card irbulk"><button class="btn pri" style="width:100%" data-act="ir100all" data-k="${k}">全部 >100 MΩ 合格</button>
-    <div class="mut" style="margin-top:6px">實際量過、全部超過 100 MΩ 先好撳：只會填呢頁<b>空白</b>嘅絕緣電阻（MΩ）格做「>100」同剔合格；已輸入嘅格唔改。剔 Pass 後空白 Earth loop 會自動填 0.12–0.25（兩位小數，可改）；Protection device 唔會填。</div>
+    <div class="mut" style="margin-top:6px">實際量過、全部超過 100 MΩ 先好撳：只會填呢頁<b>空白</b>嘅絕緣電阻（MΩ）格做「>100」同剔合格；已輸入嘅格唔改。剔 Pass 後空白 Earth loop 會自動填 0.18–0.29（兩位小數，可改）；Protection device 唔會填。</div>
     ${aud.map(a => `<div class="audit">✔ ${esc(a.technician)} 喺 ${esc(a.timestamp_hkt.replace('T', ' ').slice(0, 16))} HKT 確認，填咗 ${a.cells_filled} 格 >100${a.pass_ticked.length ? `、剔合格 ${a.pass_ticked.length} 行` : ''}</div>`).join('')}</div>
   ${missing.length ? `<div class="warnbox">問卷未答：${missing.map(c => `<a class="jump" href="#" data-act="toq" data-cell="${c}">${esc(QBY[c].label)}</a>`).join('、')}。答咗先會出返啱嘅泵／線路。</div>` : ''}
   <div class="card"><h3>Part A：${spr ? '花灑泵' : up ? '上水泵' : '消防泵'}系統絕緣測試</h3>${A.map(rowHtml).join('')}</div>
@@ -4445,8 +4446,16 @@ const XS2 = '工作表2';
 
 /* ----- 1. 寫入（同 import_submission.py fill()） ----- */
 const xNum = v => (v === null || v === undefined || v === '') ? null : (isNaN(parseFloat(v)) ? null : Math.round(parseFloat(v) * 10) / 10);
-/* v0.6.462：TR-C2 Earth loop 兩位小數（字串／數字都出 "0.xx"） */
+/* v0.6.462／0.6.464：TR-C2 Earth loop 兩位小數（字串／數字都出 "0.xx"）；PDF／Excel 對應同一 c2.*.ohm（t1165u） */
 const xOhm = v => { if (v === null || v === undefined || v === '') return null; if (typeof c2OhmOk === 'function' && c2OhmOk(v)) return String(v); const n = parseFloat(v); return isNaN(n) ? null : (Math.round(n * 100) / 100).toFixed(2); };
+/* v0.6.464：範本輸入黃底（Ohm 等）→ PDF 當白格（唔畫）（FAN t1166u） */
+function xIsInputYellowBg(bg) {
+  const h = String(bg || '').replace(/^#/, '').toUpperCase();
+  if (!/^[0-9A-F]{6}$/.test(h)) return false;
+  if (/^(FFFF00|FFF2CC|FFFF99|FFEB9C|FFFFCC|FFC000|FFD966|FCE4D6|FFFDE7)$/.test(h)) return true;
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return r >= 230 && g >= 200 && b <= 220 && b < r && b < g;
+}
 const IR_GT = /^>\d{1,4}(\.\d)?$/;
 const xIrv = v => { if (typeof v === 'string' && IR_GT.test(v.trim().replace('＞', '>'))) return v.trim().replace('＞', '>'); return xNum(v); };
 const xSerial = ymd => { const [y, m, d] = ymd.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000); };
@@ -4884,7 +4893,8 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
       const rr = rows.filter(x => x >= m[0] && x <= m[2]); if (!rr.length) return null; return [X(m[1]), Y(rr[0]), X(Math.min(m[3], G.c2) + 1), Yb(rr[rr.length - 1])]; };
     const list = Object.values(cells).filter(o => rowSet.has(o.r) || (merged[o.r + ',' + o.c] && rows.some(x => x >= o.r && x <= merged[o.r + ',' + o.c][2])));
     /* 底色 */
-    list.forEach(o => { const st = sty(o.s); if (!st.bg || inMerge[o.r + ',' + o.c]) return; const R = rectOf(o.r, o.c); if (!R) return; ctx.fillStyle = '#' + st.bg; ctx.fillRect(R[0], R[1], R[2] - R[0], R[3] - R[1]); });
+    /* v0.6.464：Excel 輸入黃格（FFF2CC／FFFF00 等）PDF 改白——唔畫黃底（FAN t1166u；畫布已白） */
+    list.forEach(o => { const st = sty(o.s); if (!st.bg || inMerge[o.r + ',' + o.c]) return; if (typeof xIsInputYellowBg === 'function' && xIsInputYellowBg(st.bg)) return; const R = rectOf(o.r, o.c); if (!R) return; ctx.fillStyle = '#' + st.bg; ctx.fillRect(R[0], R[1], R[2] - R[0], R[3] - R[1]); });
     /* 圖片 */
     for (const im of (S.img || [])) { const r0 = im.r + 1, c0 = im.c + 1; if (!rowSet.has(r0) && !(rows[0] > r0 && rows[0] <= (im.r2 || im.r) + 1)) continue; if (!rowSet.has(r0)) continue;
       const x0 = X(c0) + im.dx / 12700 * sc * K, y0 = Y(r0) + im.dy / 12700 * sc * K; let w, h;
@@ -16369,7 +16379,7 @@ async function buildExport(r, when) {
   });
   if (FORMS['CL-A']) forms['CL-A'] = { applicable: true, auto: true, source: '問卷（工作表2）', // 唔問師傅：有 ✓、冇 —（範本 VLOOKUP；UI claMark 同步；PDF／Excel 跟公式）
     items: Object.fromEntries(FORMS['CL-A'].items.map(it => [it.id, { result: (!it.show_if || r.q[it.show_if] === '有') ? '✓' : null, auto: true, by: it.show_if || '', answer: it.show_if ? (r.q[it.show_if] || '') : '' }])) };
-  const c2of = rows => { const o = {}; rows.forEach(row => { const live = r.c2[row.key] || (r.c2[row.key] = {}); if (row.kind !== 'motor') c2OhmEnsure(live); /* v0.6.462：Pass＋空白 Earth loop → 0.12–0.25（寫回 r.c2） */ const d = Object.assign({ label: row.en, part: row.part, kind: row.kind }, live); if (row.part === 'B' && !isB0(row.key)) { delete d.LN; delete d.NE; } o[row.key] = d; }); return o; };
+  const c2of = rows => { const o = {}; rows.forEach(row => { const live = r.c2[row.key] || (r.c2[row.key] = {}); if (row.kind !== 'motor') c2OhmEnsure(live); /* v0.6.462：Pass＋空白 Earth loop → 0.18–0.29（寫回 r.c2） */ const d = Object.assign({ label: row.en, part: row.part, kind: row.kind }, live); if (row.part === 'B' && !isB0(row.key)) { delete d.LN; delete d.NE; } o[row.key] = d; }); return o; };
   const c2 = formVisible(r, 'C1') ? c2of(c2Rows(r)) : {}; // 消防泵（範本 C2-x FS Pump）
   const c2u = formVisible(r, 'C1U') ? c2of(c2RowsUp(r)) : null;
   const c2s = formVisible(r, 'C1S') ? c2of(c2RowsSpr(r)) : null; // v0.5.0 花灑泵（範本 C2-x Sprinkler Pump） // v0.4.2 上水泵（範本 C2-x Upfeed Pump）
@@ -16660,7 +16670,7 @@ document.addEventListener('click', async e => {
       const ed = estateDef(r), b = ed && ed.blocks.find(x => x.code === el.dataset.code); if (!b) return;
       r.block = Object.assign({ preset: true }, b); cb = { open: null, all: false }; Store.touch(r); return render(); }
     case 'ans': { const was = getP(r, el.dataset.bind), v = was === el.dataset.v ? '' : el.dataset.v; setP(r, el.dataset.bind, v);
-      /* v0.6.462：TR-C2 剔 Pass → 空白 Earth loop 填 0.12–0.25（兩位）；DC／已有數唔改 */
+      /* v0.6.462：TR-C2 剔 Pass → 空白 Earth loop 填 0.18–0.29（兩位）；DC／已有數唔改 */
       { const bm = /^(c2\.[^.]+)\.res$/.exec(el.dataset.bind || '');
         if (bm && v === 'Pass') { const d = getP(r, bm[1]) || (setP(r, bm[1], {}), getP(r, bm[1])); c2OhmEnsure(d); } }
       /* v0.6.148：F30「有冇水廉?」↔ SPR_WATER_CURTAIN「有冇水簾？」兩向同一值（含清空） */
@@ -16727,7 +16737,7 @@ document.addEventListener('click', async e => {
       if (!tech) return toast('請先喺「基本資料」填師傅姓名（要記錄邊個確認）', 3500);
       const rows = c2Set(k)(r); let empty = 0; rows.forEach(row => { const d = r.c2[row.key] || {}; irKeys(row).forEach(f => { if (!has(d[f])) empty++; }); });
       if (!empty) return toast('呢頁冇空白嘅絕緣電阻格');
-      ask('確認已用絕緣表實際量過，讀數全部超過 100 MΩ？', `<p>會將呢頁 <b>${empty}</b> 格<b>空白</b>嘅絕緣電阻（MΩ）填「>100」，同埋剔合格（只限未揀結果、而成行絕緣電阻都係「>」或者 ≥100 讀數嘅行）。</p><p class="mut">已輸入嘅格唔會改；剔 Pass 後空白 Earth loop 會自動填 0.12–0.25（兩位小數）；Protection device 唔會填。會記錄師傅（${esc(tech)}）同時間。</p>`, '確認，填 >100', '取消').then(ok => {
+      ask('確認已用絕緣表實際量過，讀數全部超過 100 MΩ？', `<p>會將呢頁 <b>${empty}</b> 格<b>空白</b>嘅絕緣電阻（MΩ）填「>100」，同埋剔合格（只限未揀結果、而成行絕緣電阻都係「>」或者 ≥100 讀數嘅行）。</p><p class="mut">已輸入嘅格唔會改；剔 Pass 後空白 Earth loop 會自動填 0.18–0.29（兩位小數）；Protection device 唔會填。會記錄師傅（${esc(tech)}）同時間。</p>`, '確認，填 >100', '取消').then(ok => {
         if (!ok) return; const cells = [], passed = [];
         rows.forEach(row => { const d = r.c2[row.key] || (r.c2[row.key] = {}), ks = irKeys(row);
           ks.forEach(f => { if (!has(d[f])) { d[f] = '>100'; cells.push(row.key + '.' + f); } });
