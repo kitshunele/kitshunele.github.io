@@ -691,13 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.449';
+const APP_VERSION = '0.6.450';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
-/* v0.6.449：CL-M MΩ 疊喺 B27/B28 原本橫線上面（唔換走底線；FAN t1142u）；v0.6.448：CL-M i/j Fail→—；MΩ 0.11–0.20 2dp；v0.6.447：H缺格→I／I31 清24／nos. */
+/* v0.6.450：CL-M Pass/Fail 留字（Fail 只劃 Fail；Pass #→√）；MΩ 只 ✓（t1140–41）；449 橫線疊字；448 隨機 0.11–0.20 */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
 /* v0.6.438b：FA_CUT_DOOR 移到 F15 子題前段＋逼新 app_data Drive id（修 appd_fid 黏舊 bak） */
@@ -1192,8 +1192,8 @@ function clmMohmRand() {
   const b = new Uint8Array(1); crypto.getRandomValues(b); /*CLM-MOHM-RNG：CL-M i/j MΩ 空白（唔係檢查讀數造假以外嘅用途；build 准許）*/
   return ((11 + (b[0] % 10)) / 100).toFixed(2);
 }
-function clmMohmEnsure(r, k, id, v) { /* k=CL-M；✓／X 先有；回傳字串或 '' */
-  if (k !== 'CL-M' || (id !== 'i' && id !== 'j') || (v !== '✓' && v !== 'X')) return '';
+function clmMohmEnsure(r, k, id, v) { /* k=CL-M；只 ✓（Pass）先有；回傳字串或 '' */
+  if (k !== 'CL-M' || (id !== 'i' && id !== 'j') || v !== '✓') return '';
   const ik = k + '.' + id; const a = r.items[ik] || { v };
   if (a.ohm && /^0\.(1[1-9]|20)$/.test(String(a.ohm))) return String(a.ohm);
   a.v = v; a.ohm = clmMohmRand(); r.items[ik] = a; return a.ohm;
@@ -4429,7 +4429,7 @@ const X_OFFNA = ['CL-J', 'CL-K', 'C1S', 'BS', 'CL-F', 'CL-I', 'CL-L', 'CL-M', 'C
 const X_REMARK = { 'CL-D': ['D', 'A27', 1], 'CL-E': ['E', 'A35', 1], 'CL-F': ['F', 'A35', 1], H1: ['H1', 'A25', 1], G1: ['G1-2(半年檢)', 'A13', 1], B: ['B1-2 FS Pump(半年檢)', 'E13', 0], BU: ['B1-2 Upfeed Pump(半年檢)', 'E13', 0], 'CL-J': ['J-2(半年檢)', 'A19', 1], BS: ['B1-2 Sprinkler Pump(半年檢)', 'E13', 0], 'CL-L': ['L-2', 'A11', 1], 'CL-M': ['M', 'A31', 1], 'CL-N': ['N', 'A21', 1], 'CL-O': ['O', 'A27', 1], 'CL-P': ['P', 'A26', 1] };
 const X_TICK = { '✓': '√', X: 'X', NA: 'NA' };
 function xFill(o) {
-  const ov = {}, blankOhm = {}, put = (sh, ref, v) => { (ov[sh] = ov[sh] || {})[ref] = (v === undefined || v === '') ? null : v; };
+  const ov = {}, blankOhm = {}, pfMark = {}, put = (sh, ref, v) => { (ov[sh] = ov[sh] || {})[ref] = (v === undefined || v === '') ? null : v; };
   const nm = xEnglish(o); let blk = o.block || {};
   put(XS2, 'A2', nm.estate_en); put(XS2, 'A3', nm.block_en);
   if (nm.block_def) blk = Object.assign({}, blk, { en: nm.block_en });
@@ -4460,14 +4460,16 @@ function xFill(o) {
         const v = it.value; if (v !== null && v !== undefined && v !== '') put(sh, ref2, v); else if (!it.optional) put(sh, ref2, null); return; }
       if ((meas && !it.write) || (it.auto && !it.write) || !res) return;
       if (res === 'X') { anyX = true; (reasons[fk] = reasons[fk] || []).push([iid, it.reason || '']); }
-      /* v0.6.448：CL-M i/j Fail → 一橫 —（唔用 X）；Pass 仍 √；v0.6.449：MΩ 疊喺 B 欄原本橫線上面（唔換走底線） */
-      let tick = X_TICK[res] || res;
-      if (fk === 'CL-M' && (iid === 'i' || iid === 'j') && res === 'X') tick = '—';
-      put(sh, ref, tick);
-      if (fk === 'CL-M' && (iid === 'i' || iid === 'j') && it.ohm && (res === '✓' || res === 'X')) {
-        const bRef = 'B' + String(ref).replace(/^[A-Z]+/i, '');
-        const S0 = sh && XL_BY[sh], tpl = S0 && S0.cells && S0.cells[bRef] && S0.cells[bRef][0];
-        if (typeof tpl === 'string' && /_{3,}/.test(tpl)) blankOhm[sh + '!' + bRef] = String(it.ohm);
+      /* v0.6.450：CL-M i/j 保留 Pass/Fail 字；Fail→只喺 Fail 畫橫線；Pass→#→√；MΩ 只 ✓ 疊橫線（449 blankOhm） */
+      if (fk === 'CL-M' && (iid === 'i' || iid === 'j') && (res === '✓' || res === 'X')) {
+        pfMark[sh + '!' + ref] = res === '✓' ? 'pass' : 'fail';
+        if (res === '✓' && it.ohm) {
+          const bRef = 'B' + String(ref).replace(/^[A-Z]+/i, '');
+          const S0 = sh && XL_BY[sh], tpl = S0 && S0.cells && S0.cells[bRef] && S0.cells[bRef][0];
+          if (typeof tpl === 'string' && /_{3,}/.test(tpl)) blankOhm[sh + '!' + bRef] = String(it.ohm);
+        }
+      } else {
+        put(sh, ref, X_TICK[res] || res);
       }
     }); });
   const remark = fk => { const l = reasons[fk] || []; return 'Recommendation / Remark :- ' + (l.length ? l.map(([i, t]) => `(${i}) ${t}`).join('; ') : 'Nil'); };
@@ -4498,7 +4500,7 @@ function xFill(o) {
       'EGI'.split('').forEach((c, i) => put(XS2, c + (b + 6), tk[i])); put(XS2, 'B' + (b + 2), tk[2]); put(XS2, 'D' + (b + 2), tk[1]); } }); });
   (h2.parity || []).slice(0, 126).forEach((p, i) => { const row = 2 + Math.floor(i / 3), cols = [['AJ', 'AK', 'AL'], ['AM', 'AN', 'AO'], ['AP', 'AQ', 'AR']][i % 3];
     put(XS2, cols[0] + row, p.floor || null); put(XS2, cols[1] + row, p.stair || null); put(XS2, cols[2] + row, xNum(p.bar)); });
-  return { ov, blankOhm, reasons, anyX, nm };
+  return { ov, blankOhm, pfMark, reasons, anyX, nm };
 }
 
 /* ----- 2. 公式引擎 ----- */
@@ -4856,6 +4858,15 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
         xHwText(ctx, o.t, x, yy, fs * 0.95, xHwSeed(S.n + ':' + colL(o.c) + o.r), R[2] - R[0] - pad * 2); return;
       }
       let runs = (!fsdTick && !ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) ? rawc[0].rt.map(x => [x[0], x[1] || f0]) : [[o.t, f0]]; /* fsdTick：用已清 √ 嘅 o.t 畫 [ ] */
+      /* v0.6.450：CL-M H27/H28 Pass/Fail — Fail 只劃 Fail；Pass 將 #→√，兩字留低 */
+      const pf = B.pfMark && B.pfMark[S.n + '!' + colL(o.c) + o.r];
+      if (pf && !ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) {
+        runs = rawc[0].rt.map(x => { const f = (x[1] ? x[1].slice() : f0.slice()); let t = String(x[0]);
+          if (pf === 'pass' && t.charAt(0) === '#') t = '√' + t.slice(1);
+          else if (pf === 'fail' && t.charAt(0) === '#') t = ' ' + t.slice(1);
+          if (/^\s*Fail\s*$/i.test(t)) f[5] = pf === 'fail' ? 1 : 0; else f[5] = 0;
+          return [t, f]; });
+      }
       runs = runs.map(([t, f]) => [/wingdings/i.test(f[0] || '') ? String(t).split('').map(ch => XWD2[ch] || ch).join('') : String(t), f]);
       const pad = 2 * 0.75 * sc * K + (st.ind ? st.ind * 9 * 0.75 * sc * K : 0); const cw = R[2] - R[0] - pad * 2;
       const isNum = typeof o.v === 'number'; let h = st.h || (isNum ? 'right' : typeof o.v === 'boolean' || isE(o.v) ? 'center' : 'left'); if (h === 'justify' || h === 'distributed' || h === 'fill') h = 'left'; if (h === 'centerContinuous') h = 'center';
@@ -5246,7 +5257,7 @@ async function haLiveRefresh(r) {
     const o = await buildExport(Object.assign({}, r, { photos: [] }), new Date());
     if (tok !== haLiveTok || !$('#haLive')) return;
     o.photos = [];
-    const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov, blankOhm: F.blankOhm || {} }, plan = xPlan(o);
+    const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov, blankOhm: F.blankOhm || {}, pfMark: F.pfMark || {} }, plan = xPlan(o);
     const sheets = haSheetsForStep(step, plan.inc.filter(n => !X_FSD.has(n)));
     if (!sheets.length) { haLiveRevoke(); box.innerHTML = '<div class="halive-msg">呢份選擇表而家冇適用嘅房署 checklist（睇下檢查類別／問卷）。</div>'; return; }
     haLiveRevoke();
@@ -8003,7 +8014,7 @@ async function xFsdChiPages(key, cExp, o, sink) {
 }
 
 async function xBuildPages(o, opt, prog) {
-  opt = opt || {}; const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov, blankOhm: F.blankOhm || {} }, plan = xPlan(o), pages = [];
+  opt = opt || {}; const F = xFill(o), BK = xBook(F.ov), B = { get: BK.get, ovs: F.ov, blankOhm: F.blankOhm || {}, pfMark: F.pfMark || {} }, plan = xPlan(o), pages = [];
   const sink = p => { /* 頁尾 → JPEG → 放走 canvas */
     const ctx = p.cv.getContext('2d'), K = PDF_K; ctx.font = `${7.5 * K}px ${XF_SANS}`; ctx.fillStyle = '#6b7280';
     const s = `${PDF_FOOT} · ${p.sheet || ''}${p.sub ? ' ' + p.sub : ''} · 第 ${pages.length + 1} 頁`; const w = ctx.measureText(s).width; ctx.fillText(s, p.cv.width - w - 18 * K, p.cv.height - 9 * K);
@@ -16267,14 +16278,14 @@ async function buildExport(r, when) {
       else if (m === 'autona' && it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) items[it.id] = { result: 'NA', auto: true, by: 'SPR_TANK', answer: r.q.SPR_TANK, write: true, why: NOTANK_HINT };
       else if (m === 'autona' && it.wna && !it.always_na && !(it.annual_only && isHalf(r)) && !it.na_if) items[it.id] = { result: 'NA', auto: true, by: it.na_unless || (it.na_lt && it.na_lt[0]) || '', answer: (it.na_unless ? r.q[it.na_unless] : (it.na_lt ? r.q[it.na_lt[0]] : '')) || '', write: true }; /* 範本係常數 √（CL-J／CL-K a）→ 自動 NA 要寫入；v0.6.143 na_lt */
       else if (m === 'autona') items[it.id] = (it.annual_only && isHalf(r)) ? { result: 'NA', auto: true, by: 'half_yearly', write: true, why: HALF_NA } : it.always_na ? { result: 'NA', auto: true, by: 'fixed', write: true, why: ALWAYS_NA } : it.na_if ? { result: 'NA', auto: true, by: it.na_if[0], answer: r.q[it.na_if[0]], write: true, why: ROOF_NA } : it.na_lt ? { result: 'NA', auto: true, by: it.na_lt[0], answer: r.q[it.na_lt[0]] || '', write: true } : { result: 'NA', auto: true, by: it.na_unless };
-      else { /* v0.6.448：CL-M i/j 帶 ohm（缺就當場 ensure 寫回 items） */
+      else { /* v0.6.450：CL-M i/j MΩ 只 ✓（Pass）；缺就 ensure 寫回 items */
         const row = Object.assign({ result: a.v || null, reason: a.v === 'X' ? (a.note || '').trim() : '' }, a.by ? { set_by: a.by } : {}, a.by === 'default' ? { default_why: defWhy(r, k, it) } : {});
-        if (k === 'CL-M' && (it.id === 'i' || it.id === 'j') && (a.v === '✓' || a.v === 'X')) {
+        if (k === 'CL-M' && (it.id === 'i' || it.id === 'j') && a.v === '✓') {
           const ohm = a.ohm || clmMohmEnsure(r, k, it.id, a.v);
           if (ohm) row.ohm = ohm;
         }
         items[it.id] = row;
-      } // v0.4.8：預設（問卷）定師傅揀；v0.6.448 CL-M MΩ
+      } // v0.4.8：預設（問卷）定師傅揀；v0.6.450 CL-M MΩ 只 Pass
     });
     forms[k] = { applicable: true, items };
   });
@@ -16614,8 +16625,8 @@ document.addEventListener('click', async e => {
       if (/^q\.(FD_FACP_QTY|FA_FACP_QTY|FD_REP_QTY|FD_BATT_QTY|FA_BATT_QTY)$/.test(el.dataset.bind || '') && typeof fdsT1Sync === 'function') fdsT1Sync(r);
       Store.touch(r); return render(); }
     case 'tick': { const k = el.dataset.key, a = r.items[k] || {}; if (a.v === el.dataset.v) delete r.items[k]; else { a.v = el.dataset.v;
-      /* v0.6.448：CL-M i/j 剔 ✓／X → 存隨機 MΩ（0.11–0.20）；改 NA／清剔就丟 */
-      if ((k === 'CL-M.i' || k === 'CL-M.j') && (a.v === '✓' || a.v === 'X')) {
+      /* v0.6.450：CL-M i/j 只 ✓（Pass）存隨機 MΩ；Fail／NA／清剔丟 */
+      if ((k === 'CL-M.i' || k === 'CL-M.j') && a.v === '✓') {
         if (!(a.ohm && /^0\.(1[1-9]|20)$/.test(String(a.ohm)))) a.ohm = clmMohmRand();
       } else if (k === 'CL-M.i' || k === 'CL-M.j') { delete a.ohm; }
       r.items[k] = a; } Store.touch(r); render();
