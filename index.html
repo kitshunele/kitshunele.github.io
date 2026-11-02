@@ -691,12 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.465';
+const APP_VERSION = '0.6.466';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
+/* v0.6.466：fhhr 第一頁 §1.a–d 單欄✓ hit（y1_col=283 mode=y）＋mode-aware zip → 4.a/4.b 返 page0 YNN；修剔唔中位（FAN t1168u）；T6／Ohm／黃→白照 465 */
 /* v0.6.465：PDF sr 空黃格（C2-1 L／C2-2 J Ohm 等）有 overlay 仍畫——對應 checklist Ohm 格（FAN t1167u）；黃→白／0.18–0.29／T6 栓轆照 464 */
 /* v0.6.464：TR-C2 Earth loop Pass 空白→0.18–0.29（2dp；UI／store／PDF 同一 c2.*.ohm）（t1163u／t1165u）；PDF 黃格（FFF2CC／FFFF00 等）唔畫→白格（t1166u）；T6→栓轆仍跟 463（t1162u） */
 /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
