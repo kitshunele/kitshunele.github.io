@@ -697,7 +697,7 @@ const APP_VERSION = '0.6.455';
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
-/* v0.6.455：CL-M Pass／Fail 剔都劃 Fail 整條橫線（t1149u）；# 留；冇剔唔劃；MΩ 只 ✓ */
+/* v0.6.455：CL-M 剔 Pass→劃 Fail 橫線（t1151u）；Fail 剔唔劃；# 留；冇剔唔劃；MΩ 只 ✓ */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
 /* v0.6.438b：FA_CUT_DOOR 移到 F15 子題前段＋逼新 app_data Drive id（修 appd_fid 黏舊 bak） */
@@ -4460,7 +4460,7 @@ function xFill(o) {
         const v = it.value; if (v !== null && v !== undefined && v !== '') put(sh, ref2, v); else if (!it.optional) put(sh, ref2, null); return; }
       if ((meas && !it.write) || (it.auto && !it.write) || !res) return;
       if (res === 'X') { anyX = true; (reasons[fk] = reasons[fk] || []).push([iid, it.reason || '']); }
-      /* v0.6.455：CL-M i/j Pass／Fail 剔都劃 Fail 字（標準剔法）；# 留；MΩ 只 ✓ */
+      /* v0.6.455：CL-M i/j 剔 Pass→劃 Fail 字；Fail 剔唔劃；# 留；MΩ 只 ✓（t1151u） */
       if (fk === 'CL-M' && (iid === 'i' || iid === 'j') && (res === '✓' || res === 'X' || res === '√')) {
         pfMark[sh + '!' + ref] = res === 'X' ? 'fail' : 'pass';
         if (res === '✓' && it.ohm) {
@@ -4858,13 +4858,13 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
         xHwText(ctx, o.t, x, yy, fs * 0.95, xHwSeed(S.n + ':' + colL(o.c) + o.r), R[2] - R[0] - pad * 2); return;
       }
       let runs = (!fsdTick && !ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) ? rawc[0].rt.map(x => [x[0], x[1] || f0]) : [[o.t, f0]]; /* fsdTick：用已清 √ 嘅 o.t 畫 [ ] */
-      /* v0.6.455：CL-M H27/H28 — 剔 Pass 或 Fail 都劃 Fail 字（整條橫線）；冇剔唔劃；# 留（t1149u） */
+      /* v0.6.455：CL-M H27/H28 — 剔 Pass→劃 Fail 整條橫線；Fail 剔／冇剔唔劃；# 留（t1151u） */
       let pfMarkVal = (B.pfMark && B.pfMark[S.n + '!' + colL(o.c) + o.r]) || null; /* pass|fail|null */
       if (!ovd && rawc && rawc[0] && typeof rawc[0] === 'object' && rawc[0].rt) {
         const rt0 = rawc[0].rt;
         const isPf = rt0.some(x => /^\s*Fail\s*$/i.test(String(x[0]))) && rt0.some(x => /Pass/i.test(String(x[0])));
         if (isPf || pfMarkVal) {
-          const strikeFail = !!(pfMarkVal === 'pass' || pfMarkVal === 'fail'); /* 有剔就劃 Fail */
+          const strikeFail = pfMarkVal === 'pass'; /* 只 Pass 剔→劃 Fail；Fail 剔唔劃 */
           runs = rt0.map(x => { const f = (x[1] ? x[1].slice() : f0.slice()); const t = String(x[0]);
             /* 井號 # 永遠保留；Pass／Fail 字留；只改 Fail 劃線 */
             if (/Fail/i.test(t)) f[5] = strikeFail ? 1 : 0; else f[5] = 0;
@@ -4903,9 +4903,9 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
           /* v0.6.455：f[5] 整條粗劃穿過 Fail（≥6px／0.48em） */
           if (f[5]) { const sh = Math.max(6, Math.round(fs * 0.48)); ctx.fillRect(x - 1, yy - fs * 0.55, sg.w + 2, sh); }
           x += sg.w; }); });
-      /* v0.6.455：Pass 或 Fail 剔→clip 外畫整條橫線穿過 Fail 字（t1149u／t1147u） */
+      /* v0.6.455：Pass 剔→clip 外畫整條橫線穿過 Fail 字（t1151u）；Fail 剔唔畫 */
       let pfStrikeBox = null;
-      if (pfMarkVal === 'pass' || pfMarkVal === 'fail') {
+      if (pfMarkVal === 'pass') {
         let yy3 = y0, lastBox = null;
         L.forEach((ln, i) => { if (i) yy3 += ln.fs * 1.2; let x = h === 'right' ? R[2] - pad - ln.w : h === 'center' ? (R[0] + R[2]) / 2 - ln.w / 2 : R[0] + pad;
           ln.segs.forEach(sg => {
@@ -4932,7 +4932,7 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
         if (hit) { ctx.font = fnt(hit.f); ctx.fillStyle = '#' + (hit.f[6] || '000000'); const nw = xTW(ctx, ohmK, hit.f, hit.fs); xFT(ctx, ohmK, hit.x + Math.max(0, (hit.w - nw) / 2), hit.y, nw); }
       }
       ctx.restore();
-      /* v0.6.455：clip restore 後再畫 Fail 整條橫線（Pass／Fail 剔都畫） */
+      /* v0.6.455：clip restore 後再畫 Fail 整條橫線（只 Pass 剔） */
       if (pfStrikeBox) { ctx.fillStyle = pfStrikeBox.c; ctx.fillRect(pfStrikeBox.x, pfStrikeBox.y, pfStrikeBox.w, pfStrikeBox.h); }
       if (fsdTick) xHwTick(ctx, R, xHwSeed(fsdTickSeed)); /* v0.6.231：框畫完再剔入框 */
     });
