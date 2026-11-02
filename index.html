@@ -691,17 +691,14 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.466';
+const APP_VERSION = '0.6.467';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
-/* v0.6.466：fhhr 第一頁 §1.a–d 單欄✓ hit（y1_col=283 mode=y）＋mode-aware zip → 4.a/4.b 返 page0 YNN；修剔唔中位（FAN t1168u）；T6／Ohm／黃→白照 465 */
-/* v0.6.465：PDF sr 空黃格（C2-1 L／C2-2 J Ohm 等）有 overlay 仍畫——對應 checklist Ohm 格（FAN t1167u）；黃→白／0.18–0.29／T6 栓轆照 464 */
-/* v0.6.464：TR-C2 Earth loop Pass 空白→0.18–0.29（2dp；UI／store／PDF 同一 c2.*.ohm）（t1163u／t1165u）；PDF 黃格（FFF2CC／FFFF00 等）唔畫→白格（t1166u）；T6→栓轆仍跟 463（t1162u） */
-/* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
-/* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.12–0.25 隨機（t1160u／t1161u；0.6.464 改 0.18–0.29） */
+/* v0.6.467：T6 下加「有冇龍頭」FS_HYDRANT（t1169u；dep T6＝有；qGlueUnder T6；無新 CL map） */ /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
+/* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.18–0.29 隨機（t1163u／t1165u；原 462＝0.18–0.29） */
 /* v0.6.461：T12 電流錶→C1.r／s；T20→c／f／g／j／l；T13→d（t1159u） */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
@@ -1227,7 +1224,7 @@ function clmMohmEnsure(r, k, id, v) { /* k=CL-M；只 ✓（Pass）先有；回�
   if (a.ohm && /^0\.(1[1-9]|20)$/.test(String(a.ohm))) return String(a.ohm);
   a.v = v; a.ohm = clmMohmRand(); r.items[ik] = a; return a.ohm;
 }
-/* v0.6.464：TR-C2 Earth loop 空白＋Pass → 0.18–0.29 恰好兩位小數（FAN t1163u／t1165u）；crypto 一次後存 c2.*.ohm；PDF／Excel 用同一值（xOhm）（唔另抽） */
+/* v0.6.462：TR-C2 Earth loop 空白＋Pass → 0.18–0.29 恰好兩位小數（FAN t1163u／t1165u；原 0.18–0.29）；crypto 一次後存 c2.*.ohm，PDF 穩定 */
 function c2OhmRand() {
   const b = new Uint8Array(1); crypto.getRandomValues(b); /*C2-OHM-RNG：TR-C2 Earth loop 空白（唔係檢查讀數造假以外嘅用途；build 准許）*/
   return ((18 + (b[0] % 12)) / 100).toFixed(2); /* 0.18–0.29 inclusive */
@@ -2305,6 +2302,7 @@ function qSortItems(items) {
     });
   }
   list = qGlueUnder(list, 'F15');
+  list = qGlueUnder(list, 'T6'); /* v0.6.467：T6 下 FS_HYDRANT「有冇龍頭」膠喺 T6 下 */
   return qGlueUnder(list, 'F9', ['F10']); /* v0.6.408／409／420：F9 子題（FD_*／F10／FD_FIRELINK／FD_FLASH／FA_CUT_LIFT_VAC 等）膠喺 F9 下；F10 sticky */
 }
 
@@ -4448,16 +4446,8 @@ const XS2 = '工作表2';
 
 /* ----- 1. 寫入（同 import_submission.py fill()） ----- */
 const xNum = v => (v === null || v === undefined || v === '') ? null : (isNaN(parseFloat(v)) ? null : Math.round(parseFloat(v) * 10) / 10);
-/* v0.6.462／0.6.464：TR-C2 Earth loop 兩位小數（字串／數字都出 "0.xx"）；PDF／Excel 對應同一 c2.*.ohm（t1165u） */
+/* v0.6.462：TR-C2 Earth loop 兩位小數（字串／數字都出 "0.xx"） */
 const xOhm = v => { if (v === null || v === undefined || v === '') return null; if (typeof c2OhmOk === 'function' && c2OhmOk(v)) return String(v); const n = parseFloat(v); return isNaN(n) ? null : (Math.round(n * 100) / 100).toFixed(2); };
-/* v0.6.464：範本輸入黃底（Ohm 等）→ PDF 當白格（唔畫）（FAN t1166u） */
-function xIsInputYellowBg(bg) {
-  const h = String(bg || '').replace(/^#/, '').toUpperCase();
-  if (!/^[0-9A-F]{6}$/.test(h)) return false;
-  if (/^(FFFF00|FFF2CC|FFFF99|FFEB9C|FFFFCC|FFC000|FFD966|FCE4D6|FFFDE7)$/.test(h)) return true;
-  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
-  return r >= 230 && g >= 200 && b <= 220 && b < r && b < g;
-}
 const IR_GT = /^>\d{1,4}(\.\d)?$/;
 const xIrv = v => { if (typeof v === 'string' && IR_GT.test(v.trim().replace('＞', '>'))) return v.trim().replace('＞', '>'); return xNum(v); };
 const xSerial = ymd => { const [y, m, d] = ymd.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000); };
@@ -4542,13 +4532,13 @@ function xFill(o) {
   const pf = (d, cp, cf, r, sh) => { put(sh, cp + r, d.res === 'Pass' ? '√' : null); put(sh, cf + r, d.res === 'Fail' ? '√' : null); };
   const wc2 = (c2, sa, sb, arow, brow) => Object.keys(c2).forEach(key => { const d = c2[key] || {};
     if (key in arow) { const r = arow[key]; ['L1E', 'L2E', 'L3E', 'L1L2', 'L1L3', 'L2L3'].forEach((k, i) => put(sa, 'EFGHIJ'[i] + r, xIrv(d[k])));
-      if (d.kind !== 'motor' && !key.includes('_motor_')) { put(sa, 'K' + r, d.dev || null); put(sa, 'L' + r, xOhm(d.ohm)); /* Ohm 格（Earth Fault Loop Impedance） */ pf(d, 'M', 'N', r, sa); } }
+      if (d.kind !== 'motor' && !key.includes('_motor_')) { put(sa, 'K' + r, d.dev || null); put(sa, 'L' + r, xOhm(d.ohm)); pf(d, 'M', 'N', r, sa); } }
     else if (key in brow) { const r = brow[key];
       if (key in X_C2BL) put(sb, 'B' + r, (X_C2BL[key] + ' ' + (d.loc || '')).trim());
       put(sb, 'E' + r, d.type || null);
       if (r === 13) { put(sb, 'F' + r, xIrv(d.LN)); put(sb, 'G' + r, xIrv(d.LE)); put(sb, 'H' + r, xIrv(d.NE)); }
       else { put(sb, 'G' + r, xIrv(d.LE)); put(sb, 'F' + r, null); put(sb, 'H' + r, null); }
-      put(sb, 'I' + r, d.dev || null); put(sb, 'J' + r, xOhm(d.ohm)); /* Ohm 格 */ pf(d, 'K', 'L', r, sb); } });
+      put(sb, 'I' + r, d.dev || null); put(sb, 'J' + r, xOhm(d.ohm)); pf(d, 'K', 'L', r, sb); } });
   wc2(rd.tr_c2 || {}, 'C2-1  FS Pump', 'C2-2  FS Pump', X_C2A, X_C2B);
   if (rd.tr_c2_upfeed && (forms.C1U || {}).applicable !== false) { const up = {}; Object.keys(X_C2UA).concat(Object.keys(X_C2UB)).forEach(k => { up[k] = {}; }); Object.assign(up, rd.tr_c2_upfeed); wc2(up, 'C2-1 Upfeed Pump', 'C2-2 Upfeed Pump', X_C2UA, X_C2UB); }
   if (rd.tr_c2_sprinkler || (forms.C1S || {}).off_na) { const sp = {}; Object.keys(X_C2SA).concat(Object.keys(X_C2SB)).forEach(k => { sp[k] = {}; }); Object.assign(sp, rd.tr_c2_sprinkler || {}); wc2(sp, 'C2-1  Sprinkler Pump', 'C2-2  Sprinkler Pump', X_C2SA, X_C2SB); }
@@ -4677,6 +4667,13 @@ function xSec(sec, v, text) {
       i = j; continue; }
     out += ch; i++; }
   return out;
+}
+function xIsInputYellowBg(bg) {
+  const h = String(bg || '').replace(/^#/, '').toUpperCase();
+  if (!/^[0-9A-F]{6}$/.test(h)) return false;
+  if (/^(FFFF00|FFF2CC|FFFF99|FFEB9C|FFFFCC|FFC000|FFD966|FCE4D6|FFFDE7)$/.test(h)) return true;
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return r >= 230 && g >= 200 && b <= 220 && b < r && b < g;
 }
 function xFmt(v, nf, nz) {
   if (v === null || v === undefined) return '';
@@ -4877,7 +4874,6 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
       if (!s && /^(L-|J-)/.test(S.n || '') && XLS.styles && XLS.styles[241] && XLS.styles[241].nf && /nos/i.test(String(XLS.styles[241].nf))) s = 241;
     }
     cells[k] = { r: p[0], c: p[1], s }; } });
-  /* v0.6.465：sr 空黃格（C2 Ohm＝C2-1!L*／C2-2!J* 等）若有 overlay 值仍要畫；唔因 empty 丟（FAN t1167u） */
   Object.values(cells).forEach(o => { const st = sty(o.s), v = B.get(S.n, colL(o.c) + o.r); o.v = v; if (o.empty && (v === null || v === undefined || v === '')) { o.t = ''; return; } let t = xFmt(v, st.nf, S.nz);
     if (/wingdings/i.test((st.f || [])[0] || '')) t = t.split('').map(ch => XWD2[ch] || ch).join(''); o.t = t; if (o.empty && t) o.empty = 0; });
   const out = [];
@@ -4896,7 +4892,6 @@ async function xSheetPages(S, B, extra) { /* → [{canvas, land}] */
       const rr = rows.filter(x => x >= m[0] && x <= m[2]); if (!rr.length) return null; return [X(m[1]), Y(rr[0]), X(Math.min(m[3], G.c2) + 1), Yb(rr[rr.length - 1])]; };
     const list = Object.values(cells).filter(o => rowSet.has(o.r) || (merged[o.r + ',' + o.c] && rows.some(x => x >= o.r && x <= merged[o.r + ',' + o.c][2])));
     /* 底色 */
-    /* v0.6.464：Excel 輸入黃格（FFF2CC／FFFF00 等）PDF 改白——唔畫黃底（FAN t1166u；畫布已白） */
     list.forEach(o => { const st = sty(o.s); if (!st.bg || inMerge[o.r + ',' + o.c]) return; if (typeof xIsInputYellowBg === 'function' && xIsInputYellowBg(st.bg)) return; const R = rectOf(o.r, o.c); if (!R) return; ctx.fillStyle = '#' + st.bg; ctx.fillRect(R[0], R[1], R[2] - R[0], R[3] - R[1]); });
     /* 圖片 */
     for (const im of (S.img || [])) { const r0 = im.r + 1, c0 = im.c + 1; if (!rowSet.has(r0) && !(rows[0] > r0 && rows[0] <= (im.r2 || im.r) + 1)) continue; if (!rowSet.has(r0)) continue;
