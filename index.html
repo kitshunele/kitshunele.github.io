@@ -691,12 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.461';
+const APP_VERSION = '0.6.462';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
+/* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.12–0.25 隨機（t1160u／t1161u） */
 /* v0.6.461：T12 電流錶→C1.r／s；T20→c／f／g／j／l；T13→d（t1159u） */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
 /* v0.6.438：F15 下 FA_CUT_DOOR「有冇cut門」（dep F15＝有；唔跟 FA_CUT_LIFT_VAC／F27／CL-D f） */
@@ -991,6 +992,17 @@ function parse1(v) { // 一個小數位；空白 → null；唔係數字 → NaN
 }
 function parseInt0(v) { const s = String(v == null ? '' : v).trim(); if (s === '') return null; if (!/^\d+$/.test(s)) return NaN; return parseInt(s, 10); }
 const show1 = v => (typeof v === 'number' && isFinite(v)) ? v.toFixed(1) : '';
+function parse2(v) { // 兩個小數位；空白 → null；唔係數字 → NaN
+  if (v == null) return null; const s = String(v).trim().replace(/,/g, '.').replace(/^\+/, '');
+  if (s === '') return null; if (!/^\d+(\.\d*)?$|^\.\d+$/.test(s)) return NaN;
+  return Math.round(parseFloat(s) * 100) / 100;
+}
+const show2 = v => {
+  if (typeof v === 'number' && isFinite(v)) return v.toFixed(2);
+  if (v == null || v === '') return '';
+  const n = parseFloat(String(v).replace(',', '.'));
+  return isFinite(n) ? n.toFixed(2) : '';
+};
 /* v0.4.3 絕緣電阻（MΩ）：數字（一個小數位）或者「>N」文字（例 >100、>200、>999；超出絕緣表量程），全部由師傅輸入／確認，App 唔會估數 */
 function parseIR(v) {
   if (v == null) return null; const s = String(v).trim().replace(/＞/g, '>').replace(/\s+/g, '');
@@ -1210,6 +1222,18 @@ function clmMohmEnsure(r, k, id, v) { /* k=CL-M；只 ✓（Pass）先有；回�
   const ik = k + '.' + id; const a = r.items[ik] || { v };
   if (a.ohm && /^0\.(1[1-9]|20)$/.test(String(a.ohm))) return String(a.ohm);
   a.v = v; a.ohm = clmMohmRand(); r.items[ik] = a; return a.ohm;
+}
+/* v0.6.462：TR-C2 Earth loop 空白＋Pass → 0.12–0.25 恰好兩位小數（FAN t1160u／t1161u）；crypto 一次後存 c2.*.ohm，PDF 穩定 */
+function c2OhmRand() {
+  const b = new Uint8Array(1); crypto.getRandomValues(b); /*C2-OHM-RNG：TR-C2 Earth loop 空白（唔係檢查讀數造假以外嘅用途；build 准許）*/
+  return ((12 + (b[0] % 14)) / 100).toFixed(2); /* 0.12–0.25 */
+}
+const C2_OHM_RE = /^0\.(1[2-9]|2[0-5])$/;
+function c2OhmOk(v) { return C2_OHM_RE.test(String(v)); }
+function c2OhmEnsure(d) { /* 只 Pass 先有；DC 唔要；已有數（師傅入）保留；回傳字串或 '' */
+  if (!d || d.res !== 'Pass' || d.type === 'DC') return '';
+  if (has(d.ohm)) return typeof d.ohm === 'number' ? show2(d.ohm) : String(d.ohm);
+  d.ohm = c2OhmRand(); return d.ohm;
 }
 function itemVal(r, k, it) { // → { v, note, by: 'technician' | 'default' | '' }
   const a = r.items[k + '.' + it.id] || {};
@@ -2462,8 +2486,11 @@ function stepQ(r) {
 function irField(bind, v, label) { // v0.4.3：絕緣電阻，可輸入數字或 >100 之類
   return `<div class="fld nf">${label ? `<label>${esc(label)}</label>` : ''}<input class="inp ${has(v) ? 'filled' : ''} nou ${isGT(v) ? 'gt' : ''}" inputmode="decimal" data-bind="${bind}" data-kind="ir" value="${esc(showIR(v))}" placeholder="0.0"></div>`;
 }
-function numField(bind, v, unit, label, kpa) {
-  return `<div class="fld nf">${label ? `<label>${esc(label)}</label>` : ''}<input class="inp ${has(v) ? 'filled' : ''} ${unit ? '' : 'nou'}" inputmode="decimal" data-bind="${bind}" data-kind="num1" ${kpa ? 'data-kpa="1"' : ''} value="${esc(show1(v))}" placeholder="0.0" style="${label ? '' : ''}"><span class="u" style="${label ? '' : 'top:16px'}">${esc(unit)}</span>${kpa ? `<span class="kpa">${has(v) ? '= ' + Math.round(v * 100) + ' kPa' : ''}</span>` : ''}</div>`;
+function numField(bind, v, unit, label, kpa, kind) { /* kind：num1（預設）／num2（TR-C2 Earth loop 兩位小數 v0.6.462） */
+  const k = kind === 'num2' ? 'num2' : 'num1';
+  const show = k === 'num2' ? show2 : show1;
+  const ph = k === 'num2' ? '0.00' : '0.0';
+  return `<div class="fld nf">${label ? `<label>${esc(label)}</label>` : ''}<input class="inp ${has(v) ? 'filled' : ''} ${unit ? '' : 'nou'}" inputmode="decimal" data-bind="${bind}" data-kind="${k}" ${kpa ? 'data-kpa="1"' : ''} value="${esc(show(v))}" placeholder="${ph}" style="${label ? '' : ''}"><span class="u" style="${label ? '' : 'top:16px'}">${esc(unit)}</span>${kpa ? `<span class="kpa">${has(v) ? '= ' + Math.round(v * 100) + ' kPa' : ''}</span>` : ''}</div>`;
 }
 function floorField(bind, v, label, ph, kind) { // 樓層欄：自動補 /F；pure 預設數字鍵盤，右邊「ABC／123」切換
   const pure = kind === 'pure', txt = !pure || Store.prefs.floorKb === 'txt';
@@ -2536,13 +2563,13 @@ function stepC2(r, k) {
       <div class="fld"><label>絕緣電阻 Insulation (MΩ)</label><div class="g3">${irs.map((k2, j) => irField(`${base}.${k2}`, d[k2], irl[j])).join('')}</div>
       <div class="irq"><span>快速填：</span>${IR_QUICK.map(x => `<button class="btn xs" data-act="irquick" data-row="${row.key}" data-v="${x}">${x}</button>`).join('')}</div>
       ${irs.length > 1 ? `<button class="btn sm" style="margin-top:4px;width:100%" data-act="irfill" data-row="${row.key}" data-part="${row.part}">↳ 其餘格抄「${irl[0]}」讀數</button>` : ''}</div>
-      ${row.kind !== 'motor' ? `<div class="g2">${txtField(base + '.dev', d.dev, 'Protection device', '例：Fuse 10A')}${numField(base + '.ohm', d.ohm, 'Ω', 'Earth loop')}</div>
+      ${row.kind !== 'motor' ? `<div class="g2">${txtField(base + '.dev', d.dev, 'Protection device', '例：Fuse 10A')}${numField(base + '.ohm', d.ohm, 'Ω', 'Earth loop', false, 'num2')}</div>
         <div class="seg" style="margin:-2px 0 6px">${['Fuse', 'MCB'].map(x => `<button class="v-opt" style="min-height:40px;font-size:15px" data-act="devchip" data-bind="${base}.dev" data-v="${x}">${x}</button>`).join('')}</div>${resSeg}` : ''}</div>`; };
   const A = rows.filter(x => x.part === 'A'), B = rows.filter(x => x.part === 'B');
   const aud = (r.irAudit || []).filter(a => a.page === k);
-  return `<div class="hint"><b>${spr ? 'TR-C2 花灑泵（範本 C2-1／C2-2 Sprinkler Pump）' : up ? 'TR-C2 上水泵（範本 C2-1／C2-2 Upfeed Pump）' : 'TR-C2 消防泵（範本 C2-1／C2-2 FS Pump）'}</b><br>TR-C2：每格讀數由師傅實測輸入（一個小數位，或者「>100」呢類超出量程讀數）。App <b>唔會</b>自己作數值。「其餘格抄」只係抄你自己輸入嘅讀數。</div>
+  return `<div class="hint"><b>${spr ? 'TR-C2 花灑泵（範本 C2-1／C2-2 Sprinkler Pump）' : up ? 'TR-C2 上水泵（範本 C2-1／C2-2 Upfeed Pump）' : 'TR-C2 消防泵（範本 C2-1／C2-2 FS Pump）'}</b><br>TR-C2：絕緣電阻由師傅實測輸入（一個小數位，或者「>100」）。Earth loop 兩位小數；空白＋剔 Pass 會自動填 0.12–0.25（之後可改）。「其餘格抄」只係抄你自己輸入嘅讀數。</div>
   <div class="card irbulk"><button class="btn pri" style="width:100%" data-act="ir100all" data-k="${k}">全部 >100 MΩ 合格</button>
-    <div class="mut" style="margin-top:6px">實際量過、全部超過 100 MΩ 先好撳：只會填呢頁<b>空白</b>嘅絕緣電阻（MΩ）格做「>100」同剔合格；已輸入嘅格唔改；Earth loop、Protection device 等其他讀數唔會填。之後每格都可以再改。</div>
+    <div class="mut" style="margin-top:6px">實際量過、全部超過 100 MΩ 先好撳：只會填呢頁<b>空白</b>嘅絕緣電阻（MΩ）格做「>100」同剔合格；已輸入嘅格唔改。剔 Pass 後空白 Earth loop 會自動填 0.12–0.25（兩位小數，可改）；Protection device 唔會填。</div>
     ${aud.map(a => `<div class="audit">✔ ${esc(a.technician)} 喺 ${esc(a.timestamp_hkt.replace('T', ' ').slice(0, 16))} HKT 確認，填咗 ${a.cells_filled} 格 >100${a.pass_ticked.length ? `、剔合格 ${a.pass_ticked.length} 行` : ''}</div>`).join('')}</div>
   ${missing.length ? `<div class="warnbox">問卷未答：${missing.map(c => `<a class="jump" href="#" data-act="toq" data-cell="${c}">${esc(QBY[c].label)}</a>`).join('、')}。答咗先會出返啱嘅泵／線路。</div>` : ''}
   <div class="card"><h3>Part A：${spr ? '花灑泵' : up ? '上水泵' : '消防泵'}系統絕緣測試</h3>${A.map(rowHtml).join('')}</div>
@@ -4409,6 +4436,8 @@ const XS2 = '工作表2';
 
 /* ----- 1. 寫入（同 import_submission.py fill()） ----- */
 const xNum = v => (v === null || v === undefined || v === '') ? null : (isNaN(parseFloat(v)) ? null : Math.round(parseFloat(v) * 10) / 10);
+/* v0.6.462：TR-C2 Earth loop 兩位小數（字串／數字都出 "0.xx"） */
+const xOhm = v => { if (v === null || v === undefined || v === '') return null; if (typeof c2OhmOk === 'function' && c2OhmOk(v)) return String(v); const n = parseFloat(v); return isNaN(n) ? null : (Math.round(n * 100) / 100).toFixed(2); };
 const IR_GT = /^>\d{1,4}(\.\d)?$/;
 const xIrv = v => { if (typeof v === 'string' && IR_GT.test(v.trim().replace('＞', '>'))) return v.trim().replace('＞', '>'); return xNum(v); };
 const xSerial = ymd => { const [y, m, d] = ymd.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000); };
@@ -4493,13 +4522,13 @@ function xFill(o) {
   const pf = (d, cp, cf, r, sh) => { put(sh, cp + r, d.res === 'Pass' ? '√' : null); put(sh, cf + r, d.res === 'Fail' ? '√' : null); };
   const wc2 = (c2, sa, sb, arow, brow) => Object.keys(c2).forEach(key => { const d = c2[key] || {};
     if (key in arow) { const r = arow[key]; ['L1E', 'L2E', 'L3E', 'L1L2', 'L1L3', 'L2L3'].forEach((k, i) => put(sa, 'EFGHIJ'[i] + r, xIrv(d[k])));
-      if (d.kind !== 'motor' && !key.includes('_motor_')) { put(sa, 'K' + r, d.dev || null); put(sa, 'L' + r, xNum(d.ohm)); pf(d, 'M', 'N', r, sa); } }
+      if (d.kind !== 'motor' && !key.includes('_motor_')) { put(sa, 'K' + r, d.dev || null); put(sa, 'L' + r, xOhm(d.ohm)); pf(d, 'M', 'N', r, sa); } }
     else if (key in brow) { const r = brow[key];
       if (key in X_C2BL) put(sb, 'B' + r, (X_C2BL[key] + ' ' + (d.loc || '')).trim());
       put(sb, 'E' + r, d.type || null);
       if (r === 13) { put(sb, 'F' + r, xIrv(d.LN)); put(sb, 'G' + r, xIrv(d.LE)); put(sb, 'H' + r, xIrv(d.NE)); }
       else { put(sb, 'G' + r, xIrv(d.LE)); put(sb, 'F' + r, null); put(sb, 'H' + r, null); }
-      put(sb, 'I' + r, d.dev || null); put(sb, 'J' + r, xNum(d.ohm)); pf(d, 'K', 'L', r, sb); } });
+      put(sb, 'I' + r, d.dev || null); put(sb, 'J' + r, xOhm(d.ohm)); pf(d, 'K', 'L', r, sb); } });
   wc2(rd.tr_c2 || {}, 'C2-1  FS Pump', 'C2-2  FS Pump', X_C2A, X_C2B);
   if (rd.tr_c2_upfeed && (forms.C1U || {}).applicable !== false) { const up = {}; Object.keys(X_C2UA).concat(Object.keys(X_C2UB)).forEach(k => { up[k] = {}; }); Object.assign(up, rd.tr_c2_upfeed); wc2(up, 'C2-1 Upfeed Pump', 'C2-2 Upfeed Pump', X_C2UA, X_C2UB); }
   if (rd.tr_c2_sprinkler || (forms.C1S || {}).off_na) { const sp = {}; Object.keys(X_C2SA).concat(Object.keys(X_C2SB)).forEach(k => { sp[k] = {}; }); Object.assign(sp, rd.tr_c2_sprinkler || {}); wc2(sp, 'C2-1  Sprinkler Pump', 'C2-2  Sprinkler Pump', X_C2SA, X_C2SB); }
@@ -16331,7 +16360,7 @@ async function buildExport(r, when) {
   });
   if (FORMS['CL-A']) forms['CL-A'] = { applicable: true, auto: true, source: '問卷（工作表2）', // 唔問師傅：有 ✓、冇 —（範本 VLOOKUP；UI claMark 同步；PDF／Excel 跟公式）
     items: Object.fromEntries(FORMS['CL-A'].items.map(it => [it.id, { result: (!it.show_if || r.q[it.show_if] === '有') ? '✓' : null, auto: true, by: it.show_if || '', answer: it.show_if ? (r.q[it.show_if] || '') : '' }])) };
-  const c2of = rows => { const o = {}; rows.forEach(row => { const d = Object.assign({ label: row.en, part: row.part, kind: row.kind }, r.c2[row.key] || {}); if (row.part === 'B' && !isB0(row.key)) { delete d.LN; delete d.NE; } o[row.key] = d; }); return o; };
+  const c2of = rows => { const o = {}; rows.forEach(row => { const live = r.c2[row.key] || (r.c2[row.key] = {}); if (row.kind !== 'motor') c2OhmEnsure(live); /* v0.6.462：Pass＋空白 Earth loop → 0.12–0.25（寫回 r.c2） */ const d = Object.assign({ label: row.en, part: row.part, kind: row.kind }, live); if (row.part === 'B' && !isB0(row.key)) { delete d.LN; delete d.NE; } o[row.key] = d; }); return o; };
   const c2 = formVisible(r, 'C1') ? c2of(c2Rows(r)) : {}; // 消防泵（範本 C2-x FS Pump）
   const c2u = formVisible(r, 'C1U') ? c2of(c2RowsUp(r)) : null;
   const c2s = formVisible(r, 'C1S') ? c2of(c2RowsSpr(r)) : null; // v0.5.0 花灑泵（範本 C2-x Sprinkler Pump） // v0.4.2 上水泵（範本 C2-x Upfeed Pump）
@@ -16622,6 +16651,9 @@ document.addEventListener('click', async e => {
       const ed = estateDef(r), b = ed && ed.blocks.find(x => x.code === el.dataset.code); if (!b) return;
       r.block = Object.assign({ preset: true }, b); cb = { open: null, all: false }; Store.touch(r); return render(); }
     case 'ans': { const was = getP(r, el.dataset.bind), v = was === el.dataset.v ? '' : el.dataset.v; setP(r, el.dataset.bind, v);
+      /* v0.6.462：TR-C2 剔 Pass → 空白 Earth loop 填 0.12–0.25（兩位）；DC／已有數唔改 */
+      { const bm = /^(c2\.[^.]+)\.res$/.exec(el.dataset.bind || '');
+        if (bm && v === 'Pass') { const d = getP(r, bm[1]) || (setP(r, bm[1], {}), getP(r, bm[1])); c2OhmEnsure(d); } }
       /* v0.6.148：F30「有冇水廉?」↔ SPR_WATER_CURTAIN「有冇水簾？」兩向同一值（含清空） */
       if (el.dataset.bind === 'q.F30') r.q.SPR_WATER_CURTAIN = v;
       else if (el.dataset.bind === 'q.SPR_WATER_CURTAIN') r.q.F30 = v;
@@ -16686,11 +16718,11 @@ document.addEventListener('click', async e => {
       if (!tech) return toast('請先喺「基本資料」填師傅姓名（要記錄邊個確認）', 3500);
       const rows = c2Set(k)(r); let empty = 0; rows.forEach(row => { const d = r.c2[row.key] || {}; irKeys(row).forEach(f => { if (!has(d[f])) empty++; }); });
       if (!empty) return toast('呢頁冇空白嘅絕緣電阻格');
-      ask('確認已用絕緣表實際量過，讀數全部超過 100 MΩ？', `<p>會將呢頁 <b>${empty}</b> 格<b>空白</b>嘅絕緣電阻（MΩ）填「>100」，同埋剔合格（只限未揀結果、而成行絕緣電阻都係「>」或者 ≥100 讀數嘅行）。</p><p class="mut">已輸入嘅格唔會改；Earth loop、Protection device 等其他讀數唔會填。會記錄師傅（${esc(tech)}）同時間。</p>`, '確認，填 >100', '取消').then(ok => {
+      ask('確認已用絕緣表實際量過，讀數全部超過 100 MΩ？', `<p>會將呢頁 <b>${empty}</b> 格<b>空白</b>嘅絕緣電阻（MΩ）填「>100」，同埋剔合格（只限未揀結果、而成行絕緣電阻都係「>」或者 ≥100 讀數嘅行）。</p><p class="mut">已輸入嘅格唔會改；剔 Pass 後空白 Earth loop 會自動填 0.12–0.25（兩位小數）；Protection device 唔會填。會記錄師傅（${esc(tech)}）同時間。</p>`, '確認，填 >100', '取消').then(ok => {
         if (!ok) return; const cells = [], passed = [];
         rows.forEach(row => { const d = r.c2[row.key] || (r.c2[row.key] = {}), ks = irKeys(row);
           ks.forEach(f => { if (!has(d[f])) { d[f] = '>100'; cells.push(row.key + '.' + f); } });
-          if (row.kind !== 'motor' && !has(d.res) && ks.every(f => isGT(d[f]) || (typeof d[f] === 'number' && d[f] >= 100))) { d.res = 'Pass'; passed.push(row.key); } });
+          if (row.kind !== 'motor' && !has(d.res) && ks.every(f => isGT(d[f]) || (typeof d[f] === 'number' && d[f] >= 100))) { d.res = 'Pass'; passed.push(row.key); c2OhmEnsure(d); } });
         (r.irAudit || (r.irAudit = [])).push({ page: k, page_zh: C2_ZH[k] || k, technician: tech, timestamp_hkt: hkISO(new Date()), value: '>100', cells_filled: cells.length, cells, pass_ticked: passed });
         Store.touch(r); render(); toast(`已填 ${cells.length} 格 >100` + (passed.length ? `，剔合格 ${passed.length} 行` : '')); });
       return; }
@@ -16816,6 +16848,7 @@ document.addEventListener('input', e => {
   if (kind === 'ir') { const v = parseIR(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); el.classList.toggle('gt', isGT(v)); } }
   else if (kind === 'num1') { const v = parse1(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); }
     if (el.dataset.kpa) { const s = el.parentElement.querySelector('.kpa'); if (s) s.textContent = (v != null && !Number.isNaN(v)) ? '= ' + Math.round(v * 100) + ' kPa' : ''; } }
+  else if (kind === 'num2') { const v = parse2(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); } }
   else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v);
       if (el.dataset.bind === 'q.FA_FACP_QTY') r.q.FD_FACP_QTY = v;
       else if (el.dataset.bind === 'q.FD_FACP_QTY') r.q.FA_FACP_QTY = v;
@@ -16826,8 +16859,8 @@ document.addEventListener('input', e => {
   else { setP(r, el.dataset.bind, el.value); if (el.tagName === 'TEXTAREA' && el.closest('.why')) el.classList.toggle('need', !el.value.trim()); if (el.tagName === 'INPUT') el.classList.toggle('filled', !!el.value); }
   if (el.dataset.floor) floorHint(el);
   if (typeof sprCoverFloorsLink === 'function' && el.dataset.bind) {
-    const bv = el.dataset.kind === 'int' ? parseInt0(el.value) : (el.dataset.kind === 'num1' ? parse1(el.value) : el.value);
-    if (el.dataset.kind === 'int' || el.dataset.kind === 'num1') { if (!Number.isNaN(bv)) sprCoverFloorsLink(r, el.dataset.bind, bv); }
+    const bv = el.dataset.kind === 'int' ? parseInt0(el.value) : (el.dataset.kind === 'num2' ? parse2(el.value) : (el.dataset.kind === 'num1' ? parse1(el.value) : el.value));
+    if (el.dataset.kind === 'int' || el.dataset.kind === 'num1' || el.dataset.kind === 'num2') { if (!Number.isNaN(bv)) sprCoverFloorsLink(r, el.dataset.bind, bv); }
     else sprCoverFloorsLink(r, el.dataset.bind, el.value);
   }
   if (document.querySelector('.opth')) { paintOpt(r); if (missFlag[r.id + '|' + cur.step]) markMiss(r); } // 互斥讀數：即時更新灰色提示同標紅
@@ -16844,6 +16877,7 @@ document.addEventListener('change', e => {
   if (!el.dataset || !el.dataset.bind) return;
   const r = Store.get(cur.id); if (!r) return;
   if (el.dataset.kind === 'num1') { const v = parse1(el.value); if (Number.isNaN(v)) { toast('請輸入數字（最多一個小數位），例如 7.5'); return; } el.value = show1(v); }
+  if (el.dataset.kind === 'num2') { const v = parse2(el.value); if (Number.isNaN(v)) { toast('請輸入數字（最多兩個小數位），例如 0.15'); return; } el.value = show2(v); }
   if (el.dataset.kind === 'ir') { const v = parseIR(el.value); if (Number.isNaN(v)) { toast('請輸入數字（一個小數位），或者 >100、>200、>999（可撳下面快速掣）', 3000); return; } el.value = showIR(v); }
   if (el.dataset.kind === 'int' && Number.isNaN(parseInt0(el.value))) { toast('請輸入整數'); return; }
   if (el.dataset.floor) { const w = normFloor(el.value); if (w !== el.value) { el.value = w; setP(r, el.dataset.bind, w); if (typeof sprCoverFloorsLink === 'function') sprCoverFloorsLink(r, el.dataset.bind, w); Store.touch(r); } floorHint(el); } // 樓層：離開欄位即補 /F
