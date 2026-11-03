@@ -691,7 +691,7 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.490';
+const APP_VERSION = '0.6.491';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.485：扶錄3／fhhr 附錄III消防中途泵——一次過清晒 A3.*／AIII／§3 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiiV；墓碑上雲；唔擦其他教） */
@@ -699,6 +699,7 @@ const APP_VERSION = '0.6.490';
 /* v0.6.487：TR-H2／G2 tender（xH2TenderPages）強制 Arial 打字疊，唔用 xHw 手寫 */
 /* v0.6.488：fhhr 表一第6頁下（zones 由／至／梯／供水讀數）→ TR-H2 對應格；流量 L/min→l/s */
 /* v0.6.489：fhhr 表一第6頁 PDF 疊 編號1／2＋消防栓區域由／至＋經測試＿樓＋樓梯編號 ← TR-H2 Zone（試水樓層／梯）；H2↔fhhr floor／stair bridge */
+/* v0.6.491：樓梯編號 putC y 上移橫線上面（Z1 255→249／Z2 365→359；x200 不變；middle baseline 清線） */
 /* v0.6.490：樓梯編號 PDF 疊橫線中（stair x→200＋putC）；T8 Inlet ON/OFF＝有→bst1＋bst2、冇→fix1＋fix2；H2→供水來源：流量←flow、壓力←行泵、零流量壓力←死磅（l/s→L/min×60）；符合規定：流量≥15且壓力≥3.5→是，否則→否 */
 /* v0.6.484：扶錄2／fhhr 附錄II固定消防泵——一次過清晒 A2.*／AII／§2 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiV；墓碑上雲；唔擦其他教） */
 /* v0.6.483：fhhr tickmaps 10.f 校正（PDF 第5頁＝maps page4；原 y=83.53 落喺「是／否／不適用」欄頭，框喺 y≈101.6；NA 原 synth x=465.7 偏右） */
@@ -8670,10 +8671,10 @@ const FSD_T1_OV = {
   },
   maxLetter: { '1': 5, '2': 2, '3': 1, '4': 5 },
   /* v0.6.489／490：fhhr 表一（maps page5 landscape）編號／消防栓區域／經測試＿樓／樓梯編號
-     量度：2× blank 掃描；編號格中心；由／至 x≈105；經測試樓 x≈180；樓梯編號橫線中≈198／193 → x=200＋putC */
+     量度：2× blank 掃描；編號格中心；由／至 x≈105；經測試樓 x≈180；樓梯編號橫線≈255／365 → x=200 putC middle；v0.6.491 y→249／359 橫線上面 */
   fhhrZones: [
-    { no: { x: 51, y: 242 }, from: { x: 105, y: 218 }, to: { x: 105, y: 255 }, floor: { x: 180, y: 218 }, stair: { x: 200, y: 255 } },
-    { no: { x: 51, y: 353 }, from: { x: 105, y: 325 }, to: { x: 105, y: 365 }, floor: { x: 180, y: 325 }, stair: { x: 200, y: 365 } }
+    { no: { x: 51, y: 242 }, from: { x: 105, y: 218 }, to: { x: 105, y: 255 }, floor: { x: 180, y: 218 }, stair: { x: 200, y: 249 } },
+    { no: { x: 51, y: 353 }, from: { x: 105, y: 325 }, to: { x: 105, y: 365 }, floor: { x: 180, y: 325 }, stair: { x: 200, y: 359 } }
   ]
 };
 function fsdOvFillT1(ctx, key, cExp, o, scale) {
@@ -8782,7 +8783,7 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
       put(from, box.from.x, box.from.y, 50);
       put(to, box.to.x, box.to.y, 50);
       put(floor, box.floor.x, box.floor.y, 55);
-      putC(stair, box.stair.x, box.stair.y, 55); /* v0.6.490：樓梯編號置中於橫線 */
+      putC(stair, box.stair.x, box.stair.y, 55); /* v0.6.491：樓梯編號横線上面（y-6 middle） */
     });
   }
 }
