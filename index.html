@@ -691,13 +691,14 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.470';
+const APP_VERSION = '0.6.471';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
 /* v0.6.470：TR-H2 預設 0 全清（blank not 0）；Riser 1／2 唔預填（blank PNG＋sticky C 清） */
+/* v0.6.471：Zone 由（樓）→ top outlet floor；至（樓）→ low outlet floor（全部 Zone） */
 /* v0.6.469：TR-H2／H2-1／H2-2 live＋export 改用標書 PSA/C/22–23 blank＋valuemap overlay（Part A／B；唔再用 LYK Excel 版面） */
 /* v0.6.468：Q_HARD_CL H1|b1／b2／c←FH_HOSE「有冇消防喉轆？」（有＝✓、冇＝NA、未答空白；t1170u） */ /* v0.6.467：T6 下加「有冇龍頭」FS_HYDRANT（t1169u；dep T6＝有；qGlueUnder T6；無新 CL map） */ /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
 /* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.18–0.29 隨機（t1163u／t1165u；原 462＝0.18–0.29） */
@@ -1395,6 +1396,48 @@ function paintOpt(r) { // 灰色提示 + 即時更新標紅
 }
 const H2_TOP = ['floor', 'stair', 'p1_static', 'p1_run', 'p1_flow', 'np_bar', 'np_flow'];
 const H2_LOW = ['floor', 'stair', 'p1_static', 'p1_run', 'p1_flow', 'tk_run', 'tk_flow'];
+/* v0.6.471：問答 Zone 由／至 → H2 Part A top／low outlet Floor Level（全部 Zone） */
+function h2ZoneFloorLink(r, bind, v) {
+  if (!r || !bind) return;
+  const paint = (zi, side, val) => {
+    if (!r.h2) r.h2 = {};
+    const z = (r.h2.zones || (r.h2.zones = []))[zi] || (r.h2.zones[zi] = {});
+    const d = z[side] || (z[side] = {});
+    d.floor = val;
+    const el = document.querySelector(`input[data-bind="h2.zones.${zi}.${side}.floor"]`);
+    if (el && el !== document.activeElement) { el.value = val == null ? '' : String(val); el.classList.toggle('filled', !!el.value); }
+  };
+  let m = /^h2\.zones\.(\d+)\.(from|to)$/.exec(bind);
+  if (m) { paint(+m[1], m[2] === 'from' ? 'top' : 'low', v); return; }
+  m = /^fsd\.fhhr\.t\.zones\.(\d+)\.(from|to)$/.exec(bind);
+  if (m) {
+    const zi = +m[1], side = m[2] === 'from' ? 'top' : 'low';
+    const hz = (r.h2.zones || (r.h2.zones = []));
+    while (hz.length <= zi) hz.push({});
+    const z = hz[zi] || (hz[zi] = {});
+    if (m[2] === 'from') z.from = v; else z.to = v;
+    paint(zi, side, v);
+  }
+}
+function h2ZoneFloorSync(r) { /* 已有由／至但 top／low.floor 空 → 補；唔蓋師傅手改過嘅 floor（只空先填） */
+  if (!r) return;
+  if (!r.h2) r.h2 = {};
+  const zones = r.h2.zones || (r.h2.zones = []);
+  zones.forEach((z, zi) => {
+    z = z || (zones[zi] = {});
+    if (has(z.from)) { const d = z.top || (z.top = {}); if (!has(d.floor)) d.floor = z.from; }
+    if (has(z.to)) { const d = z.low || (z.low = {}); if (!has(d.floor)) d.floor = z.to; }
+  });
+  const fz = ((((r.fsd || {}).fhhr || {}).t || {}).zones) || [];
+  fz.forEach((fz0, zi) => {
+    fz0 = fz0 || {};
+    const hz = (r.h2.zones || (r.h2.zones = []));
+    while (hz.length <= zi) hz.push({});
+    const z = hz[zi] || (hz[zi] = {});
+    if (has(fz0.from)) { if (!has(z.from)) z.from = fz0.from; const d = z.top || (z.top = {}); if (!has(d.floor)) d.floor = fz0.from; }
+    if (has(fz0.to)) { if (!has(z.to)) z.to = fz0.to; const d = z.low || (z.low = {}); if (!has(d.floor)) d.floor = fz0.to; }
+  });
+}
 function h2Need(r) { let done = 0, total = 0; const M = optMap(r); (r.h2.zones || []).forEach((z, zi) => { z = z || {}; for (const [o, ks] of [['top', H2_TOP], ['low', H2_LOW]]) { const d = z[o] || {}; ks.forEach(k => { if (!has(d[k]) && M.has(`h2.zones.${zi}.${o}.${k}`)) return; total++; if (has(d[k])) done++; }); } }); return { done, total }; }
 
 /* ---------- steps & progress ---------- */
@@ -2586,6 +2629,7 @@ function stepC2(r, k) {
 }
 /* ----- step: TR-H2 ----- */
 function stepH2(r) {
+  if (typeof h2ZoneFloorSync === 'function') h2ZoneFloorSync(r);
   const zones = r.h2.zones && r.h2.zones.length ? r.h2.zones : [{}];
   const pump = (base, d, n) => `<div class="sub"><h4>${n}號泵（開泵）</h4><div class="opth" data-optfor="${base}.p${n}_static"></div><div class="g3">${numField(`${base}.p${n}_static`, d[`p${n}_static`], 'bar', '死磅', true)}${numField(`${base}.p${n}_run`, d[`p${n}_run`], 'bar', '行泵', true)}${numField(`${base}.p${n}_flow`, d[`p${n}_flow`], 'l/s', 'Flow')}</div></div>`;
   const outlet = (zi, o, d) => { const base = `h2.zones.${zi}.${o}`; return `<div class="sub" style="background:#fff"><h4>${o === 'top' ? '⬆ 最高出水位 Topmost' : '⬇ 最低出水位 Lowest'}</h4>
@@ -4549,7 +4593,7 @@ function xFill(o) {
   if (rd.tr_c2_sprinkler || (forms.C1S || {}).off_na) { const sp = {}; Object.keys(X_C2SA).concat(Object.keys(X_C2SB)).forEach(k => { sp[k] = {}; }); Object.assign(sp, rd.tr_c2_sprinkler || {}); wc2(sp, 'C2-1  Sprinkler Pump', 'C2-2  Sprinkler Pump', X_C2SA, X_C2SB); }
   const h2 = rd.tr_h2 || {};
   (h2.zones || []).slice(0, 5).forEach((z, zi) => { z = z || {}; ['top', 'low'].forEach((side, oi) => { const d = z[side] || {}, b = 43 + 16 * zi + 8 * oi;
-    put(XS2, 'B' + b, d.floor || null); put(XS2, 'D' + b, d.stair || null); put(XS2, 'B' + (b + 1), z.from || null); put(XS2, 'E' + (b + 1), z.to || null);
+    put(XS2, 'B' + b, d.floor || (side === 'top' ? z.from : z.to) || null); put(XS2, 'D' + b, d.stair || null); put(XS2, 'B' + (b + 1), z.from || null); put(XS2, 'E' + (b + 1), z.to || null); /* v0.6.471：由→top floor、至→low floor */
     [[1, b + 4], [2, b + 5]].forEach(([n, rr]) => { const vals = [xNum(d[`p${n}_static`]), xNum(d[`p${n}_flow`]), xNum(d[`p${n}_run`])];
       put(XS2, 'B' + rr, vals.some(v => v !== null) ? n + '#' : null); 'EGI'.split('').forEach((c, i) => put(XS2, c + rr, vals[i])); });
     if (side === 'top') { put(XS2, 'B' + (b + 2), xNum(d.np_bar)); put(XS2, 'D' + (b + 2), xNum(d.np_flow)); }
@@ -16397,7 +16441,7 @@ function qTeachCloudBoot() {
 
 /* ---------- 樓層 /F ---------- */
 function floorSync(r) { // 記錄 + 畫面上嘅樓層欄位一齊整理（下一頁／提交前）
-  if (r) { if (typeof qMigrateF30 === 'function') qMigrateF30(r); if (typeof qMigrateFacpBatt === 'function') qMigrateFacpBatt(r); if (typeof qMigrateFirelink === 'function') qMigrateFirelink(r); if (typeof qMigrateFlash === 'function') qMigrateFlash(r); if (typeof qMigrateBattSock === 'function') qMigrateBattSock(r); normRecFloors(r); }
+  if (r) { if (typeof h2ZoneFloorSync === 'function') h2ZoneFloorSync(r); if (typeof qMigrateF30 === 'function') qMigrateF30(r); if (typeof qMigrateFacpBatt === 'function') qMigrateFacpBatt(r); if (typeof qMigrateFirelink === 'function') qMigrateFirelink(r); if (typeof qMigrateFlash === 'function') qMigrateFlash(r); if (typeof qMigrateBattSock === 'function') qMigrateBattSock(r); normRecFloors(r); }
   document.querySelectorAll('input[data-floor]').forEach(x => { const w = normFloor(x.value); if (w !== x.value) x.value = w; floorHint(x); });
 }
 let _fcx = null;
@@ -16951,7 +16995,7 @@ document.addEventListener('input', e => {
       else if (el.dataset.bind === 'q.FD_BATT_QTY') r.q.FA_BATT_QTY = v;
       if (el.dataset.bind === 'q.SPR_MULTI_SYS' && typeof sprT1Sync === 'function') { sprT1Sync(r); if (typeof sprT2Sync === 'function') sprT2Sync(r); }
       if (/^q\.(FD_FACP_QTY|FA_FACP_QTY|FD_REP_QTY|FD_BATT_QTY|FA_BATT_QTY)$/.test(el.dataset.bind || '') && typeof fdsT1Sync === 'function') fdsT1Sync(r); } }
-  else { setP(r, el.dataset.bind, el.value); if (el.tagName === 'TEXTAREA' && el.closest('.why')) el.classList.toggle('need', !el.value.trim()); if (el.tagName === 'INPUT') el.classList.toggle('filled', !!el.value); }
+  else { setP(r, el.dataset.bind, el.value); if (typeof h2ZoneFloorLink === 'function') h2ZoneFloorLink(r, el.dataset.bind, el.value); if (el.tagName === 'TEXTAREA' && el.closest('.why')) el.classList.toggle('need', !el.value.trim()); if (el.tagName === 'INPUT') el.classList.toggle('filled', !!el.value); }
   if (el.dataset.floor) floorHint(el);
   if (typeof sprCoverFloorsLink === 'function' && el.dataset.bind) {
     const bv = el.dataset.kind === 'int' ? parseInt0(el.value) : (el.dataset.kind === 'num2' ? parse2(el.value) : (el.dataset.kind === 'num1' ? parse1(el.value) : el.value));
@@ -16975,7 +17019,7 @@ document.addEventListener('change', e => {
   if (el.dataset.kind === 'num2') { const v = parse2(el.value); if (Number.isNaN(v)) { toast('請輸入數字（最多兩個小數位），例如 0.15'); return; } el.value = show2(v); }
   if (el.dataset.kind === 'ir') { const v = parseIR(el.value); if (Number.isNaN(v)) { toast('請輸入數字（一個小數位），或者 >100、>200、>999（可撳下面快速掣）', 3000); return; } el.value = showIR(v); }
   if (el.dataset.kind === 'int' && Number.isNaN(parseInt0(el.value))) { toast('請輸入整數'); return; }
-  if (el.dataset.floor) { const w = normFloor(el.value); if (w !== el.value) { el.value = w; setP(r, el.dataset.bind, w); if (typeof sprCoverFloorsLink === 'function') sprCoverFloorsLink(r, el.dataset.bind, w); Store.touch(r); } floorHint(el); } // 樓層：離開欄位即補 /F
+  if (el.dataset.floor) { const w = normFloor(el.value); if (w !== el.value) { el.value = w; setP(r, el.dataset.bind, w); if (typeof sprCoverFloorsLink === 'function') sprCoverFloorsLink(r, el.dataset.bind, w); if (typeof h2ZoneFloorLink === 'function') h2ZoneFloorLink(r, el.dataset.bind, w); Store.touch(r); } else if (typeof h2ZoneFloorLink === 'function') h2ZoneFloorLink(r, el.dataset.bind, el.value); floorHint(el); } // 樓層：離開欄位即補 /F
   if (el.classList.contains('miss') && String(el.value).trim()) el.classList.remove('miss'); // 已填 → 即時除紅
   const b = el.dataset.bind;
   /* v0.6.391：表一位置／覆蓋／備註都即時重畫（唔淨係 .loc）→ 年檢核對表疊字跟住變 */
