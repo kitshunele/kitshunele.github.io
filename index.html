@@ -691,14 +691,14 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.480';
+const APP_VERSION = '0.6.481';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
 /* v0.6.470：TR-H2 預設 0 全清（blank not 0）；Riser 1／2 唔預填（blank PNG＋sticky C 清） */
-/* v0.6.480：Part B 由／至逐層連住（高→低）；逗號清單仍只收已填；keep 479 LMR UI／478 packing／空白／Part A／梯→C／LYK／no C */ /* v0.6.479：any-floor discrete（已還原連住） */ /* v0.6.478：每欄 20 */ /* v0.6.477：L→M→R */ /* v0.6.476：H2_PB＋pbRanges */ /* v0.6.475：revert Zone */
+/* v0.6.481：範圍2+ 可疊／低於已填樓繼續塞中右欄（每範圍內去重、跨範圍可重複樓）；keep 480 連住＋479 LMR＋478 packing／空白／Part A／梯→C／LYK／no C */ /* v0.6.480：由／至連住 */ /* v0.6.479：LMR */ /* v0.6.478：每欄 20 */ /* v0.6.477：L→M→R */ /* v0.6.476：H2_PB＋pbRanges */ /* v0.6.475：revert Zone */
 /* v0.6.469：TR-H2／H2-1／H2-2 live＋export 改用標書 PSA/C/22–23 blank＋valuemap overlay（Part A／B；唔再用 LYK Excel 版面） */
 /* v0.6.468：Q_HARD_CL H1|b1／b2／c←FH_HOSE「有冇消防喉轆？」（有＝✓、冇＝NA、未答空白；t1170u） */ /* v0.6.467：T6 下加「有冇龍頭」FS_HYDRANT（t1169u；dep T6＝有；qGlueUnder T6；無新 CL map） */ /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
 /* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.18–0.29 隨機（t1163u／t1165u；原 462＝0.18–0.29） */
@@ -1424,7 +1424,7 @@ function floorParseList(s) { /* v0.6.479：逗號／頓號分隔多個樓；單�
   });
   return out;
 }
-function floorExpandRange(from, to) { /* v0.6.480：由／至單一樓 → 高→低逐層連住；任一邊逗號／頓號清單 → 只收已填（唔展開）；次序：連住時高→低，清單跟輸入 */
+function floorExpandRange(from, to) { /* v0.6.481／480：由／至單一樓 → 高→低逐層連住；任一邊逗號／頓號清單 → 只收已填；單格「1至20／1-20」亦拆開連住 */
   const isList = (s) => /[,;，、]/.test(String(s || ''));
   if (isList(from) || isList(to)) {
     const out = []; const seen = new Set();
@@ -1432,6 +1432,20 @@ function floorExpandRange(from, to) { /* v0.6.480：由／至單一樓 → 高�
     floorParseList(from).forEach(add);
     floorParseList(to).forEach(add);
     return out;
+  }
+  /* 單邊寫咗「a至b／a-b」而另一邊空 → 拆做由／至再連住 */
+  if (has(from) && !has(to)) {
+    const m = /^(.+?)\s*([-–—~至])\s*(.+)$/.exec(String(from).trim());
+    if (m) {
+      const fa = floorTok(String(m[1]).trim()), fb = floorTok(String(m[3]).trim());
+      if (fa && fb) return floorExpandRange(fa, fb);
+    }
+  } else if (!has(from) && has(to)) {
+    const m = /^(.+?)\s*([-–—~至])\s*(.+)$/.exec(String(to).trim());
+    if (m) {
+      const fa = floorTok(String(m[1]).trim()), fb = floorTok(String(m[3]).trim());
+      if (fa && fb) return floorExpandRange(fa, fb);
+    }
   }
   const a = has(from) ? floorTok(String(from).trim()) : null;
   const b = has(to) ? floorTok(String(to).trim()) : null;
@@ -1461,7 +1475,7 @@ function floorExpandRange(from, to) { /* v0.6.480：由／至單一樓 → 高�
   }
   return out.length ? out : (ra >= rb ? [a, b] : [b, a]);
 }
-function h2ParityFloorSync(r) { /* v0.6.480：pbRanges／H2_PB → parity.floor（由／至連住高→低；逗號清單唔展開）；保留同樓 stair／bar；額外手填留尾；PDF／UI 左中右各 20 */
+function h2ParityFloorSync(r) { /* v0.6.481：每 pbRange 內去重後整段 append（跨範圍可重複樓→塞中／右欄）；480 連住；保留同樓／同次序 stair／bar；手填留尾；左中右各 20＝60 */
   if (!r) return;
   if (!r.h2) r.h2 = {};
   if (!r.q) r.q = {};
@@ -1473,27 +1487,36 @@ function h2ParityFloorSync(r) { /* v0.6.480：pbRanges／H2_PB → parity.floor�
   if (has(r.q.H2_PB_TO) && !has(r0.to)) r0.to = r.q.H2_PB_TO;
   if (has(r0.from) && !has(r.q.H2_PB_FROM)) r.q.H2_PB_FROM = r0.from;
   if (has(r0.to) && !has(r.q.H2_PB_TO)) r.q.H2_PB_TO = r0.to;
-  const wanted = []; const seen = new Set();
-  const add = (f) => { const k = String(f || '').trim().toUpperCase(); if (!k || seen.has(k)) return; seen.add(k); wanted.push(f); };
-  ranges.forEach(rg => { rg = rg || {}; if (!has(rg.from) && !has(rg.to)) return; floorExpandRange(rg.from, rg.to).forEach(add); });
+  const wanted = [];
+  ranges.forEach(rg => {
+    rg = rg || {};
+    if (!has(rg.from) && !has(rg.to)) return;
+    const local = new Set();
+    floorExpandRange(rg.from, rg.to).forEach(f => {
+      const k = String(f || '').trim().toUpperCase();
+      if (!k || local.has(k)) return;
+      local.add(k);
+      wanted.push(f);
+    });
+  });
   if (!wanted.length) return;
   const old = r.h2.parity || [];
-  const byFloor = new Map(); const extras = [];
+  const byFloorQ = new Map(); const extras = [];
   old.forEach(p => {
     p = p || {};
     if (has(p.floor)) {
       const k = String(p.floor).trim().toUpperCase();
-      if (!byFloor.has(k)) byFloor.set(k, Object.assign({}, p));
-      else extras.push(Object.assign({}, p));
+      if (!byFloorQ.has(k)) byFloorQ.set(k, []);
+      byFloorQ.get(k).push(Object.assign({}, p));
     } else if (has(p.stair) || has(p.bar)) extras.push(Object.assign({}, p));
   });
   const next = wanted.map(f => {
     const k = String(f).trim().toUpperCase();
-    const prev = byFloor.get(k);
-    if (prev) { byFloor.delete(k); return Object.assign({}, prev, { floor: f }); }
+    const q = byFloorQ.get(k);
+    if (q && q.length) { const prev = q.shift(); return Object.assign({}, prev, { floor: f }); }
     return { floor: f };
   });
-  byFloor.forEach(p => next.push(p));
+  byFloorQ.forEach(q => q.forEach(p => next.push(p)));
   extras.forEach(p => next.push(p));
   const slim = next.slice(0, 60); /* v0.6.478：左中右各 20 */
   const same = slim.length === old.length && slim.every((p, i) => {
@@ -2771,7 +2794,7 @@ function stepC2(r, k) {
 /* ----- step: TR-H2 ----- */
 function stepH2(r) {
   if (typeof h2ZoneFloorSync === 'function') h2ZoneFloorSync(r);
-  else if (typeof h2ParityFloorSync === 'function') h2ParityFloorSync(r);
+  if (typeof h2ParityFloorSync === 'function') h2ParityFloorSync(r);
   const zones = r.h2.zones && r.h2.zones.length ? r.h2.zones : [{}];
   const pump = (base, d, n) => `<div class="sub"><h4>${n}號泵（開泵）</h4><div class="opth" data-optfor="${base}.p${n}_static"></div><div class="g3">${numField(`${base}.p${n}_static`, d[`p${n}_static`], 'bar', '死磅', true)}${numField(`${base}.p${n}_run`, d[`p${n}_run`], 'bar', '行泵', true)}${numField(`${base}.p${n}_flow`, d[`p${n}_flow`], 'l/s', 'Flow')}</div></div>`;
   const outlet = (zi, o, d) => { const base = `h2.zones.${zi}.${o}`; return `<div class="sub" style="background:#fff"><h4>${o === 'top' ? '⬆ 最高出水位 Topmost' : '⬇ 最低出水位 Lowest'}</h4>
@@ -2786,7 +2809,7 @@ function stepH2(r) {
   ${zones.map((z, zi) => { z = z || {}; return `<div class="card"><h3>Zone ${zi + 1}</h3><div class="g2">${txtField(`h2.zones.${zi}.from`, z.from, 'Zone 由（樓）', '例：G/F')}${txtField(`h2.zones.${zi}.to`, z.to, '至（樓）', '例：12/F')}</div>${outlet(zi, 'top', z.top || {})}${outlet(zi, 'low', z.low || {})}</div>`; }).join('')}
   <div class="row">${zones.length < 5 ? `<button class="btn" data-act="zone" data-d="1">＋ 加 Zone ${zones.length + 1}</button>` : ''}${zones.length > 1 ? `<button class="btn danger" data-act="zone" data-d="-1">− 刪 Zone ${zones.length}</button>` : ''}</div>
   <div class="card"><h3>Part B：Parity valve 出水口壓力</h3>
-  <div class="mut">幾樓由／至（問卷 Part B／呢度填；由→至會逐層連住高→低；逗號多個樓＝只收已填；唔跟 Zone 由／至）</div>
+  <div class="mut">幾樓由／至（問卷 Part B／呢度填；由→至會逐層連住高→低；逗號多個樓＝只收已填；多個範圍各自展開後串落左→中→右，可重複樓；唔跟 Zone 由／至）</div>
   ${pbr.map((rg, i) => { rg = rg || {}; return `<div class="g2" style="align-items:end;margin-top:6px">${txtField(`h2.pbRanges.${i}.from`, rg.from, i ? `範圍 ${i + 1} 由` : '幾樓由', '例：12/F 或 12/F,8/F,G/F')}${txtField(`h2.pbRanges.${i}.to`, rg.to, i ? `範圍 ${i + 1} 至` : '幾樓至（可空）', '例：G/F')}</div>`; }).join('')}
   <div class="row" style="margin-top:6px"><button class="btn sm" data-act="pbrange" data-d="1">＋ 加範圍</button>${pbr.length > 1 ? `<button class="btn sm danger" data-act="pbrange" data-d="-1">− 刪最後範圍</button>` : ''}</div>
   <div class="mut" style="margin-top:10px">展開後樓層／梯／bar → PDF 左→中→右各 20 格（同欄一齊行）；可改任何樓／梯／壓力</div>
@@ -4763,17 +4786,22 @@ function xFill(o) {
     if (side === 'top') { put(XS2, 'B' + (b + 2), xNum(d.np_bar)); put(XS2, 'D' + (b + 2), xNum(d.np_flow)); }
     else { const tk = [xNum(d.tk_static), xNum(d.tk_flow), xNum(d.tk_run)]; put(XS2, 'B' + (b + 6), tk.some(v => v !== null) ? '水缸直砸' : null);
       'EGI'.split('').forEach((c, i) => put(XS2, c + (b + 6), tk[i])); put(XS2, 'B' + (b + 2), tk[2]); put(XS2, 'D' + (b + 2), tk[1]); } }); });
-  /* v0.6.480／479／478：Part B 每欄 20——Floor AJ/AM/AP＋Stair AK/AN/AQ＋Bar AL/AO/AR 同步左→中→右；空 parity 時 pbRanges／H2_PB 由／至連住（逗號清單唔展開） */
+  /* v0.6.481／480／479／478：Part B 每欄 20——Floor AJ/AM/AP＋Stair AK/AN/AQ＋Bar AL/AO/AR；空 parity 時 pbRanges 每段 append（可重複樓）／H2_PB 連住 */
   let parityList = (h2.parity || []).slice();
   if (!parityList.some(p => p && (p.floor || p.stair || p.bar)) && typeof floorExpandRange === 'function') {
-    const seen = new Set(); const floors = [];
-    const addF = (f) => { const k = String(f).toUpperCase(); if (seen.has(k)) return; seen.add(k); floors.push({ floor: f }); };
+    const floors = [];
+    const addRange = (fr, to) => {
+      const local = new Set();
+      floorExpandRange(fr, to).forEach(f => {
+        const k = String(f).toUpperCase(); if (!k || local.has(k)) return; local.add(k); floors.push({ floor: f });
+      });
+    };
     const ranges = (h2.pbRanges && h2.pbRanges.length) ? h2.pbRanges : [];
-    ranges.forEach(rg => { rg = rg || {}; floorExpandRange(rg.from, rg.to).forEach(addF); });
+    ranges.forEach(rg => { rg = rg || {}; addRange(rg.from, rg.to); });
     if (!floors.length) {
       const pf0 = (qq.H2_PB_FROM && (qq.H2_PB_FROM.a || qq.H2_PB_FROM)) || '';
       const pt0 = (qq.H2_PB_TO && (qq.H2_PB_TO.a || qq.H2_PB_TO)) || '';
-      floorExpandRange(typeof pf0 === 'object' ? '' : pf0, typeof pt0 === 'object' ? '' : pt0).forEach(addF);
+      addRange(typeof pf0 === 'object' ? '' : pf0, typeof pt0 === 'object' ? '' : pt0);
     }
     if (floors.length) parityList = floors;
   }
@@ -5090,7 +5118,7 @@ function xBorder(ctx, b, x1, y1, x2, y2) {
 async function xImg(src) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
 const XIMG = {};
 /* v0.6.469：TR-H2 跟標書 PSA/C/22–23 空白頁＋數值 overlay（唔再用 LYK Excel 版面） */
-/* v0.6.480：由／至連住；v0.6.479：LMR UI；v0.6.478：各 20；v0.6.476：H2_PB；v0.6.475：revert Zone；v0.6.473：LYK／no C */
+/* v0.6.481：範圍 append／可重複樓；v0.6.480：由／至連住；v0.6.479：LMR UI；v0.6.478：各 20；v0.6.476：H2_PB；v0.6.475：revert Zone；v0.6.473：LYK／no C */
 let _H2VM = null, _H2VM_P = null, _H2BLANK = {};
 async function xH2Valuemap() {
   if (_H2VM) return _H2VM;
