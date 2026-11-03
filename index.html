@@ -691,11 +691,12 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.486';
+const APP_VERSION = '0.6.487';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.485：扶錄3／fhhr 附錄III消防中途泵——一次過清晒 A3.*／AIII／§3 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiiV；墓碑上雲；唔擦其他教） */
 /* v0.6.486：fhhr 表一（第6頁）地址／大廈名稱 ← estate／block 自動疊（FSD_T1_OV.page/addr/bldg.fhhr；base.fhhr:{}） */
+/* v0.6.487：TR-H2／G2 tender（xH2TenderPages）強制 Arial 打字疊，唔用 xHw 手寫 */
 /* v0.6.484：扶錄2／fhhr 附錄II固定消防泵——一次過清晒 A2.*／AII／§2 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiV；墓碑上雲；唔擦其他教） */
 /* v0.6.483：fhhr tickmaps 10.f 校正（PDF 第5頁＝maps page4；原 y=83.53 落喺「是／否／不適用」欄頭，框喺 y≈101.6；NA 原 synth x=465.7 偏右） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
@@ -5342,18 +5343,10 @@ async function xH2TenderPages(S, B, extra) { /* → [{canvas, land}]；H2-1／H2
     const c = cells[ref]; if (!c) return;
     const cx = c.x * cvW, cy = c.y * cvH;
     const maxW = (c.w || 0.07) * cvW;
-    /* center text in cell */
+    /* center text in cell；v0.6.487：TR-H2／G2 tender 強制打字（唔行手寫 xHw） */
     ctx.save();
-    if (typeof XHW_OK !== 'undefined' && XHW_OK && typeof xHwText === 'function') {
-      ctx.font = fs + 'px "' + XF_HW_CJK + '", "' + XF_HW_LAT + '"';
-      const tw = ctx.measureText(t).width;
-      const x0 = cx - Math.min(tw, maxW) / 2;
-      const y0 = cy + fs * 0.35;
-      xHwText(ctx, t, x0, y0, fs, xHwSeed(S.n + ':' + ref), maxW);
-    } else {
-      ctx.font = fs + 'px Arial, sans-serif'; ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(t, cx, cy, maxW);
-    }
+    ctx.font = fs + 'px Arial, sans-serif'; ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(t, cx, cy, maxW);
     ctx.restore();
   });
   const pg = { cv, land: false, sheet: S.n, sub: '' };
