@@ -691,14 +691,14 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.471';
+const APP_VERSION = '0.6.472';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
 /* v0.6.470：TR-H2 預設 0 全清（blank not 0）；Riser 1／2 唔預填（blank PNG＋sticky C 清） */
-/* v0.6.471：Zone 由（樓）→ top outlet floor；至（樓）→ low outlet floor（全部 Zone） */
+/* v0.6.472：Zone 梯→H2-1／G2-1 C Riser／Stair No.（清 sticky 1／2；valuemap C）；v0.6.471：Zone 由（樓）→ top outlet floor；至（樓）→ low outlet floor（全部 Zone） */
 /* v0.6.469：TR-H2／H2-1／H2-2 live＋export 改用標書 PSA/C/22–23 blank＋valuemap overlay（Part A／B；唔再用 LYK Excel 版面） */
 /* v0.6.468：Q_HARD_CL H1|b1／b2／c←FH_HOSE「有冇消防喉轆？」（有＝✓、冇＝NA、未答空白；t1170u） */ /* v0.6.467：T6 下加「有冇龍頭」FS_HYDRANT（t1169u；dep T6＝有；qGlueUnder T6；無新 CL map） */ /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
 /* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.18–0.29 隨機（t1163u／t1165u；原 462＝0.18–0.29） */
@@ -4594,6 +4594,7 @@ function xFill(o) {
   const h2 = rd.tr_h2 || {};
   (h2.zones || []).slice(0, 5).forEach((z, zi) => { z = z || {}; ['top', 'low'].forEach((side, oi) => { const d = z[side] || {}, b = 43 + 16 * zi + 8 * oi;
     put(XS2, 'B' + b, d.floor || (side === 'top' ? z.from : z.to) || null); put(XS2, 'D' + b, d.stair || null); put(XS2, 'B' + (b + 1), z.from || null); put(XS2, 'E' + (b + 1), z.to || null); /* v0.6.471：由→top floor、至→low floor */
+    /* v0.6.472：梯 → H2-1／G2-1 Riser／Stair No.（C）；清 sticky 1／2；兩行同一 stair */ const c0 = 13 + 8 * zi + 4 * oi, st = d.stair || null; ['H2-1', 'G2-1(半年檢)'].forEach(sh => { put(sh, 'C' + c0, st); put(sh, 'C' + (c0 + 1), st); });
     [[1, b + 4], [2, b + 5]].forEach(([n, rr]) => { const vals = [xNum(d[`p${n}_static`]), xNum(d[`p${n}_flow`]), xNum(d[`p${n}_run`])];
       put(XS2, 'B' + rr, vals.some(v => v !== null) ? n + '#' : null); 'EGI'.split('').forEach((c, i) => put(XS2, c + rr, vals[i])); });
     if (side === 'top') { put(XS2, 'B' + (b + 2), xNum(d.np_bar)); put(XS2, 'D' + (b + 2), xNum(d.np_flow)); }
