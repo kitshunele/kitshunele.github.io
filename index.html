@@ -691,9 +691,10 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.484';
+const APP_VERSION = '0.6.485';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
+/* v0.6.485：扶錄3／fhhr 附錄III消防中途泵——一次過清晒 A3.*／AIII／§3 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiiV；墓碑上雲；唔擦其他教） */
 /* v0.6.484：扶錄2／fhhr 附錄II固定消防泵——一次過清晒 A2.*／AII／§2 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiV；墓碑上雲；唔擦其他教） */
 /* v0.6.483：fhhr tickmaps 10.f 校正（PDF 第5頁＝maps page4；原 y=83.53 落喺「是／否／不適用」欄頭，框喺 y≈101.6；NA 原 synth x=465.7 偏右） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
@@ -3116,6 +3117,88 @@ function qTeachPurgeFhhrAii() {
   Store.prefs.qTeachPurgeFhhrAii = {
     at: purgeAt,
     policy: '0.6.484 drop fhhr 附錄II／A2.*／§2 teach (+ applied default ticks / skips); keep other teaches',
+    dropped: dropped,
+    keysTouched: keysTouched,
+    clearedAns: clearedAns,
+    clearedSkip: clearedSkip,
+    sample: droppedSample
+  };
+  try { Store.saveSoon(); } catch (e) {}
+  try { if (typeof qTeachCloudOnLocalChange === 'function') qTeachCloudOnLocalChange(true); } catch (e1) {}
+  return { skipped: false, dropped: dropped, keysTouched: keysTouched, clearedAns: clearedAns, clearedSkip: clearedSkip, sample: droppedSample };
+}
+/* v0.6.485：一次過取消扶錄3／附錄 III「消防中途泵裝置」底下全部已教對應（含 skip）；唔擦其他系統／其他附錄。prefs.qTeachPurgeFhhrAiiiV 記已跑；墓碑上雲。 */
+function qTeachIsFhhrBoosterIk(ik) {
+  if (ik == null || ik === '') return false;
+  const s = String(ik);
+  const sid = (typeof qTeachParseSkipIk === 'function') ? qTeachParseSkipIk(s) : null;
+  const id = sid != null ? String(sid) : s;
+  /* 附錄 III 本體、A3.* 項目／小節、§3「消防中途泵裝置」跳過 */
+  if (id === 'AIII' || id === '3') return true;
+  if (id === 'A3' || id.indexOf('A3.') === 0) return true;
+  return false;
+}
+function qTeachIsFhhrBoosterEntry(e) {
+  return !!(e && e.key === 'fhhr' && qTeachIsFhhrBoosterIk(e.ik));
+}
+function qTeachPurgeFhhrAiii() {
+  if (!Store.prefs) Store.prefs = {};
+  const PV = '0.6.485';
+  if (Store.prefs.qTeachPurgeFhhrAiiiV === PV) {
+    const prev = Store.prefs.qTeachPurgeFhhrAiii || {};
+    return { skipped: true, dropped: prev.dropped || 0, keysTouched: prev.keysTouched || 0, clearedAns: prev.clearedAns || 0 };
+  }
+  const map = qTeachMapGet();
+  const next = Object.assign({}, map);
+  let dropped = 0, keysTouched = 0;
+  const droppedSample = [];
+  Object.keys(map).forEach(ka => {
+    const b = qTeachBucket(map[ka]);
+    if (b.items && !b.items.length && map[ka] && map[ka].del) return; /* 已墓碑 */
+    const keep = [], drop = [];
+    (b.items || []).forEach(e => {
+      if (qTeachIsFhhrBoosterEntry(e)) drop.push(e);
+      else keep.push(e);
+    });
+    if (!drop.length) return;
+    keysTouched++;
+    dropped += drop.length;
+    drop.slice(0, 12).forEach(e => {
+      if (droppedSample.length < 40) droppedSample.push(ka + '→' + e.key + '/' + e.ik + '=' + e.v);
+    });
+    const at = (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString();
+    if (!keep.length) next[ka] = { at: at, items: [], del: 1 };
+    else next[ka] = { at: at, items: keep.map(e => ({ key: e.key, ik: e.ik, v: e.v })) };
+  });
+  Store.prefs.qTeachMap = next;
+  /* 清開住紀錄入面由教／預設寫入嘅 A3／附錄 III 剔同 skip（保留 technician 手剔） */
+  let clearedAns = 0, clearedSkip = 0;
+  try {
+    (Store.recs || []).forEach(r => {
+      if (!r || !r.fsd || !r.fsd.fhhr) return;
+      const d = fsdRec(r, 'fhhr');
+      Object.keys(d.a || {}).forEach(ik => {
+        if (!qTeachIsFhhrBoosterIk(ik)) return;
+        const a = d.a[ik];
+        if (!a || a.by === 'technician') return;
+        delete a.v; delete a.by;
+        if (!(typeof has === 'function' ? has(a.note) : a.note)) delete d.a[ik];
+        else d.a[ik] = a;
+        clearedAns++;
+      });
+      Object.keys(d.skip || {}).forEach(sid => {
+        if (!qTeachIsFhhrBoosterIk(sid)) return;
+        /* skip 多數係教寫入；用戶自己剔 skip 亦取消（FAN：以下選擇過嘅全部取消） */
+        delete d.skip[sid];
+        clearedSkip++;
+      });
+    });
+  } catch (e0) {}
+  Store.prefs.qTeachPurgeFhhrAiiiV = PV;
+  const purgeAt = (typeof hkISO === 'function') ? hkISO(new Date()) : new Date().toISOString();
+  Store.prefs.qTeachPurgeFhhrAiii = {
+    at: purgeAt,
+    policy: '0.6.485 drop fhhr 附錄III／A3.*／§3 teach (+ applied default ticks / skips); keep other teaches',
     dropped: dropped,
     keysTouched: keysTouched,
     clearedAns: clearedAns,
@@ -17443,6 +17526,16 @@ async function importFile(f) {
       }
     }
   } catch (e2) {}
+  /* v0.6.485：扶錄3／附錄 III 消防中途泵——取消以下已教／預選 */
+  try {
+    if (typeof qTeachPurgeFhhrAiii === 'function') {
+      const pr3 = qTeachPurgeFhhrAiii();
+      if (pr3 && !pr3.skipped && (pr3.dropped || pr3.clearedAns || pr3.clearedSkip)) {
+        const n = (pr3.dropped || 0) + (pr3.clearedAns || 0) + (pr3.clearedSkip || 0);
+        setTimeout(() => { try { toast('已取消附錄III消防中途泵預選／教對應 ' + n + ' 項', 3200); } catch (e) {} }, 1300);
+      }
+    }
+  } catch (e3) {}
   await PhotoDB.open();
   try { if (typeof fsddBoot === 'function') fsddBoot(); } catch (e) {}
   if (navigator.storage && navigator.storage.persist) { try { navigator.storage.persist(); } catch (e) { } }
