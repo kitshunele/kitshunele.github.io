@@ -691,13 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.467';
+const APP_VERSION = '0.6.468';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
-/* v0.6.467：T6 下加「有冇龍頭」FS_HYDRANT（t1169u；dep T6＝有；qGlueUnder T6；無新 CL map） */ /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
+/* v0.6.468：Q_HARD_CL H1|b1／b2／c←FH_HOSE「有冇消防喉轆？」（有＝✓、冇＝NA、未答空白；t1170u） */ /* v0.6.467：T6 下加「有冇龍頭」FS_HYDRANT（t1169u；dep T6＝有；qGlueUnder T6；無新 CL map） */ /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
 /* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.18–0.29 隨機（t1163u／t1165u；原 462＝0.18–0.29） */
 /* v0.6.461：T12 電流錶→C1.r／s；T20→c／f／g／j／l；T13→d（t1159u） */
 /* v0.6.445：CL-L 編號剔改寫 I 欄（垂直對齊）＋殼升逼 have:''；v0.6.439：（f15b 只改 SW 名唔改 APP_VERSION → 手機唔重拉問答；FAN「問答唔見」）＋新 Drive app_data id */
@@ -1155,6 +1155,9 @@ const Q_HARD_CL = {
   'C1-1 FS Pump|r': { cell: 'T12', defaultNa: false }, /* v0.6.461：電流錶 → C1.r（t1159u） */
   'C1-1 FS Pump|s': { cell: 'T12', defaultNa: false }, /* v0.6.461：電流錶 → C1.s（t1159u） */
   'C1-1 FS Pump|d': { cell: 'T13', defaultNa: false }, /* v0.6.457：急停掣 → C1.d（t1155u） */
+  'H1|b1': { cell: 'FH_HOSE', defaultNa: false }, /* v0.6.468：有冇消防喉轆 → H1.b1（t1170u） */
+  'H1|b2': { cell: 'FH_HOSE', defaultNa: false }, /* v0.6.468：有冇消防喉轆 → H1.b2（t1170u） */
+  'H1|c':  { cell: 'FH_HOSE', defaultNa: false }, /* v0.6.468：有冇消防喉轆 → H1.c（t1170u） */
 };
 function qHardSpec(it) {
   if (!it || !it.sheet || !it.id) return null;
@@ -1271,7 +1274,7 @@ function itemMode(r, it) {
   if (it.annual_only && isHalf(r)) return 'autona'; // v0.4.8／0.6.240 半年檢：CL-E *k–*n／CL-D *g–*h（REW）只限年檢 → 隱藏、記 NA
   /* v0.6.359：取消問卷驅動自動 NA（na_any／na_if／na_lt／na_unless）；空白直至師傅揀。保留冇花灑水缸結構隱藏 */
   if (it.na_unless && (NOTANK_Q.includes(it.na_unless) || it.na_unless in NOTANK_IMP) && noSprTank(r)) return 'autona'; /* v0.4.9：冇花灑水缸 → 花灑泵題目已隱藏 */
-  { const hs = qHardSpec(it); /* v0.6.393／394／407／409／410／457–461：E／D＋C1-1 FS Pump c／d／f／g／j／l／r／s */
+  { const hs = qHardSpec(it); /* v0.6.393／394／407／409／410／457–461／468：E／D＋C1-1 FS Pump c／d／f／g／j／l／r／s＋H1 b1／b2／c←FH_HOSE */
     if (hs) {
       if (hs.mode === 'gt0') { if (qHardGt0(r, hs) === 'no') return 'autona'; }
       else if (hs.mode === 'yn_any') { if (qHardYnAny(r, hs) === 'no') return 'autona'; }
