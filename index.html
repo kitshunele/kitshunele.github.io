@@ -699,7 +699,7 @@ const APP_VERSION = '0.6.490';
 /* v0.6.487：TR-H2／G2 tender（xH2TenderPages）強制 Arial 打字疊，唔用 xHw 手寫 */
 /* v0.6.488：fhhr 表一第6頁下（zones 由／至／梯／供水讀數）→ TR-H2 對應格；流量 L/min→l/s */
 /* v0.6.489：fhhr 表一第6頁 PDF 疊 編號1／2＋消防栓區域由／至＋經測試＿樓＋樓梯編號 ← TR-H2 Zone（試水樓層／梯）；H2↔fhhr floor／stair bridge */
-/* v0.6.490：樓梯編號 PDF 疊橫線中（stair x→200＋putC）；T8 Inlet ON/OFF＝有→bst1＋bst2、冇→fix1＋fix2；H2→供水來源數值：流量←flow、壓力←行泵、零流量壓力←死磅（l/s→L/min×60；只空先填） */
+/* v0.6.490：樓梯編號 PDF 疊橫線中（stair x→200＋putC）；T8 Inlet ON/OFF＝有→bst1＋bst2、冇→fix1＋fix2；H2→供水來源：流量←flow、壓力←行泵、零流量壓力←死磅（l/s→L/min×60）；符合規定：流量≥15且壓力≥3.5→是，否則→否 */
 /* v0.6.484：扶錄2／fhhr 附錄II固定消防泵——一次過清晒 A2.*／AII／§2 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiV；墓碑上雲；唔擦其他教） */
 /* v0.6.483：fhhr tickmaps 10.f 校正（PDF 第5頁＝maps page4；原 y=83.53 落喺「是／否／不適用」欄頭，框喺 y≈101.6；NA 原 synth x=465.7 偏右） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
@@ -1751,10 +1751,19 @@ function h2ZoneFloorLink(r, bind, v) {
     return;
   }
   m = /^fsd\.fhhr\.t\.zones\.(\d+)\.src\.(fix1|fix2|bst1|bst2|tank|jockey)\.(p0|p|flow)$/.exec(bind);
-  if (m) { h2ApplyFhhrSrc(r, +m[1], m[2], m[3], v, false); return; }
+  if (m) {
+    h2ApplyFhhrSrc(r, +m[1], m[2], m[3], v, false);
+    const fz = ((((r.fsd || {}).fhhr || {}).t || {}).zones || [])[+m[1]];
+    if (fz && typeof fhhrSrcOkFromReadings === 'function') fhhrSrcOkFromReadings(fz);
+    return;
+  }
   /* v0.6.490：H2 死磅／行泵／Flow → 表一 零流量壓力／壓力／流量 */
   m = /^h2\.zones\.(\d+)\.(top|low)\.(p[12]_(?:static|run|flow)|tk_(?:static|run|flow)|np_(?:bar|flow))$/.exec(bind);
-  if (m && typeof fhhrApplyH2Src === 'function') fhhrApplyH2Src(r, +m[1], true);
+  if (m && typeof fhhrApplyH2Src === 'function') {
+    fhhrApplyH2Src(r, +m[1], true);
+    const fz = ((((r.fsd || {}).fhhr || {}).t || {}).zones || [])[+m[1]];
+    if (fz && typeof fhhrSrcOkFromReadings === 'function') fhhrSrcOkFromReadings(fz);
+  }
 }
 function h2ZoneFloorSync(r) { /* 已有由／至但 top／low.floor 空 → 補；唔蓋師傅手改過嘅 floor（只空先填）；Part B 用 pbRanges 另 sync；v0.6.488 亦 sync stair／供水讀數；v0.6.489 H2↔fhhr 經測試＿樓／梯 */
   if (!r) return;
@@ -4071,7 +4080,8 @@ function fhhrSrcFromQ(r, z) {
   const clearBare = (k) => {
     const o = src[k];
     if (!o || o.on === '') return;
-    if (o.on && !has(o.flow) && !has(o.p) && !has(o.p0) && !has(o.ok) && !has(o.note)) delete o.on;
+    /* ok 由流量／壓力自動套 → 唔擋清；清走時一併丟 ok */
+    if (o.on && !has(o.flow) && !has(o.p) && !has(o.p0) && !has(o.note)) { delete o.on; delete o.ok; }
   };
   if (r.q.T8 === '有') {
     touch('bst1'); touch('bst2');
@@ -4081,11 +4091,26 @@ function fhhrSrcFromQ(r, z) {
     clearBare('bst1'); clearBare('bst2');
   }
 }
+function fhhrSrcOkFromReadings(z) {
+  /* v0.6.490：符合消防處的規定——流量≥15 且 壓力≥3.5 → 是；否則 → 否
+     要齊流量＋壓力先套；jockey 等缺一就唔郁。每次跟讀數重算（規定跟數）。 */
+  if (!z) return;
+  const src = z.src || {};
+  Object.keys(src).forEach(k => {
+    const o = src[k];
+    if (!o || !o.on) return;
+    if (!has(o.flow) || !has(o.p)) return;
+    const fl = Number(o.flow), pr = Number(o.p);
+    if (Number.isNaN(fl) || Number.isNaN(pr)) return;
+    o.ok = (fl >= 15 && pr >= 3.5) ? '是' : '否';
+  });
+}
 function fhhrZonesSrcSync(r) {
   if (!r) return;
   const zs = ((((r.fsd || {}).fhhr || {}).t || {}).zones) || [];
   zs.forEach(z => { if (z) fhhrSrcFromQ(r, z); });
   zs.forEach((_, zi) => { if (typeof fhhrApplyH2Src === 'function') fhhrApplyH2Src(r, zi, true); });
+  zs.forEach(z => { if (z) fhhrSrcOkFromReadings(z); });
 }
 function sprCoverFloorsLink(r, bind, v) {
   /* v0.6.147：cover ↔ floors 兩向；改一邊即寫另一邊 */
@@ -4473,7 +4498,7 @@ function fsdTableHtml(r, c, s) {
           ${v.on ? `${k === 'jockey' ? '' : `<div class="opth" data-optfor="${sb}.flow"></div>`}<div class="g3">${k === 'jockey' ? '' : fNum(sb + '.flow', v.flow, '', '流量（升／分鐘）') + fNum(sb + '.p', v.p, '', '壓力（巴）')}${fNum(sb + '.p0', v.p0, '', '零流量壓力（巴）')}</div>
             <div class="fld"><label>符合消防處的規定</label>${seg(sb + '.ok', v.ok, [['是', '是', 'yes'], ['否', '否', 'bad']], `ft-${c.key}-z${i}-${k}`)}</div>${txtField(sb + '.note', v.note, '備註', '')}` : ''}</div>`; }).join('')}</div>`; }).join('')}
       <div class="row"><button class="btn sm" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="1">＋ 加消防栓區域</button>${zs.length ? `<button class="btn sm danger" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="-1">− 刪最後一個</button>` : ''}</div>
-      <div class="mut" style="margin-top:6px">讀數由師傅實測輸入（一個小數位）。App 唔會自動填任何數值。</div></div>`;
+      <div class="mut" style="margin-top:6px">讀數可由 TR-H2 帶入（流量←Flow、壓力←行泵、零流量壓力←死磅；一個小數位）。符合規定：流量≥15 且 壓力≥3.5 → 是，否則 → 否。</div></div>`;
   }
   if (s.table === 'tank_t1' || s.table === 'ws_t1') {
     const rows = (t.rows || []).map(x => x || {}), tk = s.table === 'tank_t1';
