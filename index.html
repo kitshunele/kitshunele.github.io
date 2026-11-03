@@ -691,14 +691,14 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.474';
+const APP_VERSION = '0.6.475';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
 /* v0.6.441：fds tickmaps §8.a／b／c 校正（PDF 第18頁＝maps page17；7.7.k 搬走後 8.a 無 hit；maps 各下移一行＋8.c synth 鬼位） */
 /* v0.6.440：fds tickmaps 7.7.i／j／k 校正（PDF 第17頁＝maps page16；i 原錯落喺 j、j→k、k 錯頁到 §8） */
 /* v0.6.470：TR-H2 預設 0 全清（blank not 0）；Riser 1／2 唔預填（blank PNG＋sticky C 清） */
-/* v0.6.474：Part B Zone 由／至→parity.floor 由上至下（欄優先 AJ→AM→AP）；v0.6.473：H2 tender LYK logo＋拎走 APPENDIX C／Page N/2；v0.6.472：Zone 梯→H2-1／G2-1 C；v0.6.471：Zone 由→top／至→low floor */
+/* v0.6.475：revert 0.6.474 Part B floorExpand／parity top-down（返 0.6.473 Part B）；keep LYK／no C page／blank／Part A from→top／梯→C */
 /* v0.6.469：TR-H2／H2-1／H2-2 live＋export 改用標書 PSA/C/22–23 blank＋valuemap overlay（Part A／B；唔再用 LYK Excel 版面） */
 /* v0.6.468：Q_HARD_CL H1|b1／b2／c←FH_HOSE「有冇消防喉轆？」（有＝✓、冇＝NA、未答空白；t1170u） */ /* v0.6.467：T6 下加「有冇龍頭」FS_HYDRANT（t1169u；dep T6＝有；qGlueUnder T6；無新 CL map） */ /* v0.6.463：T6 有冇消防龍頭泵＝有 → 開／顯示頂頭消防處·栓轆（F6∥T6；live gate）（t1162u） */
 /* v0.6.462：TR-C2 Earth loop 兩位小數＋Pass 空白→0.18–0.29 隨機（t1163u／t1165u；原 462＝0.18–0.29） */
@@ -1397,84 +1397,6 @@ function paintOpt(r) { // 灰色提示 + 即時更新標紅
 const H2_TOP = ['floor', 'stair', 'p1_static', 'p1_run', 'p1_flow', 'np_bar', 'np_flow'];
 const H2_LOW = ['floor', 'stair', 'p1_static', 'p1_run', 'p1_flow', 'tk_run', 'tk_flow'];
 /* v0.6.471：問答 Zone 由／至 → H2 Part A top／low outlet Floor Level（全部 Zone） */
-/* v0.6.474：Zone 由／至 → Part B parity.floor（高→低／由上至下）；同 0.6.471 Part A from→top／to→low 精神 */
-function floorRankBase(base) {
-  if (!base) return null;
-  const t = String(base).toUpperCase();
-  if (t === 'UR') return 10001;
-  if (t === 'R') return 10000;
-  if (/^M(\d?)$/.test(t)) return 9000 + (+RegExp.$1 || 0);
-  if (/^\d+$/.test(t)) return +t;
-  if (t === 'G') return 0;
-  if (t === 'LG') return -1;
-  if (t === 'UG') return -2;
-  if (/^P(\d?)$/.test(t)) return -20 - (+RegExp.$1 || 0);
-  if (/^B(\d+)$/.test(t)) return -100 - +RegExp.$1;
-  return null;
-}
-function floorExpandRange(from, to) { /* 幾樓至幾樓 → 樓層列表（上→下）；唔識逐步就只出兩端 */
-  const a = has(from) ? floorTok(String(from).trim()) : null;
-  const b = has(to) ? floorTok(String(to).trim()) : null;
-  if (!a && !b) return [];
-  if (a && !b) return [a];
-  if (!a && b) return [b];
-  if (a === b) return [a];
-  const ba = a.replace(/\/F$/i, ''), bb = b.replace(/\/F$/i, '');
-  const ra = floorRankBase(ba), rb = floorRankBase(bb);
-  if (ra == null || rb == null) return [a, b];
-  const hi = Math.max(ra, rb), lo = Math.min(ra, rb);
-  const labelOf = (rk) => {
-    if (rk >= 1 && rk === (rk | 0) && rk <= 200) return rk + '/F';
-    if (rk === 0) return 'G/F';
-    if (rk === -1) return 'LG/F';
-    if (rk === -2) return 'UG/F';
-    if (rk <= -101 && rk >= -199) return 'B' + (-100 - rk) + '/F';
-    if (rk === 10000) return 'R/F';
-    if (rk === 10001) return 'UR/F';
-    return null;
-  };
-  /* 只喺整段 rank 都識標籤先逐步（例如 12→G＝12…1,G）；唔識就高／低兩端 */
-  const out = [];
-  for (let rk = hi; rk >= lo; rk--) {
-    const lab = labelOf(rk);
-    if (!lab) return ra >= rb ? [a, b] : [b, a];
-    out.push(lab);
-  }
-  return out.length ? out : (ra >= rb ? [a, b] : [b, a]);
-}
-function h2ParityFloorSync(r) { /* Zone 由／至展開 → parity.floor 由上至下；保留同樓 stair／bar；額外手填行留尾 */
-  if (!r) return;
-  if (!r.h2) r.h2 = {};
-  const zones = r.h2.zones || [];
-  const wanted = []; const seen = new Set();
-  const add = (f) => { const k = String(f || '').trim().toUpperCase(); if (!k || seen.has(k)) return; seen.add(k); wanted.push(f); };
-  zones.forEach(z => { z = z || {}; if (!has(z.from) && !has(z.to)) return; floorExpandRange(z.from, z.to).forEach(add); });
-  if (!wanted.length) return;
-  const old = r.h2.parity || [];
-  const byFloor = new Map(); const extras = [];
-  old.forEach(p => {
-    p = p || {};
-    if (has(p.floor)) {
-      const k = String(p.floor).trim().toUpperCase();
-      if (!byFloor.has(k)) byFloor.set(k, Object.assign({}, p));
-      else extras.push(Object.assign({}, p));
-    } else if (has(p.stair) || has(p.bar)) extras.push(Object.assign({}, p));
-  });
-  const next = wanted.map(f => {
-    const k = String(f).trim().toUpperCase();
-    const prev = byFloor.get(k);
-    if (prev) { byFloor.delete(k); return Object.assign({}, prev, { floor: f }); }
-    return { floor: f };
-  });
-  byFloor.forEach(p => next.push(p));
-  extras.forEach(p => next.push(p));
-  const slim = next.slice(0, 126);
-  const same = slim.length === old.length && slim.every((p, i) => {
-    const o = old[i] || {};
-    return String(p.floor || '') === String(o.floor || '') && String(p.stair || '') === String(o.stair || '') && String(p.bar ?? '') === String(o.bar ?? '');
-  });
-  if (!same) r.h2.parity = slim;
-}
 function h2ZoneFloorLink(r, bind, v) {
   if (!r || !bind) return;
   const paint = (zi, side, val) => {
@@ -1485,31 +1407,19 @@ function h2ZoneFloorLink(r, bind, v) {
     const el = document.querySelector(`input[data-bind="h2.zones.${zi}.${side}.floor"]`);
     if (el && el !== document.activeElement) { el.value = val == null ? '' : String(val); el.classList.toggle('filled', !!el.value); }
   };
-  let touched = false;
   let m = /^h2\.zones\.(\d+)\.(from|to)$/.exec(bind);
-  if (m) { paint(+m[1], m[2] === 'from' ? 'top' : 'low', v); touched = true; }
-  else {
-    m = /^fsd\.fhhr\.t\.zones\.(\d+)\.(from|to)$/.exec(bind);
-    if (m) {
-      const zi = +m[1], side = m[2] === 'from' ? 'top' : 'low';
-      const hz = (r.h2.zones || (r.h2.zones = []));
-      while (hz.length <= zi) hz.push({});
-      const z = hz[zi] || (hz[zi] = {});
-      if (m[2] === 'from') z.from = v; else z.to = v;
-      paint(zi, side, v);
-      touched = true;
-    }
-  }
-  if (touched) {
-    const before = JSON.stringify((r.h2.parity || []).map(p => [p && p.floor, p && p.stair, p && p.bar]));
-    h2ParityFloorSync(r);
-    const after = JSON.stringify((r.h2.parity || []).map(p => [p && p.floor, p && p.stair, p && p.bar]));
-    if (before !== after && typeof render === 'function' && typeof cur !== 'undefined' && (cur.step === 'TR-H2' || cur.step === 'TR-G2')) {
-      try { render(); } catch (e) {}
-    }
+  if (m) { paint(+m[1], m[2] === 'from' ? 'top' : 'low', v); return; }
+  m = /^fsd\.fhhr\.t\.zones\.(\d+)\.(from|to)$/.exec(bind);
+  if (m) {
+    const zi = +m[1], side = m[2] === 'from' ? 'top' : 'low';
+    const hz = (r.h2.zones || (r.h2.zones = []));
+    while (hz.length <= zi) hz.push({});
+    const z = hz[zi] || (hz[zi] = {});
+    if (m[2] === 'from') z.from = v; else z.to = v;
+    paint(zi, side, v);
   }
 }
-function h2ZoneFloorSync(r) { /* 已有由／至但 top／low.floor 空 → 補；唔蓋師傅手改過嘅 floor（只空先填）；再展開 Part B floors */
+function h2ZoneFloorSync(r) { /* 已有由／至但 top／low.floor 空 → 補；唔蓋師傅手改過嘅 floor（只空先填） */
   if (!r) return;
   if (!r.h2) r.h2 = {};
   const zones = r.h2.zones || (r.h2.zones = []);
@@ -1527,7 +1437,6 @@ function h2ZoneFloorSync(r) { /* 已有由／至但 top／low.floor 空 → 補�
     if (has(fz0.from)) { if (!has(z.from)) z.from = fz0.from; const d = z.top || (z.top = {}); if (!has(d.floor)) d.floor = fz0.from; }
     if (has(fz0.to)) { if (!has(z.to)) z.to = fz0.to; const d = z.low || (z.low = {}); if (!has(d.floor)) d.floor = fz0.to; }
   });
-  h2ParityFloorSync(r);
 }
 function h2Need(r) { let done = 0, total = 0; const M = optMap(r); (r.h2.zones || []).forEach((z, zi) => { z = z || {}; for (const [o, ks] of [['top', H2_TOP], ['low', H2_LOW]]) { const d = z[o] || {}; ks.forEach(k => { if (!has(d[k]) && M.has(`h2.zones.${zi}.${o}.${k}`)) return; total++; if (has(d[k])) done++; }); } }); return { done, total }; }
 
@@ -2733,7 +2642,7 @@ function stepH2(r) {
   <div class="hint">${isHalf(r) ? '<b>TR-G2（半年檢，範本 G2-1／G2-2(半年檢)）</b>：同年檢 TR-H2 用同一組讀數格。' : 'TR-H2：'}壓力用 <b>bar</b> 輸入（一個小數位），Excel 會自動 ×100 變 kPa；Flow 用 l/s。房署表 Riser/Stair 預印 1／2（兩行）；App「1號泵／2號泵」對應嗰兩行讀數，第 2 行冇做可以留空。</div>
   ${zones.map((z, zi) => { z = z || {}; return `<div class="card"><h3>Zone ${zi + 1}</h3><div class="g2">${txtField(`h2.zones.${zi}.from`, z.from, 'Zone 由（樓）', '例：G/F')}${txtField(`h2.zones.${zi}.to`, z.to, '至（樓）', '例：12/F')}</div>${outlet(zi, 'top', z.top || {})}${outlet(zi, 'low', z.low || {})}</div>`; }).join('')}
   <div class="row">${zones.length < 5 ? `<button class="btn" data-act="zone" data-d="1">＋ 加 Zone ${zones.length + 1}</button>` : ''}${zones.length > 1 ? `<button class="btn danger" data-act="zone" data-d="-1">− 刪 Zone ${zones.length}</button>` : ''}</div>
-  <div class="card"><h3>Part B：Parity valve 出水口壓力</h3><div class="mut">（如有）樓層／梯／bar · Zone 由／至會自動填樓層（由上至下）</div>
+  <div class="card"><h3>Part B：Parity valve 出水口壓力</h3><div class="mut">（如有）樓層／梯／bar</div>
   ${par.map((p, i) => { p = p || {}; return `<div class="g3" style="align-items:end">${txtField(`h2.parity.${i}.floor`, p.floor, '樓層', '')}${txtField(`h2.parity.${i}.stair`, p.stair, '梯', '')}${numField(`h2.parity.${i}.bar`, p.bar, 'bar', '壓力', true)}</div>`; }).join('')}
   <div class="row" style="margin-top:8px"><button class="btn sm" data-act="parity" data-d="1">＋ 加一個</button>${par.length ? `<button class="btn sm danger" data-act="parity" data-d="-1">− 刪最後一個</button>` : ''}</div></div>`;
 }
@@ -4691,18 +4600,8 @@ function xFill(o) {
     if (side === 'top') { put(XS2, 'B' + (b + 2), xNum(d.np_bar)); put(XS2, 'D' + (b + 2), xNum(d.np_flow)); }
     else { const tk = [xNum(d.tk_static), xNum(d.tk_flow), xNum(d.tk_run)]; put(XS2, 'B' + (b + 6), tk.some(v => v !== null) ? '水缸直砸' : null);
       'EGI'.split('').forEach((c, i) => put(XS2, c + (b + 6), tk[i])); put(XS2, 'B' + (b + 2), tk[2]); put(XS2, 'D' + (b + 2), tk[1]); } }); });
-  /* v0.6.474：Part B 欄優先由上至下（AJ 42 → AM 42 → AP 42）；空 parity 時由 Zone 由／至展開 */
-  let parityList = (h2.parity || []).slice();
-  if (!parityList.some(p => p && (p.floor || p.stair || p.bar)) && typeof floorExpandRange === 'function') {
-    const seen = new Set(); const floors = [];
-    (h2.zones || []).forEach(z => { z = z || {}; floorExpandRange(z.from, z.to).forEach(f => { const k = String(f).toUpperCase(); if (seen.has(k)) return; seen.add(k); floors.push({ floor: f }); }); });
-    if (floors.length) parityList = floors;
-  }
-  parityList.slice(0, 126).forEach((p, i) => {
-    const PER = 42, g = Math.floor(i / PER), row = 2 + (i % PER);
-    const cols = [['AJ', 'AK', 'AL'], ['AM', 'AN', 'AO'], ['AP', 'AQ', 'AR']][g] || ['AJ', 'AK', 'AL'];
-    put(XS2, cols[0] + row, p.floor || null); put(XS2, cols[1] + row, p.stair || null); put(XS2, cols[2] + row, xNum(p.bar));
-  });
+  (h2.parity || []).slice(0, 126).forEach((p, i) => { const row = 2 + Math.floor(i / 3), cols = [['AJ', 'AK', 'AL'], ['AM', 'AN', 'AO'], ['AP', 'AQ', 'AR']][i % 3];
+    put(XS2, cols[0] + row, p.floor || null); put(XS2, cols[1] + row, p.stair || null); put(XS2, cols[2] + row, xNum(p.bar)); });
   return { ov, blankOhm, pfMark, reasons, anyX, nm };
 }
 
@@ -5012,7 +4911,7 @@ function xBorder(ctx, b, x1, y1, x2, y2) {
 async function xImg(src) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
 const XIMG = {};
 /* v0.6.469：TR-H2 跟標書 PSA/C/22–23 空白頁＋數值 overlay（唔再用 LYK Excel 版面） */
-/* v0.6.474：Part B floor 欄優先上→下；v0.6.473：blank PNG LYK letterhead；拎走 APPENDIX C＋Page N/2 */
+/* v0.6.475：revert Part B expand；v0.6.473：blank PNG LYK letterhead；拎走 APPENDIX C＋Page N/2 */
 let _H2VM = null, _H2VM_P = null, _H2BLANK = {};
 async function xH2Valuemap() {
   if (_H2VM) return _H2VM;
