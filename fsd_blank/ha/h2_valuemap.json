@@ -1,5 +1,5 @@
 {
-  "v": 1,
+  "v": "0.6.473",
   "native": {
     "w": 1241,
     "h": 1754
@@ -1876,5 +1876,5 @@
       }
     }
   },
-  "note": "PSA/C/22–23 tender blank overlay; Excel cell refs → blank centers (A4@150dpi)"
+  "note": "PSA/C/22–23 tender blank overlay; Excel cell refs → blank centers (A4@150dpi) | 0.6.473: LYK letterhead on blanks; APPENDIX C + Page 1/2 & 2/2 removed from both pages"
 }
