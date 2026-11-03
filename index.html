@@ -691,12 +691,13 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.487';
+const APP_VERSION = '0.6.488';
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
 /* v0.6.443：fds 表一（PDF 第19頁＝maps page18）大廈名稱／地址 overlay Y 跟 blank 橫線（唔共用 FA 96／114） */
 /* v0.6.485：扶錄3／fhhr 附錄III消防中途泵——一次過清晒 A3.*／AIII／§3 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiiV；墓碑上雲；唔擦其他教） */
 /* v0.6.486：fhhr 表一（第6頁）地址／大廈名稱 ← estate／block 自動疊（FSD_T1_OV.page/addr/bldg.fhhr；base.fhhr:{}） */
 /* v0.6.487：TR-H2／G2 tender（xH2TenderPages）強制 Arial 打字疊，唔用 xHw 手寫 */
+/* v0.6.488：fhhr 表一第6頁下（zones 由／至／梯／供水讀數）→ TR-H2 對應格；流量 L/min→l/s */
 /* v0.6.484：扶錄2／fhhr 附錄II固定消防泵——一次過清晒 A2.*／AII／§2 已教 qTeachMap＋紀錄預選剔／skip（qTeachPurgeFhhrAiiV；墓碑上雲；唔擦其他教） */
 /* v0.6.483：fhhr tickmaps 10.f 校正（PDF 第5頁＝maps page4；原 y=83.53 落喺「是／否／不適用」欄頭，框喺 y≈101.6；NA 原 synth x=465.7 偏右） */
 /* v0.6.442：fds tickmaps 附錄I AI.h／i／j 校正（maps page19＝PDF p20；h 原缺 hit、maps 下移一行＋j synth 鬼位） */
@@ -1566,29 +1567,84 @@ function h2PbFloorLink(r, bind, v) { /* v0.6.482：q.H2_PB_* ↔ pbRanges[0]；p
     try { render(); } catch (e) {}
   }
 }
+/* v0.6.488：fhhr 表一（第6頁下）→ TR-H2；流量 升／分鐘→l/s（÷60，一位小數） */
+function fhhrFlowToLs(v) {
+  if (!has(v)) return '';
+  const n = Number(v);
+  if (Number.isNaN(n)) return v;
+  return Math.round((n / 60) * 10) / 10;
+}
+function h2PaintField(zi, side, key, val) {
+  const el = document.querySelector(`input[data-bind="h2.zones.${zi}.${side}.${key}"]`);
+  if (el && el !== document.activeElement) { el.value = val == null || val === '' ? '' : String(val); el.classList.toggle('filled', !!el.value); }
+}
+function h2EnsureZone(r, zi) {
+  if (!r.h2) r.h2 = {};
+  const hz = (r.h2.zones || (r.h2.zones = []));
+  while (hz.length <= zi) hz.push({});
+  return hz[zi] || (hz[zi] = {});
+}
+function h2ApplyFhhrSrc(r, zi, srcKey, field, raw, onlyEmpty) {
+  const z = h2EnsureZone(r, zi);
+  const put = (side, key, val) => {
+    const d = z[side] || (z[side] = {});
+    if (onlyEmpty && has(d[key])) return;
+    d[key] = val;
+    h2PaintField(zi, side, key, val);
+  };
+  const bar = has(raw) ? raw : '';
+  const flow = field === 'flow' ? fhhrFlowToLs(raw) : bar;
+  if (srcKey === 'fix1' || srcKey === 'bst1') {
+    const map = { p0: 'p1_static', p: 'p1_run', flow: 'p1_flow' };
+    const k = map[field]; if (!k) return;
+    const val = field === 'flow' ? flow : bar;
+    put('top', k, val); put('low', k, val);
+  } else if (srcKey === 'fix2' || srcKey === 'bst2') {
+    const map = { p0: 'p2_static', p: 'p2_run', flow: 'p2_flow' };
+    const k = map[field]; if (!k) return;
+    const val = field === 'flow' ? flow : bar;
+    put('top', k, val); put('low', k, val);
+  } else if (srcKey === 'tank') {
+    const map = { p0: 'tk_static', p: 'tk_run', flow: 'tk_flow' };
+    const k = map[field]; if (!k) return;
+    put('low', k, field === 'flow' ? flow : bar);
+  } else if (srcKey === 'jockey') {
+    if (field === 'p0') put('top', 'np_bar', bar);
+    else if (field === 'flow') put('top', 'np_flow', flow);
+  }
+}
 function h2ZoneFloorLink(r, bind, v) {
   if (!r || !bind) return;
-  const paint = (zi, side, val) => {
-    if (!r.h2) r.h2 = {};
-    const z = (r.h2.zones || (r.h2.zones = []))[zi] || (r.h2.zones[zi] = {});
+  const paintFloor = (zi, side, val) => {
+    const z = h2EnsureZone(r, zi);
     const d = z[side] || (z[side] = {});
     d.floor = val;
-    const el = document.querySelector(`input[data-bind="h2.zones.${zi}.${side}.floor"]`);
-    if (el && el !== document.activeElement) { el.value = val == null ? '' : String(val); el.classList.toggle('filled', !!el.value); }
+    h2PaintField(zi, side, 'floor', val);
   };
   let m = /^h2\.zones\.(\d+)\.(from|to)$/.exec(bind);
-  if (m) { paint(+m[1], m[2] === 'from' ? 'top' : 'low', v); return; }
+  if (m) { paintFloor(+m[1], m[2] === 'from' ? 'top' : 'low', v); return; }
   m = /^fsd\.fhhr\.t\.zones\.(\d+)\.(from|to)$/.exec(bind);
   if (m) {
     const zi = +m[1], side = m[2] === 'from' ? 'top' : 'low';
-    const hz = (r.h2.zones || (r.h2.zones = []));
-    while (hz.length <= zi) hz.push({});
-    const z = hz[zi] || (hz[zi] = {});
+    const z = h2EnsureZone(r, zi);
     if (m[2] === 'from') z.from = v; else z.to = v;
-    paint(zi, side, v);
+    paintFloor(zi, side, v);
+    return;
   }
+  m = /^fsd\.fhhr\.t\.zones\.(\d+)\.stair$/.exec(bind);
+  if (m) {
+    const zi = +m[1], z = h2EnsureZone(r, zi);
+    ['top', 'low'].forEach(side => {
+      const d = z[side] || (z[side] = {});
+      d.stair = v;
+      h2PaintField(zi, side, 'stair', v);
+    });
+    return;
+  }
+  m = /^fsd\.fhhr\.t\.zones\.(\d+)\.src\.(fix1|fix2|bst1|bst2|tank|jockey)\.(p0|p|flow)$/.exec(bind);
+  if (m) h2ApplyFhhrSrc(r, +m[1], m[2], m[3], v, false);
 }
-function h2ZoneFloorSync(r) { /* 已有由／至但 top／low.floor 空 → 補；唔蓋師傅手改過嘅 floor（只空先填）；Part B 用 pbRanges 另 sync */
+function h2ZoneFloorSync(r) { /* 已有由／至但 top／low.floor 空 → 補；唔蓋師傅手改過嘅 floor（只空先填）；Part B 用 pbRanges 另 sync；v0.6.488 亦 sync stair／供水讀數 */
   if (!r) return;
   if (!r.h2) r.h2 = {};
   const zones = r.h2.zones || (r.h2.zones = []);
@@ -1600,11 +1656,25 @@ function h2ZoneFloorSync(r) { /* 已有由／至但 top／low.floor 空 → 補�
   const fz = ((((r.fsd || {}).fhhr || {}).t || {}).zones) || [];
   fz.forEach((fz0, zi) => {
     fz0 = fz0 || {};
-    const hz = (r.h2.zones || (r.h2.zones = []));
-    while (hz.length <= zi) hz.push({});
-    const z = hz[zi] || (hz[zi] = {});
+    const z = h2EnsureZone(r, zi);
     if (has(fz0.from)) { if (!has(z.from)) z.from = fz0.from; const d = z.top || (z.top = {}); if (!has(d.floor)) d.floor = fz0.from; }
     if (has(fz0.to)) { if (!has(z.to)) z.to = fz0.to; const d = z.low || (z.low = {}); if (!has(d.floor)) d.floor = fz0.to; }
+    if (has(fz0.stair)) {
+      ['top', 'low'].forEach(side => {
+        const d = z[side] || (z[side] = {});
+        if (!has(d.stair)) d.stair = fz0.stair;
+      });
+    }
+    const src = fz0.src || {};
+    /* fix 先於 bst：onlyEmpty 時固定泵優先 */
+    ['fix1', 'fix2', 'tank', 'jockey', 'bst1', 'bst2'].forEach(sk => {
+      const s = src[sk] || {};
+      if (!s.on && !has(s.p0) && !has(s.p) && !has(s.flow)) return;
+      ['p0', 'p', 'flow'].forEach(fld => {
+        if (!has(s[fld])) return;
+        h2ApplyFhhrSrc(r, zi, sk, fld, s[fld], true);
+      });
+    });
   });
   h2ParityFloorSync(r);
 }
