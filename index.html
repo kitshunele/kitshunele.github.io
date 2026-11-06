@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.493';
+const APP_VERSION = '0.6.494';
+/* v0.6.494：待處理工作——只有 App「確認完成」先顯示「已完成」；Sheet 單獨已完成（未確認）當「未處理」，仍可撳確認 */
 /* v0.6.493：fhhr 表一（PDF第6頁＝maps page5）供水來源／是／否剔位對齊框（量度 bracket 中心 srcX333.8 yesX535.8 noX589.8；12 行 mid）＋流量／壓力／零流量／備註疊字 */
 /* v0.6.492：FAN 問達 T8 Inlet有冇開泵ON/OFF → 表一供水來源即時預剔（答 T8 即 sync） */
 /* v0.6.444：fds 表一（PDF 第19頁）行內容 base Y 按表分開（FDS ≈FA+23–24pt；443 只修咗地址／大廈名） */
@@ -11101,7 +11102,7 @@ const PW_ST = ['未處理', '跟進中', '已完成', '暫停 (Hold)'];
 const PW_CLS = { '未處理': 'pwa', '跟進中': 'pwb', '已完成': 'pwc', '暫停 (Hold)': 'pwh' };
 /* v0.6.13.2 FAN：待處理工作頁唔要公司 logo／公司名（PW_LOGO 已刪） */
 let PW = { loading: false, err: '', errCode: '', live: false, st: '', q: '', open: {}, est: '', house: '', cfOld: false, cfErr: '', cfBusy: false, srv: '', liveAt: 0 };
-const PW_CF_OK = ['未處理', '跟進中', '暫停 (Hold)']; /* 原表已完成嘅唔使確認 */
+const PW_CF_OK = ['未處理', '跟進中', '暫停 (Hold)']; /* v0.6.494：Sheet 已完成但未 App 確認會先當未處理，呢度先出「確認完成」 */
 const pwVerGE = (a, b) => { const x = String(a || '0').split('.').map(n => parseInt(n, 10) || 0), y = String(b).split('.').map(n => parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return true; }; /* 版本逐段比較：1.10 > 1.9 */
 const pwSrvUn = () => !PW.srv || pwVerGE(PW.srv, '1.8'); /* 未知 → 照試，bad_action 先當舊版 */
@@ -11161,8 +11162,17 @@ function pwCfPut(list, replace) { /* 每個項目只留最新一次確認 */
   (list || []).forEach(r => { if (r && r.item_id && (r.status === '已完成' || r.status === '已取消') && (!m[r.item_id] || String(r.completed_hkt) >= String(m[r.item_id].completed_hkt))) m[r.item_id] = r; });
   try { localStorage.setItem(LS_PWCF, JSON.stringify({ url: upCfg().url, at: new Date().toISOString(), items: m })); } catch (e) {}
 }
+/* v0.6.494：Sheet 狀態「已完成／完成／已完／done／closed」唔等於 App 已確認。未確認 → 顯示「未處理」（留喺待處理，可再確認）。 */
+const PW_SHEET_DONE = /^(已完成|完成|已完|done|closed)$/i;
+const pwSheetDone = s => PW_SHEET_DONE.test(String(s || '').replace(/\s+/g, ''));
+const pwOpenSt = s => pwSheetDone(s) ? '未處理' : (s || '未處理'); /* 取消完成／未確認之後清單顯示嘅狀態 */
+function pwOverlay(x, r) { /* r = 呢項最新確認紀錄（已完成或已取消）；冇 = 未喺 App 確認 */
+  x.st0 = x.st; x.sheetDone = pwSheetDone(x.st0);
+  if (r && r.status === '已完成') { x.cf = r; x.st = '已完成'; x.done = ecTxt(r.completed_date) || x.done; } /* 只有 App 確認先顯示已完成 */
+  else { if (r) x.cfx = r; if (x.sheetDone) x.st = '未處理'; } /* 已取消，或者 Sheet 已完成但未確認 → 唔顯示已完成 */
+}
 function pwCache() { try { const c = JSON.parse(localStorage.getItem(LS_PW) || 'null'); if (!c || c.url !== upCfg().url) return null;
-  const cf = pwCfAll(); (c.recs || []).forEach(x => { x.st0 = x.st; const r = cf[x.id]; if (r && r.status === '已完成') { x.cf = r; x.st = '已完成'; x.done = ecTxt(r.completed_date) || x.done; } else if (r) x.cfx = r; /* 最近一次已取消 → 原本狀態 */ });
+  const cf = pwCfAll(); (c.recs || []).forEach(x => pwOverlay(x, cf[x.id]));
   return c; } catch (e) { return null; } }
 function pwSave(o) { try { localStorage.setItem(LS_PW, JSON.stringify(Object.assign({ url: upCfg().url, at: new Date().toISOString(), file: o.file || {} }, pwNorm(o.data)))); } catch (e) { toast('手機儲存空間唔夠，冇網時未必睇得到', 3000); } }
 async function pwLoad() {
@@ -11282,7 +11292,7 @@ function pwListHtml() {
       ${(dl => dl.length ? `<div class="pwdls">${dl.map(d => pwDlChip(ca, d)).join('')}</div>` : '')(pwDls(ca, k, PW.est === k ? PW.house : ''))}
       <div class="pwcnt">${cnt.map(a => `<span class="badge ${PW_CLS[a[0]] || 'wona'}">${esc(a[0])} ${a[1]}</span>`).join('')}</div></button>
       ${open ? xs.map(x => `<button class="pwrow" data-act="pwopen" data-id="${esc(x.id)}"><span class="pwno">${esc(x.no)}</span><span class="pwmain"><b>${esc(x.house || '—')} · ${esc(x.defect || '—')}</b>${x.qty ? ` <span class="mut">× ${esc(x.qty)}</span>` : ''}
-        <div class="mut">${esc(x.loc || '—')}</div><div class="mut">${pwBadge(x.st)}${x.cf ? ` <span class="pwok">✅ ${esc(x.cf.technician)}</span>${x.cf.no_photo ? ' <span class="mut">（冇相）</span>' : ''}` : x.cfx ? ' <span class="mut">↩️ 已取消完成</span>' : ''}${x.done ? ` 完成日期 ${esc(x.done)}` : ''}${x.wo ? ` · 單號 ${esc(x.wo)}` : ''}${x.rem ? ` · ${esc(x.rem)}` : ''}${x.flags.length ? ' · ⚠' : ''}</div></span><span class="pwgo">›</span></button>`).join('') : ''}</div>`;
+        <div class="mut">${esc(x.loc || '—')}</div><div class="mut">${pwBadge(x.st)}${x.cf ? ` <span class="pwok">✅ ${esc(x.cf.technician)}</span>${x.cf.no_photo ? ' <span class="mut">（冇相）</span>' : ''}` : x.cfx ? ' <span class="mut">↩️ 已取消完成</span>' : ''}${x.done && !(x.sheetDone && !x.cf) ? ` 完成日期 ${esc(x.done)}` : ''}${x.wo ? ` · 單號 ${esc(x.wo)}` : ''}${x.rem ? ` · ${esc(x.rem)}` : ''}${x.flags.length ? ' · ⚠' : ''}</div></span><span class="pwgo">›</span></button>`).join('') : ''}</div>`;
   }).join('');
 }
 function pwDetail(ca, x) {
@@ -11298,11 +11308,11 @@ function pwDetail(ca, x) {
       <div class="pwkv" style="margin-top:8px">
       ${kv('項目 No.', pwV(x.no))}${kv('大廈/座數', pwV(x.house))}${kv('樓層', pwV(x.floor))}${kv('位置', pwV(x.loc))}${kv('消防裝置類別', pwV(x.type))}
       ${kv('缺陷描述', pwV(x.defect))}${kv('數量', pwV(x.qty))}${kv('相片編號/連結', /^https:\/\//.test(x.photo) ? `<a class="lnk" href="${esc(x.photo)}" target="_blank" rel="noopener noreferrer">開相片 ↗</a>` : pwV(x.photo))}
-      ${kv('嚴重程度', pwV(x.sev))}${kv('建議跟進/維修', pwV(x.act))}${kv('狀態', pwBadge(x.st))}${kv('完成日期', pwV(x.done))}
+      ${kv('嚴重程度', pwV(x.sev))}${kv('建議跟進/維修', pwV(x.act))}${kv('狀態', pwBadge(x.st))}${kv(x.sheetDone && !x.cf ? '原表完成日期' : '完成日期', pwV(x.done))}
       ${kv('Works Order／單號', pwV(x.wo))}${kv('備註', pwV(x.rem))}</div>
       ${x.flags.length ? `<div class="pwflag"><b>⚠ 要確認</b><ul style="margin:4px 0;padding-left:18px">${x.flags.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
       <div class="mut" style="margin-top:8px">來源：Defects List 第 ${esc(x.page || '—')} 頁 · ${esc(x.sheet)}!${esc(x.cells)}${x.colour.length ? ' · 顏色：' + esc(x.colour.join('；')) : ''}</div>
-      <div class="mut">「—」＝原表冇呢項資料（App 唔會估）。${x.cf ? `原表狀態：${esc(x.st0)}；已經 App 確認完成。` : PW_CF_OK.includes(x.st) ? '完成咗可以撳下面「✅ 確認完成」影相記錄。' : ''}</div>
+      <div class="mut">「—」＝原表冇呢項資料（App 唔會估）。${x.cf ? `原表狀態：${esc(x.st0)}；已經 App 確認完成。` : x.sheetDone ? `原表寫「${esc(x.st0)}」，未喺 App 確認完成，所以顯示「未處理」。完成咗可以撳下面「✅ 確認完成」影相記錄。` : PW_CF_OK.includes(x.st) ? '完成咗可以撳下面「✅ 確認完成」影相記錄。' : ''}</div>
       ${pwCfBtn(x)}</div>
     ${x.cf ? pwRecHtml(x.cf, x) : x.cfx ? pwRecHtml(x.cfx, x) : ''}
     <div class="pwnav"><button class="btn" data-act="pwopen" data-id="${prev ? esc(prev.id) : ''}" ${prev ? '' : 'disabled'}>‹ 上一項</button><button class="btn" data-act="pwopen" data-id="${next ? esc(next.id) : ''}" ${next ? '' : 'disabled'}>下一項 ›</button></div>
@@ -11457,7 +11467,7 @@ function pwUnPaint(x) {
   const name = Store.prefs.ckName || '';
   m.innerHTML = `<div class="box" role="dialog" aria-label="取消完成"><h3>↩️ 取消完成？</h3>
     <div><b>${esc(x.est)} · ${esc(x.house || '—')}</b>（項目 ${esc(x.no || '—')}）</div><div class="mut">${esc(x.defect || '—')}</div>
-    <div class="warnbox" style="margin-top:8px">${esc(c.technician)} 喺 ${esc(c.completed_hkt)} HKT 確認咗完成。取消之後項目會變返「${esc(x.st0)}」；相片同紀錄會保留（唔會刪）。</div>
+    <div class="warnbox" style="margin-top:8px">${esc(c.technician)} 喺 ${esc(c.completed_hkt)} HKT 確認咗完成。取消之後項目會變返「${esc(pwOpenSt(x.st0))}」；相片同紀錄會保留（唔會刪）。</div>
     <span class="lab">取消人（打卡身份，自動記錄）</span>${name ? `<b style="font-size:18px" id="pwcfwho">${esc(name)}</b><div class="mut">手機：${esc(ckLabel())} · 會記低時間（香港時間）同手機</div>`
       : `<div class="errbox" id="pwcfwho">${esc(PW_UN_MSG.pending_no_name)}</div><button class="btn pri" style="width:100%;margin-top:6px" data-pwx="unclock">⏱️ 去打卡輸入名</button>`}
     ${name ? `<span class="lab">原因（可以唔填）</span><textarea id="pwunwhy" maxlength="300" placeholder="例如：撳錯、影錯相、未完成">${esc(PWC.remark)}</textarea>` : ''}
@@ -11474,7 +11484,7 @@ async function pwUnGo() {
       user_agent: navigator.userAgent || '', reason: P.remark.trim(), ucid: P.ucid, app_version: APP_VERSION }, 60000);
     if (!o || !o.ok || !o.confirm) { if (o && o.error === 'bad_action') PW.srv = '1.7'; throw upErr(o && o.error || 'bad_reply'); }
     if (o.done_log_ok !== true) ckDoneQ(x.id); ckFlushQ(); /* v0.6.13.2 完工紀錄 */
-    PW.srv = String(o.version || PW.srv); pwCfPut([o.confirm]); pwCfClose(); render(); toast(o.duplicate ? '已經取消咗 ✓' : '已取消完成，項目變返「' + x.st0 + '」', 3000);
+    PW.srv = String(o.version || PW.srv); pwCfPut([o.confirm]); pwCfClose(); render(); toast(o.duplicate ? '已經取消咗 ✓' : '已取消完成，項目變返「' + pwOpenSt(x.st0) + '」', 3000);
   } catch (e) { if (PWC !== P) return; P.busy = false; P.err = PW_UN_MSG[e.code] || pwCfErrText(e).replace('未確認。相片仲喺度，有網再撳「提交」。', '未取消。'); pwCfPaint(); if (e.code === 'bad_action') render(); }
 }
 
