@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.494';
+const APP_VERSION = '0.6.495';
+/* v0.6.495：待處理工作——未完成項目入面，已經做咗嘅部分劃刪除線（App 確認完成成項，或位置／缺陷某一截寫住 (Done)／已完成）。Sheet 單獨已完成仍然當未處理，唔劃線 */
 /* v0.6.494：待處理工作——只有 App「確認完成」先顯示「已完成」；Sheet 單獨已完成（未確認）當「未處理」，仍可撳確認 */
 /* v0.6.493：fhhr 表一（PDF第6頁＝maps page5）供水來源／是／否剔位對齊框（量度 bracket 中心 srcX333.8 yesX535.8 noX589.8；12 行 mid）＋流量／壓力／零流量／備註疊字 */
 /* v0.6.492：FAN 問達 T8 Inlet有冇開泵ON/OFF → 表一供水來源即時預剔（答 T8 即 sync） */
@@ -11119,7 +11120,7 @@ const PW_MSG = {
   '.pwest{padding:0;overflow:hidden}.pwesth{display:block;width:100%;text-align:left;border:0;background:#fff;font:inherit;color:inherit;padding:12px 14px}' +
   '.pwesth .t{display:flex;justify-content:space-between;gap:8px;font-weight:800;font-size:18px}.pwcnt{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}' +
   '.pwrow{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:#fff;font:inherit;color:inherit;padding:10px 14px}' +
-  '.pwrow:active{background:#eff6ff}.pwno{flex:none;min-width:28px;font-weight:800;color:#c00000}.pwmain{flex:1;min-width:0}.pwmain b{font-size:16px}' +
+  '.pwrow:active{background:#eff6ff}.pwno{flex:none;min-width:28px;font-weight:800;color:#c00000}.pwmain{flex:1;min-width:0}.pwmain b{font-size:16px}.pwstrike{text-decoration:line-through}' +
   '.pwmain .mut{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.pwgo{flex:none;color:var(--mut);font-size:22px}' +
   '.pwhd{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:15px}.pwhd b{color:#475569;font-weight:700}' +
   '.pwkv{display:grid;grid-template-columns:7.5em 1fr;border-top:1px solid var(--line)}.pwkv>b,.pwkv>span{padding:8px 4px;border-bottom:1px solid var(--line);font-size:15px}' +
@@ -11200,6 +11201,25 @@ document.addEventListener('visibilitychange', () => { /* 由第二個 App（例�
 function pwAuto() { if (cur.view === 'pend' && upCfg().url && upCfg().pin && !PW.loading && !PW.live && !PW.err) pwLoad(); }
 const pwV = v => v ? esc(v) : '<span class="pwnil">—</span>';
 const pwBadge = s => `<span class="badge ${PW_CLS[s] || 'wona'}">${esc(s)}</span>`;
+/* v0.6.495：一項可以有幾個位置／步驟（逗號、頓號或換行分開）。
+   成項只有 App 確認完成（st＝已完成而且有 cf）先當全部做完，描述劃刪除線。
+   未完成嘅項：某一截自己寫住 (Done)／（已完成）／(完成) 先劃嗰截；其餘同完全未做嘅項一樣，冇刪除線。
+   Sheet 單獨「已完成」未確認 → st 仍係未處理、冇 cf → 唔劃（v0.6.494）。 */
+const PW_PART_SPLIT = /([,，、\n]+)/;
+const PW_PART_DONE = /(?:[(（]\s*(?:done|已完成|完成)\s*[)）])\s*$/i;
+const pwItemDone = x => !!(x && x.st === '已完成' && x.cf);
+function pwPartsHtml(text, itemDone) {
+  const s = String(text == null ? '' : text);
+  if (!s) return '';
+  if (itemDone) return `<span class="pwstrike">${esc(s)}</span>`;
+  const segs = s.split(PW_PART_SPLIT);
+  if (!segs.some(seg => PW_PART_DONE.test(String(seg).trim()))) return esc(s);
+  return segs.map(seg => {
+    if (!PW_PART_DONE.test(String(seg).trim())) return esc(seg);
+    const m = String(seg).match(/^(\s*)([\s\S]*?)(\s*)$/);
+    return `${esc(m[1])}<span class="pwstrike">${esc(m[2])}</span>${esc(m[3])}`;
+  }).join('');
+}
 const pwQ = s => String(s || '').toLowerCase().replace(/[\s\-\/()（）.,，·]/g, '');
 const pwMatch = (x, q) => !q || pwQ([x.est, x.estEn, x.house, x.floor, x.loc, x.defect, x.wo, x.rem, x.done, x.cf ? x.cf.technician : ''].join('|')).includes(q);
 const pwEsts = ca => { const o = ca.ests.map(e => e.est); ca.recs.forEach(x => { if (x.est && !o.includes(x.est)) o.push(x.est); }); return pkSort(o.filter(Boolean), 'estate'); }; /* v0.6.14 TNS 次序 */
@@ -11291,25 +11311,28 @@ function pwListHtml() {
       ${e.en ? `<div class="mut">${esc(e.en)}</div>` : ''}<div class="mut">${esc((e.houses || [...new Set(xs.map(x => x.house))]).join('、'))}${e.period ? ' · 巡查期數 ' + esc(e.period) : ''}</div>
       ${(dl => dl.length ? `<div class="pwdls">${dl.map(d => pwDlChip(ca, d)).join('')}</div>` : '')(pwDls(ca, k, PW.est === k ? PW.house : ''))}
       <div class="pwcnt">${cnt.map(a => `<span class="badge ${PW_CLS[a[0]] || 'wona'}">${esc(a[0])} ${a[1]}</span>`).join('')}</div></button>
-      ${open ? xs.map(x => `<button class="pwrow" data-act="pwopen" data-id="${esc(x.id)}"><span class="pwno">${esc(x.no)}</span><span class="pwmain"><b>${esc(x.house || '—')} · ${esc(x.defect || '—')}</b>${x.qty ? ` <span class="mut">× ${esc(x.qty)}</span>` : ''}
-        <div class="mut">${esc(x.loc || '—')}</div><div class="mut">${pwBadge(x.st)}${x.cf ? ` <span class="pwok">✅ ${esc(x.cf.technician)}</span>${x.cf.no_photo ? ' <span class="mut">（冇相）</span>' : ''}` : x.cfx ? ' <span class="mut">↩️ 已取消完成</span>' : ''}${x.done && !(x.sheetDone && !x.cf) ? ` 完成日期 ${esc(x.done)}` : ''}${x.wo ? ` · 單號 ${esc(x.wo)}` : ''}${x.rem ? ` · ${esc(x.rem)}` : ''}${x.flags.length ? ' · ⚠' : ''}</div></span><span class="pwgo">›</span></button>`).join('') : ''}</div>`;
+      ${open ? xs.map(x => { const done = pwItemDone(x); const title = done ? `<span class="pwstrike">${esc(x.house || '—')} · ${esc(x.defect || '—')}</span>` : `${pwPartsHtml(x.house || '—', false)} · ${pwPartsHtml(x.defect || '—', false)}`;
+        return `<button class="pwrow" data-act="pwopen" data-id="${esc(x.id)}"><span class="pwno">${esc(x.no)}</span><span class="pwmain"><b>${title}</b>${x.qty ? ` <span class="mut">× ${esc(x.qty)}</span>` : ''}
+        <div class="mut">${x.loc ? pwPartsHtml(x.loc, done) : '—'}</div><div class="mut">${pwBadge(x.st)}${x.cf ? ` <span class="pwok">✅ ${esc(x.cf.technician)}</span>${x.cf.no_photo ? ' <span class="mut">（冇相）</span>' : ''}` : x.cfx ? ' <span class="mut">↩️ 已取消完成</span>' : ''}${x.done && !(x.sheetDone && !x.cf) ? ` 完成日期 ${esc(x.done)}` : ''}${x.wo ? ` · 單號 ${esc(x.wo)}` : ''}${x.rem ? ` · ${pwPartsHtml(x.rem, done)}` : ''}${x.flags.length ? ' · ⚠' : ''}</div></span><span class="pwgo">›</span></button>`; }).join('') : ''}</div>`;
   }).join('');
 }
 function pwDetail(ca, x) {
   setTimeout(pwHydrate, 0);
   const e = ca.ests.find(e => e.est === x.est) || {}, sib = ca.recs.filter(r => r.est === x.est), i = sib.indexOf(x), prev = sib[i - 1], next = sib[i + 1];
   const kv = (k, v) => `<b>${k}</b><span>${v}</span>`;
+  const done = pwItemDone(x), kvW = (k, v) => kv(k, v ? pwPartsHtml(v, done) : '<span class="pwnil">—</span>');
+  const dTitle = done ? `<span class="pwstrike">項目 ${esc(x.no)}：${esc(x.defect || '—')}</span>` : `項目 ${esc(x.no)}：${pwPartsHtml(x.defect || '—', false)}`;
   return pwTop(`${x.est} · 項目 ${x.no}／${sib.length}`, 'pwback') + `<main>
     <div class="card"><h3>${esc(x.est)}${e.en ? ` <span class="mut">${esc(e.en)}</span>` : ''}</h3><div class="pwhd">
       <b>屋邨</b><span>${pwV(x.est)}</span><b>大廈</b><span>${pwV((e.houses || []).join('、'))}</span><b>合約編號</b><span>${pwV(x.contract || e.contract)}</span>
       <b>巡查日期</b><span>${pwV(x.idate || e.idate)}</span><b>巡查期數</b><span>${pwV(x.period || e.period)}</span><b>巡查人員</b><span>${pwV(x.insp || e.insp)}</span>
       <b>報告編號</b><span>${pwV(x.rno || e.rno)}</span></div>${(dl => dl.length ? `<div class="pwdls" id="pwdldet">${dl.map(d => pwDlChip(ca, d, true)).join('')}</div>` : '')(pwDls(ca, x.est, x.house || '\u0000'))}${e.note ? `<div class="mut" style="margin-top:6px">ℹ️ ${esc(e.note)}</div>` : ''}</div>
-    <div class="card"><div class="t" style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:18px">項目 ${esc(x.no)}：${esc(x.defect || '—')}</b>${pwBadge(x.st)}</div>
+    <div class="card"><div class="t" style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:18px">${dTitle}</b>${pwBadge(x.st)}</div>
       <div class="pwkv" style="margin-top:8px">
-      ${kv('項目 No.', pwV(x.no))}${kv('大廈/座數', pwV(x.house))}${kv('樓層', pwV(x.floor))}${kv('位置', pwV(x.loc))}${kv('消防裝置類別', pwV(x.type))}
-      ${kv('缺陷描述', pwV(x.defect))}${kv('數量', pwV(x.qty))}${kv('相片編號/連結', /^https:\/\//.test(x.photo) ? `<a class="lnk" href="${esc(x.photo)}" target="_blank" rel="noopener noreferrer">開相片 ↗</a>` : pwV(x.photo))}
+      ${kv('項目 No.', pwV(x.no))}${kvW('大廈/座數', x.house)}${kvW('樓層', x.floor)}${kvW('位置', x.loc)}${kv('消防裝置類別', pwV(x.type))}
+      ${kvW('缺陷描述', x.defect)}${kv('數量', pwV(x.qty))}${kv('相片編號/連結', /^https:\/\//.test(x.photo) ? `<a class="lnk" href="${esc(x.photo)}" target="_blank" rel="noopener noreferrer">開相片 ↗</a>` : pwV(x.photo))}
       ${kv('嚴重程度', pwV(x.sev))}${kv('建議跟進/維修', pwV(x.act))}${kv('狀態', pwBadge(x.st))}${kv(x.sheetDone && !x.cf ? '原表完成日期' : '完成日期', pwV(x.done))}
-      ${kv('Works Order／單號', pwV(x.wo))}${kv('備註', pwV(x.rem))}</div>
+      ${kv('Works Order／單號', pwV(x.wo))}${kvW('備註', x.rem)}</div>
       ${x.flags.length ? `<div class="pwflag"><b>⚠ 要確認</b><ul style="margin:4px 0;padding-left:18px">${x.flags.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
       <div class="mut" style="margin-top:8px">來源：Defects List 第 ${esc(x.page || '—')} 頁 · ${esc(x.sheet)}!${esc(x.cells)}${x.colour.length ? ' · 顏色：' + esc(x.colour.join('；')) : ''}</div>
       <div class="mut">「—」＝原表冇呢項資料（App 唔會估）。${x.cf ? `原表狀態：${esc(x.st0)}；已經 App 確認完成。` : x.sheetDone ? `原表寫「${esc(x.st0)}」，未喺 App 確認完成，所以顯示「未處理」。完成咗可以撳下面「✅ 確認完成」影相記錄。` : PW_CF_OK.includes(x.st) ? '完成咗可以撳下面「✅ 確認完成」影相記錄。' : ''}</div>
@@ -11379,7 +11402,7 @@ function pwCfPaint() {
   const name = Store.prefs.ckName || '', n = PWC.photos.length;
   const names = PWC.nmOpen ? ckNameForm('data-pwx="cfnameok"', PWC.nm != null ? PWC.nm : name) : '';
   m.innerHTML = `<div class="box" role="dialog" aria-label="確認完成"><h3>✅ 確認完成</h3>
-    <div><b>${esc(x.est)} · ${esc(x.house || '—')}</b>（項目 ${esc(x.no || '—')}）</div><div class="mut">${esc(x.defect || '—')}${x.loc ? ' · ' + esc(x.loc) : ''}</div>
+    <div><b>${esc(x.est)} · ${pwPartsHtml(x.house || '—', false)}</b>（項目 ${esc(x.no || '—')}）</div><div class="mut">${pwPartsHtml(x.defect || '—', false)}${x.loc ? ' · ' + pwPartsHtml(x.loc, false) : ''}</div>
     <span class="lab">完成人</span>${name ? `<div class="row" style="align-items:center"><b style="flex:1;font-size:18px" id="pwcfwho">${esc(name)}</b><button class="btn sm" style="flex:none" data-pwx="cftoggle">${PWC.nmOpen ? '收起' : '換人'}</button></div>` : '<div class="warnbox" id="pwcfwho">未輸入名（同打卡用同一個名）：請喺下面輸入你個名</div>'}
     ${names}<div class="mut">手機：${esc(ckLabel())}</div>
     <span class="lab">完成相片（建議影相；最多 ${PW_CF_MAX} 張）</span>
@@ -11466,7 +11489,7 @@ function pwUnPaint(x) {
   const keep = $('#pwunwhy'); if (keep) PWC.remark = keep.value;
   const name = Store.prefs.ckName || '';
   m.innerHTML = `<div class="box" role="dialog" aria-label="取消完成"><h3>↩️ 取消完成？</h3>
-    <div><b>${esc(x.est)} · ${esc(x.house || '—')}</b>（項目 ${esc(x.no || '—')}）</div><div class="mut">${esc(x.defect || '—')}</div>
+    <div><b>${esc(x.est)} · ${pwPartsHtml(x.house || '—', pwItemDone(x))}</b>（項目 ${esc(x.no || '—')}）</div><div class="mut">${pwPartsHtml(x.defect || '—', pwItemDone(x))}</div>
     <div class="warnbox" style="margin-top:8px">${esc(c.technician)} 喺 ${esc(c.completed_hkt)} HKT 確認咗完成。取消之後項目會變返「${esc(pwOpenSt(x.st0))}」；相片同紀錄會保留（唔會刪）。</div>
     <span class="lab">取消人（打卡身份，自動記錄）</span>${name ? `<b style="font-size:18px" id="pwcfwho">${esc(name)}</b><div class="mut">手機：${esc(ckLabel())} · 會記低時間（香港時間）同手機</div>`
       : `<div class="errbox" id="pwcfwho">${esc(PW_UN_MSG.pending_no_name)}</div><button class="btn pri" style="width:100%;margin-top:6px" data-pwx="unclock">⏱️ 去打卡輸入名</button>`}
