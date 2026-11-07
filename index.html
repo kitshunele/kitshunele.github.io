@@ -4604,7 +4604,7 @@ function fsdTableHtml(r, c, s) {
           ${v.on ? `${k === 'jockey' ? '' : `<div class="opth" data-optfor="${sb}.flow"></div>`}<div class="g3">${k === 'jockey' ? '' : fNum(sb + '.flow', v.flow, '', '流量（升／分鐘）') + fNum(sb + '.p', v.p, '', '壓力（巴）')}${fNum(sb + '.p0', v.p0, '', '零流量壓力（巴）')}</div>
             <div class="fld"><label>符合消防處的規定</label>${seg(sb + '.ok', v.ok, [['是', '是', 'yes'], ['否', '否', 'bad']], `ft-${c.key}-z${i}-${k}`)}</div>${txtField(sb + '.note', v.note, '備註', '')}` : ''}</div>`; }).join('')}</div>`; }).join('')}
       <div class="row"><button class="btn sm" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="1">＋ 加消防栓區域</button>${zs.length ? `<button class="btn sm danger" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="-1">− 刪最後一個</button>` : ''}</div>
-      <div class="mut" style="margin-top:6px">問卷 T8「Inlet有冇開泵ON/OFF」：有 → 剔 1號／2號中途泵；冇 → 剔 1號／2號固定消防泵（轉答會清對面一組）。TR-H2 邊個 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有非零實數，先剔邊個編號嘅消防水缸重力供水。固定泵／中途泵／穩壓泵同樣：空白或 0／0.0 唔剔供水來源，亦唔剔是／否。Zone 1→編號 1，Zone 2→編號 2，互不相干。死磅→零流量壓力、Bar→壓力、Flow（l/s×60）→流量（升／分鐘），改咗會覆寫。泵區讀數仍係流量←Flow、壓力←行泵、零流量壓力←死磅（一個小數位）。符合規定：流量換算 ≥15 L/s（表上升／分鐘÷60）且 壓力≥3.5 bar → 是；低過 15 L/s 或壓力唔夠 → 否。</div></div>`;
+      <div class="mut" style="margin-top:6px">問卷 T8「Inlet有冇開泵ON/OFF」揀固定定中途；該號泵有非零死磅／行泵／Flow 先剔，0／空白唔剔。TR-H2 邊個 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有非零實數，先剔邊個編號嘅消防水缸重力供水。固定泵／中途泵／穩壓泵同樣：空白或 0／0.0 唔剔供水來源，亦唔剔是／否。Zone 1→編號 1，Zone 2→編號 2，互不相干。死磅→零流量壓力、Bar→壓力、Flow（l/s×60）→流量（升／分鐘），改咗會覆寫。泵區讀數仍係流量←Flow、壓力←行泵、零流量壓力←死磅（一個小數位）。符合規定：流量換算 ≥15 L/s（表上升／分鐘÷60）且 壓力≥3.5 bar → 是；低過 15 L/s 或壓力唔夠 → 否。</div></div>`;
   }
   if (s.table === 'tank_t1' || s.table === 'ws_t1') {
     const rows = (t.rows || []).map(x => x || {}), tk = s.table === 'tank_t1';
