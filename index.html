@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.509';
+const APP_VERSION = '0.6.510';
+/* v0.6.510：冇非零實測就唔剔供水來源。T8 唔再喺固定泵／中途泵／穩壓泵冇數時預剔。有非零死磅／行泵／Flow 先剔該行並寫數。重力有數照舊。唔改 GAS。 */
 /* v0.6.509：左 TR-H2 有非零數 → 右第六頁即時覆寫。Flow l/s×60＝流量（15→900），行泵＝壓力，死磅＝零流量壓力。唔再留舊 60／3.5／2。0／空白仍然清走右邊同是／否。唔改 GAS。 */
 /* v0.6.508：左 TR-H2 係 0／空白 → 右第六頁唔留舊流量／壓力／零流量，亦唔剔是／否。0 唔再擋住「空先用另一邊」。泵行同重力行一樣。唔改 GAS。 */
 /* v0.6.507：冇開泵死磅／Bar／Flow 嘅 0、0.0 當冇實數。三格都係空白或 0 → 該編號唔剔消防水缸重力供水，亦唔剔符合規定是／否。有非零數先剔該編號。唔改 GAS。 */
@@ -4117,11 +4118,22 @@ function h2Reading(v) {
   const n = typeof v === 'number' ? v : Number(String(v).trim());
   return !Number.isNaN(n) && isFinite(n) && n !== 0;
 }
+function h2ZoneAt(r, zi) { return ((((r || {}).h2 || {}).zones || [])[zi]) || {}; }
 function h2ZoneTankGravity(r, zi) {
-  /* v0.6.505：只睇該 Zone 最低出水位「冇開泵（水缸冇泵）」死磅／Bar／Flow。
-     三格都冇實數 → 唔算重力。樓層／梯／由至、最高出水位「冇開泵」np_* 都唔算。 */
-  const low = ((((r || {}).h2 || {}).zones || [])[zi] || {}).low || {};
+  /* 只睇該 Zone 最低出水位「冇開泵（水缸冇泵）」死磅／Bar／Flow。0／空白唔算。 */
+  const low = h2ZoneAt(r, zi).low || {};
   return h2Reading(low.tk_static) || h2Reading(low.tk_run) || h2Reading(low.tk_flow);
+}
+function h2ZonePumpReal(r, zi, n) {
+  /* 1／2 號泵：最高或最低有非零死磅／行泵／Flow 先算有實測 */
+  const z = h2ZoneAt(r, zi);
+  const keys = ['p' + n + '_static', 'p' + n + '_run', 'p' + n + '_flow'];
+  const hit = (side) => { if (!side) return false; for (let i = 0; i < keys.length; i++) if (h2Reading(side[keys[i]])) return true; return false; };
+  return hit(z.top) || hit(z.low);
+}
+function h2ZoneJockeyReal(r, zi) {
+  const top = h2ZoneAt(r, zi).top || {};
+  return h2Reading(top.np_bar) || h2Reading(top.np_flow);
 }
 function fhhrSrcFromQ(r, z, zi) {
   /* v0.6.504：邊度有數剔邊度。呢個 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有數 → 只剔該編號重力。
@@ -4150,16 +4162,27 @@ function fhhrSrcFromQ(r, z, zi) {
   untick('tank');
   if (src.tank) { delete src.tank.p0; delete src.tank.p; delete src.tank.flow; }
   if (z.srcBy === 'tank') delete z.srcBy;
-  if (!r.q) return;
-  const ans = r.q.T8;
-  if (ans !== '有' && ans !== '冇') return;
+  /* v0.6.510：T8 只揀固定定中途。該號泵死磅／行泵／Flow 都係空白或 0 → 唔剔、唔留舊數。 */
+  const clearRow = (k) => {
+    untick(k);
+    const o = src[k];
+    if (!o) return;
+    delete o.p0; delete o.p; delete o.flow;
+  };
+  const ans = r.q && r.q.T8;
+  const p1 = h2ZonePumpReal(r, zi, 1), p2 = h2ZonePumpReal(r, zi, 2);
   if (ans === '有') {
-    tick('bst1'); tick('bst2');
-    untick('fix1'); untick('fix2');
+    if (p1) tick('bst1'); else clearRow('bst1');
+    if (p2) tick('bst2'); else clearRow('bst2');
+    clearRow('fix1'); clearRow('fix2');
+  } else if (ans === '冇') {
+    if (p1) tick('fix1'); else clearRow('fix1');
+    if (p2) tick('fix2'); else clearRow('fix2');
+    clearRow('bst1'); clearRow('bst2');
   } else {
-    tick('fix1'); tick('fix2');
-    untick('bst1'); untick('bst2');
+    ['fix1', 'fix2', 'bst1', 'bst2'].forEach(clearRow);
   }
+  if (h2ZoneJockeyReal(r, zi)) tick('jockey'); else clearRow('jockey');
 }
 function fhhrSrcOkFromReadings(z) {
   /* v0.6.503：表一流量係升／分鐘。符合規定先÷60 換算 L/s。
@@ -4581,7 +4604,7 @@ function fsdTableHtml(r, c, s) {
           ${v.on ? `${k === 'jockey' ? '' : `<div class="opth" data-optfor="${sb}.flow"></div>`}<div class="g3">${k === 'jockey' ? '' : fNum(sb + '.flow', v.flow, '', '流量（升／分鐘）') + fNum(sb + '.p', v.p, '', '壓力（巴）')}${fNum(sb + '.p0', v.p0, '', '零流量壓力（巴）')}</div>
             <div class="fld"><label>符合消防處的規定</label>${seg(sb + '.ok', v.ok, [['是', '是', 'yes'], ['否', '否', 'bad']], `ft-${c.key}-z${i}-${k}`)}</div>${txtField(sb + '.note', v.note, '備註', '')}` : ''}</div>`; }).join('')}</div>`; }).join('')}
       <div class="row"><button class="btn sm" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="1">＋ 加消防栓區域</button>${zs.length ? `<button class="btn sm danger" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="-1">− 刪最後一個</button>` : ''}</div>
-      <div class="mut" style="margin-top:6px">問卷 T8「Inlet有冇開泵ON/OFF」：有 → 剔 1號／2號中途泵；冇 → 剔 1號／2號固定消防泵（轉答會清對面一組）。TR-H2 邊個 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有非零實數，先剔邊個編號嘅消防水缸重力供水；空白或 0／0.0 當冇數，唔剔重力，亦唔剔是／否。Zone 1→編號 1，Zone 2→編號 2，互不相干。死磅→零流量壓力、Bar→壓力、Flow（l/s×60）→流量（升／分鐘），改咗會覆寫。泵區讀數仍係流量←Flow、壓力←行泵、零流量壓力←死磅（一個小數位）。符合規定：流量換算 ≥15 L/s（表上升／分鐘÷60）且 壓力≥3.5 bar → 是；低過 15 L/s 或壓力唔夠 → 否。</div></div>`;
+      <div class="mut" style="margin-top:6px">問卷 T8「Inlet有冇開泵ON/OFF」揀固定定中途；該號泵有非零死磅／行泵／Flow 先剔，0／空白唔剔。TR-H2 邊個 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有非零實數，先剔邊個編號嘅消防水缸重力供水。固定泵／中途泵／穩壓泵同樣：空白或 0／0.0 唔剔供水來源，亦唔剔是／否。Zone 1→編號 1，Zone 2→編號 2，互不相干。死磅→零流量壓力、Bar→壓力、Flow（l/s×60）→流量（升／分鐘），改咗會覆寫。泵區讀數仍係流量←Flow、壓力←行泵、零流量壓力←死磅（一個小數位）。符合規定：流量換算 ≥15 L/s（表上升／分鐘÷60）且 壓力≥3.5 bar → 是；低過 15 L/s 或壓力唔夠 → 否。</div></div>`;
   }
   if (s.table === 'tank_t1' || s.table === 'ws_t1') {
     const rows = (t.rows || []).map(x => x || {}), tk = s.table === 'tank_t1';
@@ -8891,14 +8914,22 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
           if (rowY == null) return;
           const o = src[sk] || {};
           const seed = 'fhhr:z' + zi + ':' + sk;
-          /* v0.6.506：消防水缸重力供水以該 Zone「冇開泵（水缸冇泵）」為準。
-             死磅／Bar／Flow 都冇實數 → 唔畫來源剔，亦唔畫符合規定是／否（舊 src.on／ok 都唔算）。 */
-          if (sk === 'tank') {
+          /* v0.6.510：冇非零實測就唔畫供水來源剔。重力睇水缸三格；固定／中途睇該號泵；穩壓睇冇開泵。 */
+          if (typeof h2Reading === 'function') {
             const hz = h2z[zi];
             const low = (hz && hz.low) || {};
-            const fromH2 = typeof h2Reading === 'function' && (h2Reading(low.tk_static) || h2Reading(low.tk_run) || h2Reading(low.tk_flow));
-            const fromRow = typeof h2Reading === 'function' && (h2Reading(o.p0) || h2Reading(o.p) || h2Reading(o.flow));
-            if (hz ? !fromH2 : !fromRow) return;
+            const topH = (hz && hz.top) || {};
+            const pumpReal = (n) => {
+              const ks = ['p' + n + '_static', 'p' + n + '_run', 'p' + n + '_flow'];
+              const hit = (side) => side && ks.some(k => h2Reading(side[k]));
+              return hit(topH) || hit(low);
+            };
+            let live = null;
+            if (sk === 'tank') live = h2Reading(low.tk_static) || h2Reading(low.tk_run) || h2Reading(low.tk_flow);
+            else if (sk === 'fix1' || sk === 'bst1') live = pumpReal(1);
+            else if (sk === 'fix2' || sk === 'bst2') live = pumpReal(2);
+            else if (sk === 'jockey') live = h2Reading(topH.np_bar) || h2Reading(topH.np_flow);
+            if (live != null && (hz ? !live : !(h2Reading(o.p0) || h2Reading(o.p) || h2Reading(o.flow)))) return;
           }
           if (o.on) {
             fsdDrawTickOv(ctx, { x: srcCfg.srcX, y: rowY, s: srcCfg.s || 9.5 }, scale, seed + ':on');
