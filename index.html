@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.502';
+const APP_VERSION = '0.6.503';
+/* v0.6.503：栓轆表一「符合規定」流量先由升／分鐘÷60 換算每秒升。低過 15 L/s → 否；≥15 L/s 且壓力≥3.5 bar → 是。泵行同重力行一樣。唔改 GAS。 */
 /* v0.6.502：TR-H2「冇開泵（水缸冇泵）」數值跟第6頁該編號「消防水缸重力供水」：死磅→零流量壓力、Bar→壓力、Flow（l/s×60）→流量（升／分鐘）。Zone1→編號1、Zone2→編號2。改讀數會覆寫呢行。0.6.501 只剔重力仍然有效。唔改 GAS。 */
 /* v0.6.501：TR-H2 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有數 → 栓轆表一 PDF第6頁該編號只剔「消防水缸重力供水」，其他供水來源唔剔。Zone1→編號1、Zone2→編號2。冇呢類資料嘅 zone 仍跟 T8（有→中途泵1／2、冇→固定泵1／2）。唔改 GAS。 */
 /* v0.6.500：問卷 T8「Inlet有冇開泵ON/OFF」→ 消防處·栓轆表一（PDF第6頁）供水來源。有→剔1號／2號中途泵；冇→剔1號／2號固定消防泵。轉答一定清對面一組剔同「符合規定」是／否（流量／壓力留底）。問達跟頁去第6頁。唔改 GAS。 */
@@ -4148,8 +4149,9 @@ function fhhrSrcFromQ(r, z, zi) {
   }
 }
 function fhhrSrcOkFromReadings(z) {
-  /* v0.6.490：符合消防處的規定——流量≥15 且 壓力≥3.5 → 是；否則 → 否
-     要齊流量＋壓力先套；jockey 等缺一就唔郁。每次跟讀數重算（規定跟數）。 */
+  /* v0.6.503：表一流量係升／分鐘。符合規定先÷60 換算 L/s。
+     ≥15 L/s 且 壓力≥3.5 bar → 是；流量低過 15 L/s，或壓力低過 3.5 → 否。
+     要齊流量＋壓力先套（jockey 多數冇行泵壓力就唔郁）。泵行同重力行同一條。每次跟數重算。 */
   if (!z) return;
   const src = z.src || {};
   Object.keys(src).forEach(k => {
@@ -4158,7 +4160,8 @@ function fhhrSrcOkFromReadings(z) {
     if (!has(o.flow) || !has(o.p)) return;
     const fl = Number(o.flow), pr = Number(o.p);
     if (Number.isNaN(fl) || Number.isNaN(pr)) return;
-    o.ok = (fl >= 15 && pr >= 3.5) ? '是' : '否';
+    const flLs = fl / 60;
+    o.ok = (flLs >= 15 && pr >= 3.5) ? '是' : '否';
   });
 }
 function fhhrZonesSrcSync(r) {
@@ -4564,7 +4567,7 @@ function fsdTableHtml(r, c, s) {
           ${v.on ? `${k === 'jockey' ? '' : `<div class="opth" data-optfor="${sb}.flow"></div>`}<div class="g3">${k === 'jockey' ? '' : fNum(sb + '.flow', v.flow, '', '流量（升／分鐘）') + fNum(sb + '.p', v.p, '', '壓力（巴）')}${fNum(sb + '.p0', v.p0, '', '零流量壓力（巴）')}</div>
             <div class="fld"><label>符合消防處的規定</label>${seg(sb + '.ok', v.ok, [['是', '是', 'yes'], ['否', '否', 'bad']], `ft-${c.key}-z${i}-${k}`)}</div>${txtField(sb + '.note', v.note, '備註', '')}` : ''}</div>`; }).join('')}</div>`; }).join('')}
       <div class="row"><button class="btn sm" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="1">＋ 加消防栓區域</button>${zs.length ? `<button class="btn sm danger" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="-1">− 刪最後一個</button>` : ''}</div>
-      <div class="mut" style="margin-top:6px">問卷 T8「Inlet有冇開泵ON/OFF」：有 → 剔 1號／2號中途泵；冇 → 剔 1號／2號固定消防泵（轉答會清對面一組）。TR-H2 該 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有數 → 呢個編號只剔消防水缸重力供水，其他來源唔剔（Zone 1→編號 1，Zone 2→編號 2）；死磅→零流量壓力、Bar→壓力、Flow（l/s×60）→流量（升／分鐘），改咗會覆寫。泵區讀數仍係流量←Flow、壓力←行泵、零流量壓力←死磅（一個小數位）。符合規定：流量≥15 且 壓力≥3.5 → 是，否則 → 否。</div></div>`;
+      <div class="mut" style="margin-top:6px">問卷 T8「Inlet有冇開泵ON/OFF」：有 → 剔 1號／2號中途泵；冇 → 剔 1號／2號固定消防泵（轉答會清對面一組）。TR-H2 該 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有數 → 呢個編號只剔消防水缸重力供水，其他來源唔剔（Zone 1→編號 1，Zone 2→編號 2）；死磅→零流量壓力、Bar→壓力、Flow（l/s×60）→流量（升／分鐘），改咗會覆寫。泵區讀數仍係流量←Flow、壓力←行泵、零流量壓力←死磅（一個小數位）。符合規定：流量換算 ≥15 L/s（表上升／分鐘÷60）且 壓力≥3.5 bar → 是；低過 15 L/s 或壓力唔夠 → 否。</div></div>`;
   }
   if (s.table === 'tank_t1' || s.table === 'ws_t1') {
     const rows = (t.rows || []).map(x => x || {}), tk = s.table === 'tank_t1';
