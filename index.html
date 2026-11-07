@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.508';
+const APP_VERSION = '0.6.509';
+/* v0.6.509：左 TR-H2 有非零數 → 右第六頁即時覆寫。Flow l/s×60＝流量（15→900），行泵＝壓力，死磅＝零流量壓力。唔再留舊 60／3.5／2。0／空白仍然清走右邊同是／否。唔改 GAS。 */
 /* v0.6.508：左 TR-H2 係 0／空白 → 右第六頁唔留舊流量／壓力／零流量，亦唔剔是／否。0 唔再擋住「空先用另一邊」。泵行同重力行一樣。唔改 GAS。 */
 /* v0.6.507：冇開泵死磅／Bar／Flow 嘅 0、0.0 當冇實數。三格都係空白或 0 → 該編號唔剔消防水缸重力供水，亦唔剔符合規定是／否。有非零數先剔該編號。唔改 GAS。 */
 /* v0.6.506：第六頁畫剔以 TR-H2「冇開泵（水缸冇泵）」為準。該 Zone 死磅／Bar／Flow 都冇實數 → 唔畫消防水缸重力供水剔，亦唔畫符合規定是／否（就算舊紀錄 src.on／ok 仲在）。有數先剔該編號。唔改 GAS。 */
@@ -1666,7 +1667,7 @@ function fhhrApplyH2Src(r, zi, onlyEmpty) {
     Object.keys(map).forEach(fld => {
       const raw = pick(map[fld]);
       if (!real(raw)) { if (fld in o) delete o[fld]; paint(sk, fld, ''); return; }
-      if (onlyEmpty && real(o[fld])) return;
+      /* v0.6.509：左有非零實數就覆寫右邊，唔留舊流量／壓力（15 l/s → 900 升／分鐘） */
       o[fld] = fld === 'flow' ? fhhrFlowFromLs(raw) : raw;
       paint(sk, fld, o[fld]);
     });
@@ -1704,9 +1705,9 @@ function fhhrApplyH2Src(r, zi, onlyEmpty) {
       const bar = real(top.np_bar) ? top.np_bar : '';
       const fl = real(top.np_flow) ? top.np_flow : '';
       if (!real(bar)) { if ('p0' in o) delete o.p0; paint('jockey', 'p0', ''); }
-      else if (!(onlyEmpty && real(o.p0))) { o.p0 = bar; paint('jockey', 'p0', o.p0); }
+      else { o.p0 = bar; paint('jockey', 'p0', o.p0); }
       if (!real(fl)) { if ('flow' in o) delete o.flow; paint('jockey', 'flow', ''); }
-      else if (!(onlyEmpty && real(o.flow))) { o.flow = fhhrFlowFromLs(fl); paint('jockey', 'flow', o.flow); }
+      else { o.flow = fhhrFlowFromLs(fl); paint('jockey', 'flow', o.flow); }
     }
   }
 }
@@ -18351,7 +18352,7 @@ document.addEventListener('input', e => {
   const kind = el.dataset.kind || 'text';
   if (kind === 'ir') { const v = parseIR(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); el.classList.toggle('gt', isGT(v)); } }
   else if (kind === 'num1') { const v = parse1(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null);
-    if (/^h2\.zones\.\d+\.low\.tk_(static|run|flow)$/.test(el.dataset.bind || '') && typeof fhhrZonesSrcSync === 'function') fhhrZonesSrcSync(r); /* v0.6.501：水缸冇泵讀數即改第6頁剔 */ }
+    if (/^h2\.zones\.\d+\.(top|low)\.(p[12]_(?:static|run|flow)|np_(?:bar|flow)|tk_(?:static|run|flow))$/.test(el.dataset.bind || '') && typeof fhhrZonesSrcSync === 'function') fhhrZonesSrcSync(r); /* v0.6.509：左欄一改即覆寫第六頁 */ }
     if (el.dataset.kpa) { const s = el.parentElement.querySelector('.kpa'); if (s) s.textContent = (v != null && !Number.isNaN(v)) ? '= ' + Math.round(v * 100) + ' kPa' : ''; } }
   else if (kind === 'num2') { const v = parse2(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); } }
   else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v);
