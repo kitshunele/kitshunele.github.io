@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.510';
+const APP_VERSION = '0.6.511';
+/* v0.6.511：花灑年檢核對表「是／否／不適用」剔位對齊 blank 框中心（逐頁量度括號框，唔好落欄頭／鄰行）；第5–7頁交界 10.1.d–f、11.a–d 跟返正確頁。表頭地址／完成年檢日期／承辦商參考編號／FS251 跟栓轆等同套自動填。唔改 GAS。 */
 /* v0.6.510：冇非零實測就唔剔供水來源。T8 唔再喺固定泵／中途泵／穩壓泵冇數時預剔。有非零死磅／行泵／Flow 先剔該行並寫數。重力有數照舊。唔改 GAS。 */
 /* v0.6.509：左 TR-H2 有非零數 → 右第六頁即時覆寫。Flow l/s×60＝流量（15→900），行泵＝壓力，死磅＝零流量壓力。唔再留舊 60／3.5／2。0／空白仍然清走右邊同是／否。唔改 GAS。 */
 /* v0.6.508：左 TR-H2 係 0／空白 → 右第六頁唔留舊流量／壓力／零流量，亦唔剔是／否。0 唔再擋住「空先用另一邊」。泵行同重力行一樣。唔改 GAS。 */
@@ -8612,7 +8613,13 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
       xHwTextHdr(ctx, String(t), xPt * scale, yPt * scale, sz * (mul || 1.35), xHwSeed('hdr:' + key + ':' + xPt + ':' + yPt), (maxWpt || 400) * scale, wob == null ? 0.5 : wob);
     } else put(t, xPt, yPt);
   };
-  if (key === 'fds' || key === 'fa' || key === 'fhhr' || key === 'tank') {
+  if (key === 'spr') {
+    /* 花灑 blank 第1頁量度（baseline = 點線 −4.5）。參考編號點線喺右上 y≈85；日期線 y≈140；地址線 y≈158；FS251 線 y≈122。 */
+    putHw(href, 476, 80.7, 78, 1.35, 0.5);
+    put(fs251, 100, 117.5);
+    putHw(dateStr, 198, 135.7, 340, 1.35, 0.5);
+    putHw(addr, 156, 153.3, 385, 1.35, 0.5);
+  } else if (key === 'fds' || key === 'fa' || key === 'fhhr' || key === 'tank') {
     /* FA 地址第一橫線 ≈140.5pt；FS251／日期用 baseline = 線 −4.5 → 地址用 136
        v0.6.411：偵測 fds 完成年檢日期橫線 ≈128pt（blank 量度）→ baseline 123.5；fa／其餘日期線≈122 維持 118；地址／參考編號唔郁 */
     const addrY = key === 'fa' ? 136 : 148;
