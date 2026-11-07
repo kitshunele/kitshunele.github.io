@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.500';
+const APP_VERSION = '0.6.501';
+/* v0.6.501：TR-H2 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有數 → 栓轆表一 PDF第6頁該編號只剔「消防水缸重力供水」，其他供水來源唔剔。Zone1→編號1、Zone2→編號2。冇呢類資料嘅 zone 仍跟 T8（有→中途泵1／2、冇→固定泵1／2）。唔改 GAS。 */
 /* v0.6.500：問卷 T8「Inlet有冇開泵ON/OFF」→ 消防處·栓轆表一（PDF第6頁）供水來源。有→剔1號／2號中途泵；冇→剔1號／2號固定消防泵。轉答一定清對面一組剔同「符合規定」是／否（流量／壓力留底）。問達跟頁去第6頁。唔改 GAS。 */
 /* v0.6.499：待處理工作 WhatsApp 相——0.6.498 配對太嚴（座號／位置／單號會剔走、未分座多座就整批唔顯示），而且只喺展開後先搵、失敗冇提示。而家用 photo_places 嘅資料夾名做 photo_search（同尋找相片），屋邨＋大廈對到就顯示喺嗰座所有項目上面；未分座就成個屋邨都顯示。縮圖 photo_thumbs，撳相 photo_full。唔改 GAS。 */
 /* v0.6.498：待處理工作——項目上面顯示「AI 處理」WhatsApp 相（近 93 日）。用現有 photo_search（src=wa、屋邨中英 alt、日期／屋邨／樓 dual-read）對屋邨／大廈；有單號或位置先再收窄。縮圖 photo_thumbs，撳相 photo_full。冇對到嘅項目維持原樣。唔改 GAS。 */
@@ -1772,7 +1773,9 @@ function h2ZoneFloorLink(r, bind, v) {
   }
   /* v0.6.490：H2 死磅／行泵／Flow → 表一 零流量壓力／壓力／流量 */
   m = /^h2\.zones\.(\d+)\.(top|low)\.(p[12]_(?:static|run|flow)|tk_(?:static|run|flow)|np_(?:bar|flow))$/.exec(bind);
-  if (m && typeof fhhrApplyH2Src === 'function') {
+  /* v0.6.501：水缸冇泵讀數改完先決重力定 T8，再帶讀數 */
+  if (m && m[2] === 'low' && /^tk_/.test(m[3]) && typeof fhhrZonesSrcSync === 'function') fhhrZonesSrcSync(r);
+  else if (m && typeof fhhrApplyH2Src === 'function') {
     fhhrApplyH2Src(r, +m[1], true);
     const fz = ((((r.fsd || {}).fhhr || {}).t || {}).zones || [])[+m[1]];
     if (fz && typeof fhhrSrcOkFromReadings === 'function') fhhrSrcOkFromReadings(fz);
@@ -4080,15 +4083,17 @@ function sprT2Sync(r) {
   t.sitems = items;
   return t.sitems;
 }
-function fhhrSrcFromQ(r, z) {
-  /* v0.6.500：T8「Inlet有冇開泵ON/OFF掣？」→ 表一（PDF第6頁）供水來源
-     有 → 剔 1號／2號中途泵（bst1＋bst2），清 1號／2號固定消防泵
-     冇 → 剔 1號／2號固定消防泵（fix1＋fix2），清 1號／2號中途泵
-     轉答一定清對面一組嘅剔同「符合規定」是／否，就算已有流量／壓力／備註都清（讀數留底，轉返先見返）。
-     穩壓泵／消防水缸唔郁。T8 未答唔改。0.6.490 只清「空剔」，讀數一經 TR-H2 帶入就清唔走。 */
-  if (!r || !z || !r.q) return;
-  const ans = r.q.T8;
-  if (ans !== '有' && ans !== '冇') return;
+function h2ZoneTankGravity(r, zi) {
+  /* v0.6.501：TR-H2 該 Zone 最低出水位「冇開泵（水缸冇泵）」有填死磅／Bar／Flow 任一。
+     樓層／梯／由至唔算。最高出水位「冇開泵」（np_bar／np_flow）係穩壓泵，唔算重力。 */
+  const low = ((((r || {}).h2 || {}).zones || [])[zi] || {}).low || {};
+  return has(low.tk_static) || has(low.tk_run) || has(low.tk_flow);
+}
+function fhhrSrcFromQ(r, z, zi) {
+  /* v0.6.501：水缸冇泵有數 → 該編號只剔消防水缸重力供水，清穩壓泵／固定泵1／2／中途泵1／2。
+     否則跟 v0.6.500 T8：有→中途泵1＋2、冇→固定泵1＋2（清對面）；穩壓泵唔跟 T8。
+     重力係自動剔（srcBy=tank）先會喺資料清走後收回；師傅自己剔嘅水缸留低。 */
+  if (!r || !z) return;
   const src = z.src || (z.src = {});
   const tick = (k) => {
     let o = src[k];
@@ -4101,6 +4106,19 @@ function fhhrSrcFromQ(r, z) {
     if ('on' in o) delete o.on;
     if ('ok' in o) delete o.ok;
   };
+  if (h2ZoneTankGravity(r, zi)) {
+    tick('tank');
+    z.srcBy = 'tank';
+    ['jockey', 'fix1', 'fix2', 'bst1', 'bst2'].forEach(untick);
+    return;
+  }
+  if (z.srcBy === 'tank') {
+    untick('tank');
+    delete z.srcBy;
+  }
+  if (!r.q) return;
+  const ans = r.q.T8;
+  if (ans !== '有' && ans !== '冇') return;
   if (ans === '有') {
     tick('bst1'); tick('bst2');
     untick('fix1'); untick('fix2');
@@ -4124,14 +4142,18 @@ function fhhrSrcOkFromReadings(z) {
   });
 }
 function fhhrZonesSrcSync(r) {
-  /* v0.6.500：每個消防栓區域都跟 T8：有→中途泵1＋2，冇→固定泵1＋2，並清對面一組。無 zone 時先開一格。 */
+  /* v0.6.501：Zone i「水缸冇泵」有數 → 編號 i+1 只剔重力；其餘 zone 跟 T8。要開到有資料嗰個編號。 */
   if (!r) return;
   if (!r.fsd) r.fsd = {};
   if (!r.fsd.fhhr) r.fsd.fhhr = {};
   if (!r.fsd.fhhr.t) r.fsd.fhhr.t = {};
   const zs = r.fsd.fhhr.t.zones || (r.fsd.fhhr.t.zones = []);
-  if ((r.q && (r.q.T8 === '有' || r.q.T8 === '冇')) && !zs.length) zs.push({});
-  zs.forEach(z => { if (z) fhhrSrcFromQ(r, z); });
+  const h2n = (((r.h2 || {}).zones) || []).length;
+  let need = zs.length;
+  for (let i = 0; i < h2n; i++) { if (h2ZoneTankGravity(r, i)) need = Math.max(need, i + 1); }
+  if ((r.q && (r.q.T8 === '有' || r.q.T8 === '冇')) && need < 1) need = 1;
+  while (zs.length < need) zs.push({});
+  zs.forEach((z, zi) => { if (z) fhhrSrcFromQ(r, z, zi); });
   zs.forEach((_, zi) => { if (typeof fhhrApplyH2Src === 'function') fhhrApplyH2Src(r, zi, true); });
   zs.forEach(z => { if (z) fhhrSrcOkFromReadings(z); });
 }
@@ -4161,6 +4183,7 @@ function fsdTablesOut(r, c, d) { // 提交用：隱藏咗嘅來源記 NA（App �
   } else if (c.key === 'fds') {
     if (typeof fdsT1Sync === 'function') fdsT1Sync(r);
   }
+  if (c.key === 'fhhr' && Array.isArray(t.zones)) t.zones.forEach(z => { if (z && z.srcBy) delete z.srcBy; }); /* v0.6.501：自動重力標記唔交 GAS */
   if (c.key === 'spr') {
     /* v0.6.145：表一多系統 → tables.systems[]；同時鏡射 systems[0]→valves/totals 畀舊 importer */
     if (Array.isArray(t.systems) && t.systems.length) {
@@ -4521,7 +4544,7 @@ function fsdTableHtml(r, c, s) {
           ${v.on ? `${k === 'jockey' ? '' : `<div class="opth" data-optfor="${sb}.flow"></div>`}<div class="g3">${k === 'jockey' ? '' : fNum(sb + '.flow', v.flow, '', '流量（升／分鐘）') + fNum(sb + '.p', v.p, '', '壓力（巴）')}${fNum(sb + '.p0', v.p0, '', '零流量壓力（巴）')}</div>
             <div class="fld"><label>符合消防處的規定</label>${seg(sb + '.ok', v.ok, [['是', '是', 'yes'], ['否', '否', 'bad']], `ft-${c.key}-z${i}-${k}`)}</div>${txtField(sb + '.note', v.note, '備註', '')}` : ''}</div>`; }).join('')}</div>`; }).join('')}
       <div class="row"><button class="btn sm" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="1">＋ 加消防栓區域</button>${zs.length ? `<button class="btn sm danger" data-act="fsdrow" data-c="${c.key}" data-t="zones" data-d="-1">− 刪最後一個</button>` : ''}</div>
-      <div class="mut" style="margin-top:6px">問卷 T8「Inlet有冇開泵ON/OFF」：有 → 剔 1號／2號中途泵；冇 → 剔 1號／2號固定消防泵（轉答會清對面一組）。讀數可由 TR-H2 帶入（流量←Flow、壓力←行泵、零流量壓力←死磅；一個小數位）。符合規定：流量≥15 且 壓力≥3.5 → 是，否則 → 否。</div></div>`;
+      <div class="mut" style="margin-top:6px">問卷 T8「Inlet有冇開泵ON/OFF」：有 → 剔 1號／2號中途泵；冇 → 剔 1號／2號固定消防泵（轉答會清對面一組）。TR-H2 該 Zone「冇開泵（水缸冇泵）」死磅／Bar／Flow 有數 → 呢個編號只剔消防水缸重力供水，其他來源唔剔（Zone 1→編號 1，Zone 2→編號 2）。讀數可由 TR-H2 帶入（流量←Flow、壓力←行泵、零流量壓力←死磅；一個小數位）。符合規定：流量≥15 且 壓力≥3.5 → 是，否則 → 否。</div></div>`;
   }
   if (s.table === 'tank_t1' || s.table === 'ws_t1') {
     const rows = (t.rows || []).map(x => x || {}), tk = s.table === 'tank_t1';
@@ -18279,7 +18302,8 @@ document.addEventListener('input', e => {
   const r = Store.get(cur.id); if (!r) return;
   const kind = el.dataset.kind || 'text';
   if (kind === 'ir') { const v = parseIR(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); el.classList.toggle('gt', isGT(v)); } }
-  else if (kind === 'num1') { const v = parse1(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); }
+  else if (kind === 'num1') { const v = parse1(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null);
+    if (/^h2\.zones\.\d+\.low\.tk_(static|run|flow)$/.test(el.dataset.bind || '') && typeof fhhrZonesSrcSync === 'function') fhhrZonesSrcSync(r); /* v0.6.501：水缸冇泵讀數即改第6頁剔 */ }
     if (el.dataset.kpa) { const s = el.parentElement.querySelector('.kpa'); if (s) s.textContent = (v != null && !Number.isNaN(v)) ? '= ' + Math.round(v * 100) + ' kPa' : ''; } }
   else if (kind === 'num2') { const v = parse2(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v); el.classList.toggle('filled', v != null); } }
   else if (kind === 'int') { const v = parseInt0(el.value); el.classList.toggle('bad', Number.isNaN(v)); if (!Number.isNaN(v)) { setP(r, el.dataset.bind, v);
