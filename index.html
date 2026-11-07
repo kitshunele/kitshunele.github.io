@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.497';
+const APP_VERSION = '0.6.498';
+/* v0.6.498：待處理工作——項目上面顯示「AI 處理」WhatsApp 相（近 93 日）。用現有 photo_search（src=wa、屋邨中英 alt、日期／屋邨／樓 dual-read）對屋邨／大廈；有單號或位置先再收窄。縮圖 photo_thumbs，撳相 photo_full。冇對到嘅項目維持原樣。唔改 GAS。 */
 /* v0.6.497：尋找相片——屋邨／樓下拉只列近 93 日「AI 處理」有 WhatsApp 相嘅地方（photo_places）。冇相嘅合約屋邨／樓唔再出現。搵相仍然 photo_search、src=wa、跨日期夾。 */
 /* v0.6.496：尋找相片——先揀屋邨（邨／村）再揀樓，搵公司 Drive「AI 處理」入面嘅 WhatsApp 相。屋邨清單跟合約（同打卡），有相但合約未有嘅地方由 photo_places 補上；photo_search 跨日期夾（日期／屋邨／樓 同 舊樹 屋邨／樓／日期）。唔再等 photo_places 先至有下拉、唔使自己打先搵到。 */
 /* v0.6.495：待處理工作——未完成項目入面，已經做咗嘅部分劃刪除線（App 確認完成成項，或位置／缺陷某一截寫住 (Done)／已完成）。Sheet 單獨已完成仍然當未處理，唔劃線 */
@@ -880,6 +881,7 @@ const APP_VERSION = '0.6.497';
 /* v0.6.261：F23「有冇消防直線？」冇→CL-D e 測試消防直線（fire station link）＝NA（na_unless 早已有；補問卷 note／CL-D hint） */
 /* v0.6.260：F9 下 FD_EOL「有冇頭係要用電阻？」冇→CL-D b3＝NA；F10「有冇 stand alone 頭？」冇→CL-D b4＝NA */
 /* v0.6.259：待處理工作詳情返回清單保留捲動位置（唔跳頂） */
+/* v0.6.498：待處理工作項目上面顯示對到嘅 AI 處理 WhatsApp 相（photo_search／photo_thumbs／photo_full） */
 /* v0.6.497：尋找相片下拉只列有相嘅屋邨／樓（photo_places，近 93 日） */
 /* v0.6.252：尋找相片返下拉（屋邨／大廈）；唔顯示日期（固定近 93 日）；photo_search＋photo_places；GAS 1.79 可繼續但 UI 唔用 browse */
 /* v0.6.251：睇相瀏覽式（已擱置 UI；GAS photo_browse_* 仍在） */
@@ -11141,7 +11143,20 @@ const PW_MSG = {
   '#pwcf .box{background:#fff;width:100%;max-width:720px;border-radius:18px 18px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}' +
   '#pwcf h3{margin:0 0 8px;font-size:20px}#pwcf .lab{display:block;font-weight:700;margin:12px 0 4px}#pwcf textarea{width:100%;box-sizing:border-box;min-height:70px;font-size:16px;padding:8px;border:1px solid var(--line);border-radius:10px}' +
   '#pwcf .row{display:flex;gap:8px}#pwcf .row .btn{flex:1}#pwcf .acts{display:flex;gap:10px;margin-top:14px}#pwcf .acts .btn{flex:1}.pwnames{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}' +
-  '#pwpv{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}#pwpv img{flex:1;min-height:0;object-fit:contain;width:100%}#pwpv .bar{display:flex;gap:8px;padding:10px;color:#fff;align-items:center}#pwpv .bar .btn{flex:none}';
+  '#pwpv{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}#pwpv img{flex:1;min-height:0;object-fit:contain;width:100%}#pwpv .bar{display:flex;gap:8px;padding:10px;color:#fff;align-items:center}#pwpv .bar .btn{flex:none}' +
+  '.pwitem{border-top:1px solid var(--line)}.pwitem .pwrow{border-top:0}' +
+  '.pwwa{padding:8px 14px 2px}.pwwa.det{padding:0 0 8px}.pwwalab{font-size:12px;font-weight:800;color:#0f766e;margin:0 0 4px}' +
+  '.pwwarow{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch}' +
+  '.pwwath{position:relative;flex:0 0 auto;width:72px;height:72px;border:0;padding:0;border-radius:8px;overflow:hidden;background:#e2e8f0}' +
+  '.pwwath img{width:100%;height:100%;object-fit:cover;display:block}.pwwath:not(.ok) img{visibility:hidden}' +
+  '.pwwath .pwwat{position:absolute;left:0;right:0;bottom:0;font-size:10px;line-height:1.2;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.72));padding:10px 3px 2px;text-align:left}' +
+  '#pwwaslot:empty{display:none}' +
+  '#pwwav{position:fixed;inset:0;z-index:75;background:#111;display:flex;flex-direction:column;color:#fff}' +
+  '#pwwav .bar{display:flex;gap:8px;align-items:center;padding:8px;background:#000}#pwwav .bar .btn{min-height:44px;background:#2a2a2a;color:#fff;border:1px solid #555;text-decoration:none;display:inline-flex;align-items:center}' +
+  '#pwwav .vn{flex:1;text-align:center;color:#ddd}#pwwav .vw{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}' +
+  '#pwwav .vw img{max-width:100%;max-height:100%;object-fit:contain}#pwwav .vw img.lo{filter:blur(1px)}#pwwav .cap{padding:8px 12px 14px;background:#000;font-size:13px}' +
+  '#pwwav .cap b{display:block;word-break:break-all}#pwwav .cap span{display:block;color:#ccc;margin-top:2px}#pwwav .msg{color:#ddd;text-align:center;padding:4px 8px}' +
+  '#pwwav .nav{position:absolute;top:50%;width:44px;height:64px;border:0;background:rgba(0,0,0,.4);color:#fff;font-size:30px}#pwwav .nav.l{left:0}#pwwav .nav.r{right:0}#pwwav .nav:disabled{opacity:.25}';
   document.head.appendChild(s); } catch (e) {} })();
 function pwNorm(data) { /* 只讀需要嘅欄；其他欄（就算有）唔要 */
   const d = data && !Array.isArray(data) ? data : { records: Array.isArray(data) ? data : [] };
@@ -11300,6 +11315,7 @@ function viewPend() {
 }
 function pwListHtml() {
   const ca = pwCache(); if (!ca) return '';
+  pwWaSoon();
   const q = pwQ(PW.q), L = ca.recs.filter(x => (!PW.st || x.st === PW.st) && pwFilt(x) && pwMatch(x, q));
   if (!L.length) return `<div class="card mut" id="pwnone">${PW.q.trim() ? `搵唔到「${esc(PW.q)}」` : '冇符合篩選嘅項目'}</div>`;
   const order = ca.ests.map(e => e.est), by = new Map();
@@ -11315,12 +11331,405 @@ function pwListHtml() {
       ${(dl => dl.length ? `<div class="pwdls">${dl.map(d => pwDlChip(ca, d)).join('')}</div>` : '')(pwDls(ca, k, PW.est === k ? PW.house : ''))}
       <div class="pwcnt">${cnt.map(a => `<span class="badge ${PW_CLS[a[0]] || 'wona'}">${esc(a[0])} ${a[1]}</span>`).join('')}</div></button>
       ${open ? xs.map(x => { const done = pwItemDone(x); const title = done ? `<span class="pwstrike">${esc(x.house || '—')} · ${esc(x.defect || '—')}</span>` : `${pwPartsHtml(x.house || '—', false)} · ${pwPartsHtml(x.defect || '—', false)}`;
-        return `<button class="pwrow" data-act="pwopen" data-id="${esc(x.id)}"><span class="pwno">${esc(x.no)}</span><span class="pwmain"><b>${title}</b>${x.qty ? ` <span class="mut">× ${esc(x.qty)}</span>` : ''}
-        <div class="mut">${x.loc ? pwPartsHtml(x.loc, done) : '—'}</div><div class="mut">${pwBadge(x.st)}${x.cf ? ` <span class="pwok">✅ ${esc(x.cf.technician)}</span>${x.cf.no_photo ? ' <span class="mut">（冇相）</span>' : ''}` : x.cfx ? ' <span class="mut">↩️ 已取消完成</span>' : ''}${x.done && !(x.sheetDone && !x.cf) ? ` 完成日期 ${esc(x.done)}` : ''}${x.wo ? ` · 單號 ${esc(x.wo)}` : ''}${x.rem ? ` · ${pwPartsHtml(x.rem, done)}` : ''}${x.flags.length ? ' · ⚠' : ''}</div></span><span class="pwgo">›</span></button>`; }).join('') : ''}</div>`;
+        return `<div class="pwitem">${pwWaStrip(x)}<button class="pwrow" data-act="pwopen" data-id="${esc(x.id)}"><span class="pwno">${esc(x.no)}</span><span class="pwmain"><b>${title}</b>${x.qty ? ` <span class="mut">× ${esc(x.qty)}</span>` : ''}
+        <div class="mut">${x.loc ? pwPartsHtml(x.loc, done) : '—'}</div><div class="mut">${pwBadge(x.st)}${x.cf ? ` <span class="pwok">✅ ${esc(x.cf.technician)}</span>${x.cf.no_photo ? ' <span class="mut">（冇相）</span>' : ''}` : x.cfx ? ' <span class="mut">↩️ 已取消完成</span>' : ''}${x.done && !(x.sheetDone && !x.cf) ? ` 完成日期 ${esc(x.done)}` : ''}${x.wo ? ` · 單號 ${esc(x.wo)}` : ''}${x.rem ? ` · ${pwPartsHtml(x.rem, done)}` : ''}${x.flags.length ? ' · ⚠' : ''}</div></span><span class="pwgo">›</span></button></div>`; }).join('') : ''}</div>`;
   }).join('');
 }
+/* ---------- v0.6.498 待處理工作 × WhatsApp 相（AI 處理）----------
+   展開咗嘅屋邨（或開緊嘅一項）先問現有 photo_search：src=wa、近 PS_MAXD 日、estate＋中英 alt。
+   GAS 自己 dual-read「日期／屋邨／樓」同舊樹「屋邨／樓／日期」。縮圖 photo_thumbs，撳開 photo_full。
+   對相：先屋邨（中英／簡寫），再大廈（去工單號、去尾「樓」、座號）。
+   說明／路徑有單號（K＋6 位或 8 位以上數字，對 wo／k／到場號）→ 只放嗰幾項。
+   否則資料夾大廈對到邊啲項就放邊啲；說明寫明幾座就再收窄。
+   天台／泵房等主題夾：項目位置／樓層有嗰個字先放。
+   未分座：說明寫明大廈，或者呢個屋邨得一座待處理，先放。
+   位置／樓層字眼可以再窄到其中幾項。影片同 App 相唔放。冇對到就唔加任何格。 */
+/* PWWA_START */
+function pwWaFlat(s) {
+  const t = typeof pmFW === 'function' ? pmFW(s) : String(s == null ? '' : s);
+  return (typeof pkN === 'function' ? pkN(t) : String(t).replace(/[\s\u3000]+/g, '').toLowerCase());
+}
+function pwWaCleanPlace(name) {
+  let s = typeof pmFW === 'function' ? pmFW(String(name || '')) : String(name || '');
+  s = s.replace(/鳯/g, '鳳');
+  s = s.replace(/K\d{6,}/gi, ' ');
+  s = s.replace(/\b\d{2}-[A-Za-z]{2,}(?:-[A-Za-z0-9]+)+/g, ' ');
+  s = s.replace(/(^|[^\d])\d{8,}(?!\d)/g, '$1 ');
+  s = s.replace(/待\s*WO/gi, ' ');
+  return s;
+}
+function pwWaBlkParts(name) {
+  const raw0 = pwWaCleanPlace(name).replace(/[\s\u3000]+/g, '');
+  const m = /^(.*?)(?:第)?([0-9]{1,2}|[一二三四五六七八九十兩])座$/.exec(raw0);
+  const base = (m ? m[1] : raw0).replace(/樓$/, '');
+  const map = { 一: '1', 二: '2', 兩: '2', 三: '3', 四: '4', 五: '5', 六: '6', 七: '7', 八: '8', 九: '9', 十: '10' };
+  const num = m ? (map[m[2]] || String(parseInt(m[2], 10))) : '';
+  return { base: base, num: num };
+}
+function pwWaSameBlk(a, b) {
+  const A = pwWaBlkParts(a), B = pwWaBlkParts(b);
+  if (!A.base || !B.base || A.base.length < 2 || B.base.length < 2) return false;
+  if (A.base !== B.base) return false;
+  if (A.num && B.num && A.num !== B.num) return false;
+  return true;
+}
+function pwWaHouseLabel(est, house) {
+  if (!house || typeof pkEstDef !== 'function') return house || '';
+  const d = pkEstDef(est);
+  if (!d || !d.blocks) return house;
+  const n = typeof pkN === 'function' ? pkN(house) : pwWaFlat(house);
+  const b = d.blocks.find(x => [x.zh, x.en, x.code].some(y => y && (typeof pkN === 'function' ? pkN(y) : pwWaFlat(y)) === n));
+  return (b && (b.zh || b.en)) || house;
+}
+function pwWaTextHitsHouse(text, house) {
+  const H = pwWaBlkParts(pwWaHouseLabel('', house) || house);
+  if (!H.base || H.base.length < 2) return false;
+  const t = pwWaCleanPlace(text).replace(/[\s\u3000]+/g, '');
+  if (t.indexOf(H.base) < 0) return false;
+  if (!H.num) return true;
+  const cn = { '1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '9': '九', '10': '十' }[H.num] || '';
+  const escRe = H.base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(escRe + '樓?(?:第)?(?:' + H.num + (cn ? '|' + cn : '') + ')座').test(t);
+}
+function pwWaEstMatch(photoEst, itemEst) {
+  if (!photoEst || !itemEst) return false;
+  const fold = s => pwWaFlat(s).replace(/estate$/g, '');
+  const core = s => fold(s).replace(/(屋苑|邨|村|苑)$/g, '');
+  const a = fold(photoEst), b = fold(itemEst), ca = core(photoEst), cb = core(itemEst);
+  if (a && b && (a === b || (ca && ca === cb && ca.length >= 2) || (a.length >= 3 && b.length >= 3 && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)))) return true;
+  let di = null, dp = null;
+  try { di = typeof pkEstDef === 'function' ? pkEstDef(itemEst) : null; dp = typeof pkEstDef === 'function' ? pkEstDef(photoEst) : null; } catch (e) { di = null; dp = null; }
+  if (di && dp && di.code && di.code === dp.code) return true;
+  if (di && [di.zh, di.en, di.en_official, di.code].some(x => x && fold(x) === a)) return true;
+  if (dp && [dp.zh, dp.en, dp.en_official, dp.code].some(x => x && fold(x) === b)) return true;
+  return false;
+}
+function pwWaIsTheme(name) {
+  const s = pwWaCleanPlace(name).replace(/[\s\u3000]+/g, '').replace(/樓$/, '');
+  return /^(天台|頂樓|頂層|天面|商場|街市|停車場|車場|泵房|地庫|平台|花園|會所|未分類|未分座|其他|全棟|全座)$/.test(s);
+}
+function pwWaItemHas(it, word) {
+  const w = pwWaFlat(String(word || '').replace(/樓$/, ''));
+  if (!w || w.length < 2) return false;
+  const t = pwWaFlat([it.floor, it.loc, it.house, it.rem].filter(Boolean).join(' '));
+  return t.indexOf(w) >= 0;
+}
+function pwWaBlob(p) {
+  const cap = typeof pmCap === 'function' ? pmCap(p && p.name) : '';
+  return [p && p.estate, p && p.block, p && p.path, p && p.name, cap].filter(Boolean).join(' ');
+}
+function pwWaWoTokens(it) {
+  const src = [it.wo, it.k, it.arr].filter(Boolean).join(' ');
+  const out = [], up = String(src).toUpperCase();
+  (up.match(/K\d{6,}/g) || []).forEach(k => { if (out.indexOf(k) < 0) out.push(k); });
+  (String(src).match(/\d{8,}/g) || []).forEach(n => { if (out.indexOf(n) < 0) out.push(n); });
+  return out;
+}
+function pwWaWoHit(it, blob) {
+  const toks = pwWaWoTokens(it);
+  if (!toks.length) return false;
+  const t = String(blob || '').toUpperCase().replace(/[\s_\-]+/g, '');
+  return toks.some(w => t.indexOf(w) >= 0);
+}
+function pwWaLocTokens(it) {
+  const skip = pwWaFlat([it.est, it.house].filter(Boolean).join(' '));
+  const out = [];
+  const add = (s, min) => String(s || '').split(/[,，、;；/\\\n|]+/).forEach(p => {
+    const t = pwWaFlat(p).replace(/[()（）[\]【】]/g, '');
+    if (t.length < min || t.length > 18) return;
+    if (skip && skip.indexOf(t) >= 0) return;
+    if (out.indexOf(t) < 0) out.push(t);
+  });
+  add(it.floor, 2);
+  add(it.loc, 3);
+  return out;
+}
+function pwWaLocHit(it, blob) {
+  const t = pwWaFlat(blob);
+  return pwWaLocTokens(it).some(tok => t.indexOf(tok) >= 0);
+}
+function pwWaSeatNum(blob) {
+  const t = pwWaCleanPlace(blob).replace(/[\s\u3000]+/g, '');
+  const m = /(?:第)?([0-9]{1,2}|[一二三四五六七八九十兩])座/.exec(t);
+  if (!m) return '';
+  const map = { 一: '1', 二: '2', 兩: '2', 三: '3', 四: '4', 五: '5', 六: '6', 七: '7', 八: '8', 九: '9', 十: '10' };
+  return map[m[1]] || String(parseInt(m[1], 10));
+}
+function pwWaNarrowSeat(pool, blob) {
+  const n = pwWaSeatNum(blob);
+  if (!n || !pool || pool.length < 2) return pool;
+  const hit = pool.filter(it => pwWaBlkParts(pwWaHouseLabel(it.est, it.house)).num === n);
+  return hit.length ? hit : pool;
+}
+function pwWaKeep(p) { return !!(p && p.id && p.kind !== 'video' && p.src !== 'app'); }
+function pwWaAssign(items, photos) {
+  const out = new Map();
+  (items || []).forEach(it => { if (it && it.id) out.set(it.id, []); });
+  const add = (it, p) => {
+    const a = out.get(it.id); if (!a || a.length >= 24 || a.some(x => x.id === p.id)) return; a.push(p);
+  };
+  (photos || []).forEach(p => {
+    if (!pwWaKeep(p)) return;
+    const estItems = (items || []).filter(it => it && (pwWaEstMatch(p.estate || '', it.est || '') || (p._pwEst && pwWaEstMatch(p._pwEst, it.est || ''))));
+    if (!estItems.length) return;
+    const blob = pwWaBlob(p);
+    const woHits = estItems.filter(it => pwWaWoHit(it, blob));
+    if (woHits.length) { woHits.forEach(it => add(it, p)); return; }
+    const blk = p.block || '';
+    const theme = pwWaIsTheme(blk);
+    let pool = [];
+    if (blk && !theme) {
+      pool = estItems.filter(it => it.house && pwWaSameBlk(pwWaHouseLabel(it.est, blk), pwWaHouseLabel(it.est, it.house)));
+      const named = estItems.filter(it => it.house && pwWaBlkParts(it.house).num && pwWaTextHitsHouse(blob, pwWaHouseLabel(it.est, it.house)));
+      if (named.length) {
+        const inter = pool.filter(it => named.indexOf(it) >= 0);
+        pool = inter.length ? inter : named;
+      } else {
+        estItems.forEach(it => { if (it.house && pwWaTextHitsHouse(blob, pwWaHouseLabel(it.est, it.house)) && pool.indexOf(it) < 0) pool.push(it); });
+      }
+    } else {
+      const named = estItems.filter(it => it.house && pwWaTextHitsHouse(blob, pwWaHouseLabel(it.est, it.house)));
+      if (named.length) pool = named;
+      else if (theme) pool = estItems.filter(it => pwWaItemHas(it, blk));
+      else {
+        const houses = new Set(estItems.map(it => pwWaFlat(pwWaHouseLabel(it.est, it.house || ''))).filter(Boolean));
+        if (houses.size === 1) pool = estItems.slice();
+      }
+    }
+    if (!pool.length) return;
+    pool = pwWaNarrowSeat(pool, blob);
+    const locHits = pool.filter(it => pwWaLocHit(it, blob));
+    if (locHits.length && locHits.length < pool.length) pool = locHits;
+    pool.forEach(it => add(it, p));
+  });
+  out.forEach(arr => arr.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.hkt || '').localeCompare(String(a.hkt || ''))));
+  return out;
+}
+/* PWWA_END */
+const PWP = { byEst: {}, thumbs: {}, thumbBusy: {}, full: new Map(), urls: [], q: [], want: {}, n: 0, gen: 0, sig: '', map: null, soon: 0 };
+let PWW = null;
+function pwWaEstKey(est) {
+  let d = null; try { d = typeof pkEstDef === 'function' ? pkEstDef(est) : null; } catch (e) { d = null; }
+  return pwWaFlat((d && (d.zh || d.en)) || est || '');
+}
+function pwWaAllPhotos() {
+  const out = [], seen = {};
+  Object.keys(PWP.byEst).forEach(k => ((PWP.byEst[k] && PWP.byEst[k].photos) || []).forEach(p => { if (p && p.id && !seen[p.id]) { seen[p.id] = 1; out.push(p); } }));
+  return out;
+}
+function pwWaMap(ca) {
+  if (!ca) return new Map();
+  const photos = pwWaAllPhotos();
+  const sig = (ca.recs || []).map(r => r.id).join(',') + '|' + photos.map(p => p.id).join(',');
+  if (sig === PWP.sig && PWP.map) return PWP.map;
+  PWP.sig = sig; PWP.map = pwWaAssign(ca.recs || [], photos); return PWP.map;
+}
+function pwWaPhotosOf(id) {
+  const ca = pwCache(); if (!ca) return [];
+  return (pwWaMap(ca).get(id) || []).slice();
+}
+function pwWaCap(p) { try { return (typeof pmCap === 'function' ? pmCap(p.name) : '') || ''; } catch (e) { return ''; } }
+function pwWaStrip(x, detail) {
+  if (!x) return '';
+  const ca = pwCache(); if (!ca) return '';
+  const all = pwWaMap(ca).get(x.id) || [];
+  if (!all.length) return '';
+  const ph = all.slice(0, 24);
+  const thumbs = ph.map((p, i) => {
+    const u = PWP.thumbs[p.id];
+    const cap = pwWaCap(p) || 'WhatsApp 相';
+    return `<button type="button" class="pwwath${u ? ' ok' : ''}" data-pwwa="big" data-id="${esc(x.id)}" data-i="${i}" aria-label="${esc(cap + ' ' + (p.date || '') + ' ' + (p.hkt || ''))}"><img data-pwwaid="${esc(p.id)}" alt=""${u ? ` src="${esc(u)}"` : ''}>${p.date ? `<span class="pwwat">${esc(String(p.date).slice(5))}</span>` : ''}</button>`;
+  }).join('');
+  return `<div class="pwwa${detail ? ' det' : ''}"><div class="pwwalab">💬 WhatsApp 相 · ${all.length}${all.length > ph.length ? '+' : ''}</div><div class="pwwarow">${thumbs}</div></div>`;
+}
+function pwWaSlot(x) { return `<div id="pwwaslot">${pwWaStrip(x, true)}</div>`; }
+function pwWaSoon() { clearTimeout(PWP.soon); PWP.soon = setTimeout(pwWaAfter, 40); }
+function pwWaAfter() { pwWaKick(); pwWaThumbs(); }
+function pwWaVisibleEsts() {
+  const ca = pwCache(); if (!ca || cur.view !== 'pend') return [];
+  if (cur.id) { const x = ca.recs.find(r => r.id === cur.id); return x && x.est ? [x.est] : []; }
+  const q = pwQ(PW.q), ests = [];
+  ca.recs.forEach(x => {
+    if (!x.est || ests.indexOf(x.est) >= 0) return;
+    if ((PW.st && x.st !== PW.st) || !pwFilt(x) || !pwMatch(x, q)) return;
+    if (PW.st || q || PW.est || PW.open[x.est]) ests.push(x.est);
+  });
+  return ests;
+}
+function pwWaBody(est) {
+  const t = hkDate();
+  const f = { from: phAddDay(t, -(PS_MAXD - 1)), to: t, est: est, estT: false, blk: '', blkT: false, tech: '', src: 'wa', q: '', estLooseOk: false };
+  return psBody(f, 60);
+}
+function pwWaKick() {
+  if (cur.view !== 'pend') return;
+  let c; try { c = upCfg(); } catch (e) { return; }
+  if (!c || !c.url || !c.pin) return;
+  if (typeof accLocked === 'function' && accLocked()) return;
+  pwWaVisibleEsts().forEach(est => {
+    const key = pwWaEstKey(est); if (!key) return;
+    const slot = PWP.byEst[key];
+    if (slot && slot.busy) return;
+    if (slot && slot.at && Date.now() - slot.at < (slot.ok ? 600000 : 60000)) return;
+    if (PWP.q.indexOf(key) >= 0) return;
+    PWP.want[key] = est; PWP.q.push(key);
+  });
+  pwWaPump();
+}
+function pwWaPump() {
+  while (PWP.n < 2 && PWP.q.length) {
+    const key = PWP.q.shift(), est = PWP.want[key];
+    PWP.n++;
+    pwWaFetch(est, key).then(() => { PWP.n--; pwWaPump(); }, () => { PWP.n--; pwWaPump(); });
+  }
+}
+async function pwWaFetch(est, key) {
+  const gen = PWP.gen;
+  const slot = PWP.byEst[key] || (PWP.byEst[key] = { photos: [], busy: false, ok: false, err: '', at: 0, more: false });
+  if (slot.busy) return;
+  slot.busy = true;
+  try {
+    const b0 = pwWaBody(est);
+    let cursor = null, guard = 0, photos = [];
+    do {
+      const b = cursor ? Object.assign({}, b0, { cursor: cursor, limit: 60 }) : b0;
+      const o = await psCall(b, 90000);
+      if (gen !== PWP.gen) return;
+      photos = photos.concat((o.items || []).filter(pwWaKeep));
+      cursor = o.next || null;
+      guard++;
+    } while (cursor && photos.length < 180 && guard < 4);
+    if (gen !== PWP.gen) return;
+    const seen = {};
+    slot.photos = photos.filter(p => { if (!p || !p.id || seen[p.id]) return false; seen[p.id] = 1; return true; }).map(p => Object.assign({}, p, { _pwEst: est }));
+    slot.more = !!cursor;
+    slot.ok = true; slot.err = ''; slot.at = Date.now(); slot.est = est;
+  } catch (e) {
+    if (gen !== PWP.gen) return;
+    slot.ok = false; slot.err = (e && e.code) || 'err'; slot.at = Date.now();
+    if (!slot.photos) slot.photos = [];
+  } finally { slot.busy = false; }
+  if (gen !== PWP.gen || cur.view !== 'pend') return;
+  PWP.sig = ''; pwWaPaint();
+}
+function pwWaOnSearch(b, o) {
+  if (!o || !o.ok || !b || b.cursor || b.block || b.q || b.tech || b.src !== 'wa' || !b.estate) return;
+  const key = pwWaEstKey(b.estate), slot = PWP.byEst[key];
+  if (!slot || slot.busy || slot.more) return;
+  const items = (o.items || []).filter(pwWaKeep).map(p => Object.assign({}, p, { _pwEst: slot.est || b.estate }));
+  const a = items.map(x => x.id).join(','), c = (slot.photos || []).map(x => x.id).join(',');
+  if (a === c) return;
+  slot.photos = items; slot.at = Date.now(); slot.ok = true; PWP.sig = '';
+  if (cur.view === 'pend') pwWaPaint();
+}
+function pwWaPaint() {
+  if (cur.view !== 'pend') return;
+  const y = window.scrollY;
+  if (cur.id) {
+    const slot = $('#pwwaslot'), ca = pwCache(), x = ca && ca.recs.find(r => r.id === cur.id);
+    if (slot && x) slot.outerHTML = pwWaSlot(x);
+  } else {
+    const l = $('#pwlist'); if (l) l.innerHTML = pwListHtml();
+  }
+  if (window.scrollY !== y) window.scrollTo(0, y);
+  pwWaThumbs();
+}
+function pwWaSetThumb(id) {
+  const u = PWP.thumbs[id];
+  document.querySelectorAll('img[data-pwwaid]').forEach(im => {
+    if (im.getAttribute('data-pwwaid') !== id) return;
+    const t = im.parentNode; if (!t) return;
+    if (u) { im.src = u; t.classList.add('ok'); } else if (u === '') t.classList.add('none');
+  });
+}
+async function pwWaThumbs() {
+  if (cur.view !== 'pend') return;
+  const need = [];
+  document.querySelectorAll('img[data-pwwaid]').forEach(im => {
+    const id = im.getAttribute('data-pwwaid');
+    if (!id || PWP.thumbs[id] !== undefined || PWP.thumbBusy[id] || need.indexOf(id) >= 0) return;
+    need.push(id);
+  });
+  for (let i = 0; i < need.length; i += 12) {
+    if (cur.view !== 'pend') return;
+    const ids = need.slice(i, i + 12);
+    ids.forEach(id => { PWP.thumbBusy[id] = 1; });
+    let o;
+    try { o = await psCall({ action: 'photo_thumbs', ids: ids }, 90000); }
+    catch (e) {
+      ids.forEach(id => { PWP.thumbBusy[id] = 0; if (!PWP.thumbs[id]) PWP.thumbs[id] = ''; pwWaSetThumb(id); });
+      if (e && ['offline', 'network', 'timeout'].indexOf(e.code) >= 0) return;
+      continue;
+    }
+    const got = {};
+    (o.items || []).forEach(x => {
+      got[x.id] = 1;
+      if (x.base64) {
+        const u = pwWaUrl(x.base64, x.mime); PWP.thumbs[x.id] = u; if (x.full) PWP.full.set(x.id, u);
+      } else PWP.thumbs[x.id] = '';
+      PWP.thumbBusy[x.id] = 0; pwWaSetThumb(x.id);
+    });
+    ids.forEach(id => { PWP.thumbBusy[id] = 0; if (!got[id] && !PWP.thumbs[id]) { PWP.thumbs[id] = ''; pwWaSetThumb(id); } });
+  }
+}
+function pwWaUrl(b64, mime) {
+  const bin = atob(b64), a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+  const u = URL.createObjectURL(new Blob([a], { type: mime || 'image/jpeg' }));
+  PWP.urls.push(u); return u;
+}
+function pwWaClose(fromPop) {
+  if (!PWW) return;
+  const v = PWW; PWW = null; if (v.el) v.el.remove();
+  if (!fromPop && v.hist) { try { if (history.state && history.state.pwwa) history.back(); } catch (e) {} }
+}
+function pwWaOpen(id, i) {
+  const photos = pwWaPhotosOf(id); if (!photos.length) return;
+  if (i < 0) i = 0; if (i >= photos.length) i = photos.length - 1;
+  if (!PWW) {
+    const el = document.createElement('div'); el.id = 'pwwav'; document.body.appendChild(el);
+    PWW = { el: el, hist: false, id: id, photos: photos, i: i };
+    try { history.pushState({ pwwa: 1 }, '', location.href); PWW.hist = true; } catch (e) {}
+    let sx = null;
+    el.addEventListener('touchstart', ev => { sx = ev.touches.length === 1 ? ev.touches[0].clientX : null; }, { passive: true });
+    el.addEventListener('touchend', ev => { if (sx == null || !PWW) return; const dx = ev.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 60) pwWaOpen(PWW.id, PWW.i + (dx < 0 ? 1 : -1)); });
+  }
+  PWW.id = id; PWW.photos = photos; PWW.i = i;
+  const x = photos[i], th = PWP.thumbs[x.id], full = PWP.full.get(x.id);
+  const where = [x.date, x.estate, x.block, x.hkt].filter(Boolean).join(' · ');
+  const drive = x.url && /^https:\/\//.test(x.url) ? `<a class="btn sm" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">↗ 開 Drive</a>` : '';
+  PWW.el.innerHTML = `<div class="bar"><button type="button" class="btn sm" data-pwwa="x">✕ 閂</button><span class="vn">${i + 1} / ${photos.length}</span>${drive}</div>
+    <div class="vw"><img id="pwwaimg" alt="${esc(pwWaCap(x) || x.name || '相')}"${full || th ? ` src="${full || th}"` : ''} class="${full ? '' : 'lo'}"></div>
+    <div class="msg" id="pwwamsg">${full ? '' : '載入緊原相…'}</div>
+    <div class="cap"><b>${esc(pwWaCap(x) || x.name || '（冇說明）')}</b><span>${esc(where)} · 💬 WhatsApp</span></div>
+    <button type="button" class="nav l" data-pwwa="prev" aria-label="上一張" ${i ? '' : 'disabled'}>‹</button>
+    <button type="button" class="nav r" data-pwwa="next" aria-label="下一張" ${i < photos.length - 1 ? '' : 'disabled'}>›</button>`;
+  if (full) return;
+  const gen = PWP.gen, pid = x.id;
+  psCall({ action: 'photo_full', id: pid }, 120000).then(o => {
+    if (!PWW || PWW.i !== i || PWP.gen !== gen) { if (o && o.base64) { const u = pwWaUrl(o.base64, o.mime); PWP.full.set(pid, u); } return; }
+    const u = pwWaUrl(o.base64, o.mime); PWP.full.set(pid, u);
+    if (PWP.full.size > 6) { const k = PWP.full.keys().next().value, ou = PWP.full.get(k); PWP.full.delete(k); if (ou && ou !== PWP.thumbs[k]) { URL.revokeObjectURL(ou); PWP.urls = PWP.urls.filter(z => z !== ou); } }
+    const im = $('#pwwaimg'); if (im && PWW && PWW.photos[PWW.i] && PWW.photos[PWW.i].id === pid) { im.src = u; im.classList.remove('lo'); }
+    const m = $('#pwwamsg'); if (m && PWW && PWW.photos[PWW.i] && PWW.photos[PWW.i].id === pid) m.textContent = '';
+  }).catch(e => {
+    const m = $('#pwwamsg'); if (m && PWW && PWW.photos[PWW.i] && PWW.photos[PWW.i].id === pid) m.textContent = typeof psErr === 'function' ? psErr(e) : '攞唔到相';
+  });
+}
+document.addEventListener('click', e => {
+  const el = e.target && e.target.closest ? e.target.closest('[data-pwwa]') : null;
+  if (!el || el.disabled) return;
+  e.preventDefault(); e.stopPropagation();
+  const a = el.dataset.pwwa;
+  if (a === 'big') return pwWaOpen(el.dataset.id, +el.dataset.i || 0);
+  if (a === 'x') return pwWaClose();
+  if ((a === 'prev' || a === 'next') && PWW) return pwWaOpen(PWW.id, PWW.i + (a === 'next' ? 1 : -1));
+});
+window.addEventListener('popstate', () => { if (PWW && PWW.hist) { PWW.hist = false; pwWaClose(true); } });
+function pwWaReset() { PWP.gen++; PWP.byEst = {}; PWP.q = []; PWP.want = {}; PWP.sig = ''; PWP.map = null; pwWaClose(true); }
 function pwDetail(ca, x) {
   setTimeout(pwHydrate, 0);
+  pwWaSoon();
   const e = ca.ests.find(e => e.est === x.est) || {}, sib = ca.recs.filter(r => r.est === x.est), i = sib.indexOf(x), prev = sib[i - 1], next = sib[i + 1];
   const kv = (k, v) => `<b>${k}</b><span>${v}</span>`;
   const done = pwItemDone(x), kvW = (k, v) => kv(k, v ? pwPartsHtml(v, done) : '<span class="pwnil">—</span>');
@@ -11330,7 +11739,7 @@ function pwDetail(ca, x) {
       <b>屋邨</b><span>${pwV(x.est)}</span><b>大廈</b><span>${pwV((e.houses || []).join('、'))}</span><b>合約編號</b><span>${pwV(x.contract || e.contract)}</span>
       <b>巡查日期</b><span>${pwV(x.idate || e.idate)}</span><b>巡查期數</b><span>${pwV(x.period || e.period)}</span><b>巡查人員</b><span>${pwV(x.insp || e.insp)}</span>
       <b>報告編號</b><span>${pwV(x.rno || e.rno)}</span></div>${(dl => dl.length ? `<div class="pwdls" id="pwdldet">${dl.map(d => pwDlChip(ca, d, true)).join('')}</div>` : '')(pwDls(ca, x.est, x.house || '\u0000'))}${e.note ? `<div class="mut" style="margin-top:6px">ℹ️ ${esc(e.note)}</div>` : ''}</div>
-    <div class="card"><div class="t" style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:18px">${dTitle}</b>${pwBadge(x.st)}</div>
+    <div class="card">${pwWaSlot(x)}<div class="t" style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="font-size:18px">${dTitle}</b>${pwBadge(x.st)}</div>
       <div class="pwkv" style="margin-top:8px">
       ${kv('項目 No.', pwV(x.no))}${kvW('大廈/座數', x.house)}${kvW('樓層', x.floor)}${kvW('位置', x.loc)}${kv('消防裝置類別', pwV(x.type))}
       ${kvW('缺陷描述', x.defect)}${kv('數量', pwV(x.qty))}${kv('相片編號/連結', /^https:\/\//.test(x.photo) ? `<a class="lnk" href="${esc(x.photo)}" target="_blank" rel="noopener noreferrer">開相片 ↗</a>` : pwV(x.photo))}
@@ -11349,6 +11758,7 @@ document.addEventListener('change', e => { const el = e.target; if (!el.dataset 
 document.addEventListener('input', e => { const el = e.target; if (!el.dataset || el.dataset.pw !== 'q') return; PW.q = el.value; const l = $('#pwlist'); if (l) l.innerHTML = pwListHtml(); });
 async function pwClear() {
   if (!(await ask('清除待處理工作資料？', '手機上儲存咗嘅待處理工作清單會刪走（公司 Drive 嗰份唔受影響）。之後要有網先睇得返。', '清除', '取消'))) return;
+  pwWaClose(true);
   try { localStorage.removeItem(LS_PW); localStorage.removeItem(LS_PWCF); } catch (e) {} PW.live = false; PW.err = ''; render(); toast('已清除');
 }
 /* ---------- v0.6.11.1 ✅ 確認完成 ---------- */
@@ -11476,7 +11886,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => { const el = e.target; if (el.id === 'pwcfnop' && PWC) { PWC.nophoto = el.checked; if (el.checked && PWC.err === PW_CF_MSG.pending_no_photo) PWC.err = ''; return pwCfPaint(); }
   if (el.id !== 'pwCam' && el.id !== 'pwGal') return; const fs = Array.from(el.files || []); el.value = ''; pwCfAdd(fs); });
-window.addEventListener('hashchange', () => { if (cur.view !== 'pend' || !cur.id) { if (PWC && !PWC.busy) pwCfClose(); const v = $('#pwpv'); if (v) v.remove(); } });
+window.addEventListener('hashchange', () => { pwWaClose(true); if (cur.view !== 'pend' || !cur.id) { if (PWC && !PWC.busy) pwCfClose(); const v = $('#pwpv'); if (v) v.remove(); } });
 /* ---------- v0.6.12.1 ↩️ 取消完成（Apps Script v1.8 pending_unconfirm；v0.6.12.3：任何師傅用師傅 PIN 都取消得，自動記低打卡身份）---------- */
 const PW_UN_MSG = { bad_action: '公司伺服器（Apps Script）未更新（要 v1.8），暫時取消唔到。', pending_not_found: '伺服器搵唔到呢次確認（可能已經喺 Drive 刪咗）。請重新載入。',
   pending_no_name: '未打卡／未輸入名：請先去「⏱️ 打卡」輸入你個名，先可以取消完成。', pending_busy: '伺服器忙緊，未取消。請再撳。', pending_write_fail: '公司 Drive 寫唔到，未取消。請再試。' };
@@ -12869,6 +13279,7 @@ gasCall = async function (body, ms, pinTry) {
 };
 /* ----- 各頁重畫 ----- */
 SWR_HOOK.photo_search = (b, o) => { if (!o.ok) return; /* 同一個搜尋（第一頁）→ 用新結果（已載入「再載入」頁就唔郁） */
+  if (typeof pwWaOnSearch === 'function') { try { pwWaOnSearch(b, o); } catch (e) {} }
   if (cur.view !== 'phsearch' || !PS.qbody || b.cursor || PS.busy) return;
   const q = JSON.parse(PS.qbody); if (JSON.stringify(swrCanon(q)) !== JSON.stringify(swrCanon(Object.assign({}, b)))) return;
   if (PS.items.length > (typeof PS_FIRST === 'number' ? PS_FIRST : PS_PAGE)) return; /* v0.6.32：第一頁可能只有 PS_FIRST 張 */
@@ -17678,7 +18089,7 @@ document.addEventListener('click', async e => {
     case 'ehclear': EH.f = { from: '', to: '', est: '', bld: '', dmo: '', k: '', q: '', fu: false }; EH.show = EH_PAGE; return render();
     case 'sched': $('#modal').classList.remove('show'); return go('#/sched');
     case 'pend': $('#modal').classList.remove('show'); return go('#/pend');
-    case 'pwreload': PW.live = false; PW.err = ''; return pwLoad();
+    case 'pwreload': pwWaReset(); PW.live = false; PW.err = ''; return pwLoad();
     case 'pwst': PW.st = el.dataset.v || ''; return render();
     case 'pwest': PW.open[el.dataset.v || ''] = !PW.open[el.dataset.v || '']; { const l = $('#pwlist'); if (l) l.innerHTML = pwListHtml(); } return;
     case 'pwopen': if (el.dataset.id) { if (!cur.id) PW.y = window.scrollY | 0; return go('#/pend/' + encodeURIComponent(el.dataset.id)); } return; /* v0.6.259：只喺清單記 scroll；詳情上一項／下一項唔蓋 */
