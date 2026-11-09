@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.511';
+const APP_VERSION = '0.6.512';
+/* v0.6.512：待處理工作唔顯示相片（FAN：App 入面待處理工作唔使顯示相片）。清單同詳情唔出 WhatsApp 縮圖、圖庫、載入提示。配對／photo_search 留底，畫面唔出。尋找相片同確認完成影相唔郁。唔改 GAS。 */
 /* v0.6.511：花灑年檢核對表「是／否／不適用」剔位對齊 blank 框中心（逐頁量度括號框，唔好落欄頭／鄰行）；第5–7頁交界 10.1.d–f、11.a–d 跟返正確頁。表頭地址／完成年檢日期／承辦商參考編號／FS251 跟栓轆等同套自動填。唔改 GAS。 */
 /* v0.6.510：冇非零實測就唔剔供水來源。T8 唔再喺固定泵／中途泵／穩壓泵冇數時預剔。有非零死磅／行泵／Flow 先剔該行並寫數。重力有數照舊。唔改 GAS。 */
 /* v0.6.509：左 TR-H2 有非零數 → 右第六頁即時覆寫。Flow l/s×60＝流量（15→900），行泵＝壓力，死磅＝零流量壓力。唔再留舊 60／3.5／2。0／空白仍然清走右邊同是／否。唔改 GAS。 */
@@ -894,6 +895,7 @@ const APP_VERSION = '0.6.511';
 /* v0.6.261：F23「有冇消防直線？」冇→CL-D e 測試消防直線（fire station link）＝NA（na_unless 早已有；補問卷 note／CL-D hint） */
 /* v0.6.260：F9 下 FD_EOL「有冇頭係要用電阻？」冇→CL-D b3＝NA；F10「有冇 stand alone 頭？」冇→CL-D b4＝NA */
 /* v0.6.259：待處理工作詳情返回清單保留捲動位置（唔跳頂） */
+/* v0.6.512：待處理工作清單／詳情唔再顯示 WhatsApp 相（縮圖、圖庫、載入提示都唔出） */
 /* v0.6.499：待處理 WhatsApp 相放寬配對，並用 photo_places 資料夾名搵相 */
 /* v0.6.498：待處理工作項目上面顯示對到嘅 AI 處理 WhatsApp 相（photo_search／photo_thumbs／photo_full） */
 /* v0.6.497：尋找相片下拉只列有相嘅屋邨／樓（photo_places，近 93 日） */
@@ -11466,7 +11468,8 @@ function pwListHtml() {
    而家：入頁就用 photo_places 嘅資料夾名做 photo_search（src=wa、近 93 日、中英 alt，同尋找相片）。
    屋邨＋大廈對到（1座＝一座＝第1座、去尾「樓」、資料夾名包含）→ 嗰座每一項都顯示。
    未分座／主題夾對唔到個別大廈 → 成個屋邨嘅項目都顯示，避免再整批唔見。
-   縮圖 photo_thumbs，撳相 photo_full。唔改 GAS。 */
+   縮圖 photo_thumbs，撳相 photo_full。唔改 GAS。
+   v0.6.512：FAN 話待處理工作唔使顯示相片。PWWA_SHOW=false → 清單／詳情唔出縮圖、圖庫、載入提示，亦唔再為呢版 photo_search。配對函數留底。尋找相片唔經呢度。 */
 /* PWWA_START */
 function pwWaFlat(s) {
   const t = typeof pmFW === 'function' ? pmFW(s) : String(s == null ? '' : s);
@@ -11642,6 +11645,8 @@ function pwWaAssign(items, photos) {
   return out;
 }
 /* PWWA_END */
+/* v0.6.512：待處理工作唔顯示相片。false = 畫面唔出，亦唔打去攞相。 */
+const PWWA_SHOW = false;
 const PWP = { byEst: {}, thumbs: {}, thumbBusy: {}, full: new Map(), urls: [], q: [], want: {}, n: 0, gen: 0, sig: '', map: null, soon: 0 };
 let PWW = null;
 function pwWaEstKey(est) {
@@ -11666,7 +11671,7 @@ function pwWaPhotosOf(id) {
 }
 function pwWaCap(p) { try { return (typeof pmCap === 'function' ? pmCap(p.name) : '') || ''; } catch (e) { return ''; } }
 function pwWaStrip(x, detail) {
-  if (!x) return '';
+  if (!PWWA_SHOW || !x) return '';
   const ca = pwCache(); if (!ca) return '';
   const all = pwWaMap(ca).get(x.id) || [];
   if (!all.length) return '';
@@ -11679,16 +11684,18 @@ function pwWaStrip(x, detail) {
   return `<div class="pwwa${detail ? ' det' : ''}"><div class="pwwalab">💬 WhatsApp 相 · ${all.length}${all.length > ph.length ? '+' : ''}</div><div class="pwwarow">${thumbs}</div></div>`;
 }
 function pwWaSlot(x) {
+  if (!PWWA_SHOW) return '';
   const inner = pwWaStrip(x, true);
   const note = !inner && x ? pwWaEstNote(x.est) : '';
   return `<div id="pwwaslot">${note}${inner}</div>`;
 }
-function pwWaSoon() { clearTimeout(PWP.soon); PWP.soon = setTimeout(pwWaAfter, 40); }
+function pwWaSoon() { if (!PWWA_SHOW) return; clearTimeout(PWP.soon); PWP.soon = setTimeout(pwWaAfter, 40); }
 function pwWaAfter() {
   try { if (typeof psLoadPlaces === 'function') psLoadPlaces(); } catch (e) {}
   pwWaKick(); pwWaThumbs();
 }
 function pwWaEstNote(est) {
+  if (!PWWA_SHOW) return '';
   const s = PWP.byEst[pwWaEstKey(est)];
   if (!s || s.busy || !s.at) return '<div class="mut pwwawait">載入緊 WhatsApp 相…</div>';
   if (!s.ok) return '<div class="mut pwwawait">WhatsApp 相暫時載入唔到。撳「重新載入」再試。</div>';
@@ -11746,7 +11753,7 @@ function pwWaEnqueue(est, front) {
   if (front) PWP.q.unshift(key); else PWP.q.push(key);
 }
 function pwWaKick() {
-  if (cur.view !== 'pend') return;
+  if (!PWWA_SHOW || cur.view !== 'pend') return;
   let c; try { c = upCfg(); } catch (e) { return; }
   if (!c || !c.url || !c.pin) return;
   if (typeof accLocked === 'function' && accLocked()) return;
@@ -11821,6 +11828,7 @@ async function pwWaFetch(est, key) {
   else pwWaThumbs();
 }
 function pwWaOnSearch(b, o) {
+  if (!PWWA_SHOW) return;
   if (!o || !o.ok || !b || b.cursor || b.block || b.q || b.tech || b.src !== 'wa' || !b.estate) return;
   const key = pwWaEstKey(b.estate), slot = PWP.byEst[key];
   if (!slot || slot.busy || slot.more) return;
@@ -11831,7 +11839,7 @@ function pwWaOnSearch(b, o) {
   if (cur.view === 'pend') pwWaPaint();
 }
 function pwWaPaint() {
-  if (cur.view !== 'pend') return;
+  if (!PWWA_SHOW || cur.view !== 'pend') return;
   const y = window.scrollY;
   if (cur.id) {
     const slot = $('#pwwaslot'), ca = pwCache(), x = ca && ca.recs.find(r => r.id === cur.id);
@@ -11851,7 +11859,7 @@ function pwWaSetThumb(id) {
   });
 }
 async function pwWaThumbs() {
-  if (cur.view !== 'pend') return;
+  if (!PWWA_SHOW || cur.view !== 'pend') return;
   const need = [];
   document.querySelectorAll('img[data-pwwaid]').forEach(im => {
     const id = im.getAttribute('data-pwwaid');
@@ -11892,6 +11900,7 @@ function pwWaClose(fromPop) {
   if (!fromPop && v.hist) { try { if (history.state && history.state.pwwa) history.back(); } catch (e) {} }
 }
 function pwWaOpen(id, i) {
+  if (!PWWA_SHOW) return;
   const photos = pwWaPhotosOf(id); if (!photos.length) return;
   if (i < 0) i = 0; if (i >= photos.length) i = photos.length - 1;
   if (!PWW) {
