@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.512';
+const APP_VERSION = '0.6.513';
+/* v0.6.513：SV／PE 搜尋加「更新」掣。撳就唔用手機舊存，再向公司伺服器攞 KV doc「svpe」（同平時搜尋一樣嘅來源），成功／失敗都有提示。搜尋條件留低。唔改 GAS。 */
 /* v0.6.512：待處理工作唔顯示相片（FAN：App 入面待處理工作唔使顯示相片）。清單同詳情唔出 WhatsApp 縮圖、圖庫、載入提示。配對／photo_search 留底，畫面唔出。尋找相片同確認完成影相唔郁。唔改 GAS。 */
 /* v0.6.511：花灑年檢核對表「是／否／不適用」剔位對齊 blank 框中心（逐頁量度括號框，唔好落欄頭／鄰行）；第5–7頁交界 10.1.d–f、11.a–d 跟返正確頁。表頭地址／完成年檢日期／承辦商參考編號／FS251 跟栓轆等同套自動填。唔改 GAS。 */
 /* v0.6.510：冇非零實測就唔剔供水來源。T8 唔再喺固定泵／中途泵／穩壓泵冇數時預剔。有非零死磅／行泵／Flow 先剔該行並寫數。重力有數照舊。唔改 GAS。 */
@@ -13650,8 +13651,9 @@ bdBody = function () {
    資料：SV - All Estate (NT).xlsx（消防花灑分層閘掣／消防栓／喉轆閘掣目錄：閘掣編號 SSSV/…、SV/…，每期 Tag 編號）＋ PE - All Estate(NT).xlsx（手提滅火器材：
    筒身編號、位置、出廠年份、試壓、每期檢查結果）。cf_worker/tools/svpe_build.py 整理成 JSON → Cloudflare Worker KV（doc "svpe"；內部資料，唔放公開網址）。
    App 用 kv_doc（同 app_data 一樣要 PIN＋已批准手機）→ 手機緩存（即刻開、冇網照搵；背景 have=版本 問有冇新版）。
-   揀屋邨 → 揀大廈（下拉，TNS 次序，最尾「其他（自己打）」）＋ 關鍵字（閘掣編號、Tag、筒身編號、位置、類型…；空格分開 = 全部要中；唔理大細楷、/ - 空格）。 */
-const SVP = { doc: null, busy: false, err: '', est: '', blk: '', estTxt: '', blkTxt: '', q: '', tab: 'all', show: 40, ix: null, cached: false, old: null, locOpen: null };
+   揀屋邨 → 揀大廈（下拉，TNS 次序，最尾「其他（自己打）」）＋ 關鍵字（閘掣編號、Tag、筒身編號、位置、類型…；空格分開 = 全部要中；唔理大細楷、/ - 空格）。
+   v0.6.513：「更新」再向同一個 kv_doc「svpe」攞最新（唔用手機舊存）。公司 KV 本身由 cf_worker/tools/svpe_build.py 整理，呢個掣唔會改 Excel。 */
+const SVP = { doc: null, busy: false, err: '', note: '', noteOk: false, est: '', blk: '', estTxt: '', blkTxt: '', q: '', tab: 'all', show: 40, ix: null, cached: false, old: null, locOpen: null };
 const SVP_PAGE = 40;
 const SVP_MSG = { doc_missing: '公司未上載 SV／PE 資料（請通知公司）。', bad_action: '要用公司新伺服器（Cloudflare）網址先用到 SV／PE 搜尋：☰ → ⚙️ 上傳設定 → 公司網址留空（用內置）。',
   offline: '冇網，而呢部手機未開過 SV／PE 搜尋（開過一次之後冇網都搵到）。' };
@@ -13666,13 +13668,78 @@ function svpIndex(d) { /* 每行一個搜尋字串（原文＋壓縮版） */
     const s = svpC(`${bText(r[0])} ${r[1]} ${r[2]} ${r[3]} ${r[4]} ${r[5]} ${r[6]} ${(d.PB || {})[r[0]] || ''} ${t.join(' ')}`); ix.pe.push([s, svpK(s), i]); });
   return ix;
 }
-async function svpLoad() {
-  if (SVP.busy) return; if (typeof accLocked === 'function' && accLocked()) return;
-  const c = upCfg(); if (!c.url || !c.pin) return;
-  SVP.busy = true; SVP.err = ''; svpPaint();
-  try { const t0 = Date.now(), o = await gasCall({ action: 'kv_doc', doc: 'svpe' }, 90000);
-    if (o && o.ok && o.data) { svpTake(o); SVP.cached = Date.now() - t0 < 400; } else SVP.err = SVP_MSG[o && o.error] || upErrText((o && o.error) || 'bad_reply'); }
-  catch (e) { SVP.err = SVP_MSG[['network', 'timeout', 'offline'].includes(e.code) ? 'offline' : e.code] || e.message; }
+function svpDocOk(d) { return !!(d && Array.isArray(d.SV) && Array.isArray(d.PE) && Array.isArray(d.E) && Array.isArray(d.B) && Array.isArray(d.P)); }
+function svpSnap() { /* 更新之後跟返同一座（索引可能變） */
+  const d = SVP.doc; if (!d) return null;
+  const w = svpWhere();
+  const E = w.e != null ? d.E[w.e] : null, B = w.b != null ? d.B[w.b] : null;
+  return { e: w.e, b: w.b, eCode: E && E.c || '', eName: E && E.n || '', bCode: B && B[1] || '', bName: B && B[2] || '' };
+}
+function svpRestore(snap) {
+  if (!snap || !SVP.doc || snap.e == null) return;
+  const d = SVP.doc;
+  let ei = snap.eCode ? d.E.findIndex(e => e && e.c === snap.eCode) : -1;
+  if (ei < 0 && snap.eName) ei = d.E.findIndex(e => e && e.n === snap.eName);
+  if (ei < 0) { SVP.est = ''; SVP.estTxt = ''; SVP.blk = ''; SVP.blkTxt = ''; return; }
+  SVP.est = 'e' + ei; SVP.estTxt = '';
+  if (snap.b == null) { SVP.blk = ''; return; }
+  let bi = -1;
+  d.B.forEach((b, i) => { if (!b || b[0] !== ei) return; if (snap.bCode && b[1] === snap.bCode) bi = i; else if (bi < 0 && snap.bName && b[2] === snap.bName) bi = i; });
+  if (bi < 0) { SVP.blk = ''; SVP.blkTxt = ''; } else { SVP.blk = 'b' + bi; SVP.blkTxt = ''; }
+}
+async function svpRemember(o) { /* 寫入手機緩存，下次開唔好仲用舊嗰份 */
+  try {
+    if (typeof swrKey !== 'function' || typeof swrPut !== 'function' || typeof swrStorable !== 'function' || !swrStorable(o)) return;
+    const k = await swrKey({ action: 'kv_doc', doc: 'svpe' });
+    if (k) await swrPut(k, 'kv_doc', 'kv_doc', o, false);
+  } catch (e) {}
+}
+function svpFail(manual, msg) {
+  if (manual && SVP.doc) { SVP.note = '更新唔到：' + msg; SVP.noteOk = false; toast(SVP.note, 4000); }
+  else SVP.err = msg;
+}
+async function svpLoad(opts) {
+  const manual = !!(opts && opts.manual);
+  if (SVP.busy) return;
+  if (typeof accLocked === 'function' && accLocked()) { if (manual) toast('呢部手機未批准，更新唔到', 3000); return; }
+  const c = upCfg();
+  if (!c.url || !c.pin) { if (manual) toast('要先喺 ☰ →「⚙️ 上傳設定」填好 PIN', 3500); return; }
+  if (manual && navigator.onLine === false) {
+    SVP.note = SVP.doc ? '冇網，更新唔到。搜尋仍用手機已有資料。' : '冇網，更新唔到。';
+    SVP.noteOk = false; toast(SVP.note, 4000); svpPaint(); return;
+  }
+  const snap = manual ? svpSnap() : null;
+  const prevMark = SVP.doc ? String((SVP.doc.built_hkt || '') + '|' + (SVP.v || '')) : '';
+  SVP.busy = true; SVP.err = ''; if (manual) SVP.note = ''; svpPaint();
+  try {
+    const t0 = Date.now(), body = { action: 'kv_doc', doc: 'svpe' };
+    const o = manual ? await gasCallNoCache(body, 90000) : await gasCall(body, 90000);
+    if (manual && o && o.ok && o.unchanged && SVP.doc) {
+      const when = SVP.doc.built_hkt || '';
+      SVP.note = '已向公司核對。資料冇新版本' + (when ? '（整理 ' + when + '）' : '') + '。';
+      SVP.noteOk = true; toast(SVP.note, 3500);
+    } else if (o && o.ok && o.data) {
+      if (manual && !svpDocOk(o.data)) svpFail(true, '公司回覆唔齊');
+      else {
+        svpTake(o);
+        if (manual) { svpRestore(snap); SVP.old = null; SVP.locOpen = null; await svpRemember(o); }
+        SVP.cached = !manual && Date.now() - t0 < 400;
+        if (manual) {
+          const when = o.data.built_hkt || o.modified_hkt || '';
+          const counts = 'SV ' + o.data.SV.length + ' 個閘掣 · PE ' + o.data.PE.length + ' 個滅火器材';
+          const mark = String((o.data.built_hkt || '') + '|' + (o.v || ''));
+          SVP.note = (prevMark && mark === prevMark)
+            ? '已更新。整理時間未變' + (when ? '（' + when + '）' : '') + '。' + counts + '。'
+            : '已更新。' + (when ? '整理 ' + when + '。' : '') + counts + '。';
+          SVP.noteOk = true; toast('已更新 SV／PE 搜尋', 2500);
+        }
+      }
+    } else svpFail(manual, SVP_MSG[o && o.error] || upErrText((o && o.error) || 'bad_reply'));
+  } catch (e) {
+    const code = e && e.code, net = ['network', 'timeout', 'offline'].includes(code);
+    const msg = (manual && SVP.doc && net) ? (code === 'timeout' ? '公司伺服器太耐冇回應' : '連唔到公司伺服器') : (SVP_MSG[net ? 'offline' : code] || (e && e.message));
+    svpFail(manual, msg);
+  }
   finally { SVP.busy = false; } svpPaint();
 }
 function svpTake(o) { SVP.doc = o.data; SVP.v = o.v; SVP.mod = o.modified_hkt || ''; SVP.ix = svpIndex(o.data); }
@@ -13732,23 +13799,25 @@ function svpCardPE(i, showEst) { const d = SVP.doc, r = d.PE[i], x = d.B[r[0]], 
     <div class="svloc">${r[3] ? esc(r[3]) : '<span class="mut">未有位置</span>'}</div>
     <div class="mut">${r[4] ? '出廠 ' + esc(r[4]) : ''}${r[5] ? `${r[4] ? ' · ' : ''}上次試壓 ${esc(r[5])}` : ''}${(d.PB || {})[r[0]] ? ` · 251 編號 ${esc(d.PB[r[0]])}` : ''}</div>${per.join('')}</div>`; }
 /* ----- 頁 ----- */
+function svpBtn() { return `<button class="btn" type="button" id="svprefresh" data-svp="refresh" style="width:100%;margin:8px 0" ${SVP.busy ? 'disabled' : ''}>${SVP.busy ? '更新緊…' : '更新'}</button>`; }
+function svpNoteHtml() { return SVP.note ? `<div class="${SVP.noteOk ? 'okbox' : 'errbox'}" id="svpnote" role="status">${esc(SVP.note)}</div>` : ''; }
 function svpBody() {
-  const c = upCfg();
-  if (!c.url || !c.pin) return '<div class="warnbox">要先喺 ☰ →「⚙️ 上傳設定」填好 PIN，先用到 SV／PE 搜尋。</div>';
-  if (!SVP.doc) return SVP.err ? `<div class="errbox" id="svperr">${esc(SVP.err)}</div><button class="btn" style="width:100%" data-svp="retry">🔄 再試</button>` : '<div class="card mut" id="svpload">讀緊 SV／PE 資料…（第一次要下載約 1 MB，之後存喺手機）</div>';
+  const c = upCfg(), note = svpNoteHtml();
+  if (!c.url || !c.pin) return note + '<div class="warnbox">要先喺 ☰ →「⚙️ 上傳設定」填好 PIN，先用到 SV／PE 搜尋。</div>' + svpBtn();
+  if (!SVP.doc) return note + (SVP.err ? `<div class="errbox" id="svperr">${esc(SVP.err)}</div><button class="btn" style="width:100%" data-svp="retry">🔄 再試</button>` : '<div class="card mut" id="svpload">讀緊 SV／PE 資料…（第一次要下載約 1 MB，之後存喺手機）</div>') + svpBtn();
   const d = SVP.doc, w = svpWhere(), eItems = svpEstItems(), bItems = w.e != null ? svpBlkItems(w.e) : [];
   const sel = `<div class="pkrow"><label>屋邨${pkSel('svp_est', eItems, SVP.est || (SVP.estTxt ? SVP.estTxt : ''), { ph: '— 揀屋邨 —', label: '屋邨', id: 'svpest', oph: '自己打屋邨名' })}</label>
     <label>大廈${pkSel('svp_blk', bItems, SVP.blk || (SVP.blkTxt ? SVP.blkTxt : ''), { all: w.e != null || w.et ? '全部大廈' : '大廈：先揀屋邨', label: '大廈', id: 'svpblk', oph: '自己打大廈名', disabled: w.e == null && !w.et })}</label></div>`;
-  const form = `<div class="card svpform">${sel}<label class="svpql">關鍵字<input id="svpq" type="search" value="${esc(SVP.q)}" placeholder="閘掣編號、Tag、筒身編號、位置…（例：SSSV、SV/、Tag 號、CO2）" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-    <div class="mut svpsrc">SV ${d.SV.length} 個閘掣 · PE ${d.PE.length} 個滅火器材 · 整理 ${esc(d.built_hkt || '')}${SVP.cached ? ' · 已存喺手機（冇網都搵到）' : ''}</div></div>`;
+  const form = `<div class="card svpform">${svpBtn()}${sel}<label class="svpql">關鍵字<input id="svpq" type="search" value="${esc(SVP.q)}" placeholder="閘掣編號、Tag、筒身編號、位置…（例：SSSV、SV/、Tag 號、CO2）" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div class="mut svpsrc">SV ${d.SV.length} 個閘掣 · PE ${d.PE.length} 個滅火器材 · 整理 ${esc(d.built_hkt || '')}${SVP.cached ? ' · 已存喺手機（冇網都搵到）' : ''}${SVP.busy ? ' · 更新緊…' : ''}</div></div>`;
   let notes = '';
   if (typeof bnSection === 'function' && w.e != null) { const E = d.E[w.e], x = w.b != null ? d.B[w.b] : null; notes = bnSection(bnPlace(E.c, x ? x[1] : '', [E.n, ...(E.s || [])], x ? [x[2], x[3]] : []), !x, 'svpe'); }
   const R = svpRun();
-  if (!R) return form + notes + '<div class="mut" style="margin:10px 2px">揀屋邨（可以再揀大廈），或者打關鍵字（最少 2 個字）。</div>';
+  if (!R) return note + form + notes + '<div class="mut" style="margin:10px 2px">揀屋邨（可以再揀大廈），或者打關鍵字（最少 2 個字）。</div>';
   const tot = R.sv.length + R.pe.length, showEst = w.e == null, list = SVP.tab === 'sv' ? R.sv.map(i => ['sv', i]) : SVP.tab === 'pe' ? R.pe.map(i => ['pe', i]) : [...R.sv.map(i => ['sv', i]), ...R.pe.map(i => ['pe', i])];
   const tabs = `<div class="pschips svptabs">${[['all', `全部 ${tot}`], ['sv', `🚿 SV 閘掣 ${R.sv.length}`], ['pe', `🧯 PE 滅火器材 ${R.pe.length}`]].map(([k, t]) => `<button class="chip ${SVP.tab === k ? 'on' : ''}" data-svp="tab" data-k="${k}">${t}</button>`).join('')}</div>`;
   const cards = list.slice(0, SVP.show).map(([k, i]) => k === 'sv' ? svpCardSV(i, showEst) : svpCardPE(i, showEst)).join('');
-  return form + notes + tabs + (list.length ? `<div id="svplist">${cards}</div>${list.length > SVP.show ? `<button class="btn" style="width:100%" data-svp="more">顯示多 ${Math.min(SVP_PAGE, list.length - SVP.show)} 個（仲有 ${list.length - SVP.show} 個）</button>` : ''}` : '<div class="card mut" id="svpnone">搵唔到。試下少打幾個字，或者揀「全部大廈」。</div>');
+  return note + form + notes + tabs + (list.length ? `<div id="svplist">${cards}</div>${list.length > SVP.show ? `<button class="btn" style="width:100%" data-svp="more">顯示多 ${Math.min(SVP_PAGE, list.length - SVP.show)} 個（仲有 ${list.length - SVP.show} 個）</button>` : ''}` : '<div class="card mut" id="svpnone">搵唔到。試下少打幾個字，或者揀「全部大廈」。</div>');
 }
 function viewSvp() {
   if (!SVP.doc && !SVP.busy && !SVP.err) setTimeout(() => { if (cur.view === 'svpe') svpLoad(); }, 0);
@@ -13764,6 +13833,7 @@ document.addEventListener('click', e => {
   const t = e.target.closest('[data-act="svpe"]'); if (t && !t.disabled) { const m = $('#modal'); if (m) m.classList.remove('show'); return go('#/svpe'); }
   const b = e.target.closest('[data-svp]'); if (!b || cur.view !== 'svpe') return; const a = b.dataset.svp;
   if (a === 'retry') return svpLoad();
+  if (a === 'refresh') return svpLoad({ manual: true });
   if (a === 'tab') { SVP.tab = b.dataset.k; SVP.show = SVP_PAGE; return svpPaint(); }
   if (a === 'more') { SVP.show += SVP_PAGE; return svpPaint(); }
   if (a === 'old') { if (!SVP.old) SVP.old = new Set(); const i = +b.dataset.i; if (SVP.old.has(i)) SVP.old.delete(i); else SVP.old.add(i); return svpPaint(); }
@@ -13788,7 +13858,7 @@ async function svpSaveLoc(i, btn) {
 }
 SWR_HOOK.kv_doc = (function (prev) { return (b, o) => { if (prev) prev(b, o); if (b.doc === 'svpe' && o.ok && o.data) { svpTake(o); svpPaint(); } }; })(SWR_HOOK.kv_doc);
 const appDataWipeRaw_svp = appDataWipe;
-appDataWipe = function () { appDataWipeRaw_svp(); SVP.doc = null; SVP.ix = null; SVP.err = ''; };
+appDataWipe = function () { appDataWipeRaw_svp(); SVP.doc = null; SVP.ix = null; SVP.err = ''; SVP.note = ''; SVP.noteOk = false; };
 (function () { const k = TILES.findIndex(t => t.act === 'fsline'); TILES.splice(k >= 0 ? k + 1 : TILES.length - 2, 0, { act: 'svpe', icon: '🔎', name: 'SV／PE 搜尋', sub: '閘掣編號、Tag、滅火筒' }); })();
 const parseHashRaw_svp = parseHash;
 parseHash = function () { if (/^#\/svpe\b/.test(location.hash)) { cur = { view: 'svpe', id: null, step: null }; lkReset(); return; } parseHashRaw_svp(); };
