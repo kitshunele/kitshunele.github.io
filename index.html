@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.514';
+const APP_VERSION = '0.6.515';
+/* v0.6.515：問卷 SPR_MULTI_SYS「有幾多個花灑系統？」有數字且 >1 → 花灑年檢 4.g「是」；≤1（包括 0 同 1）→「不適用」；空白／非數字留空唔剔。PDF 第3頁 §5「減壓閥（如有）」不適用框補上 tickmap（page 2，對準印刷 [ ]）。唔改 GAS。 */
 /* v0.6.514：花灑年檢核對表第一頁「供水種類」1.a–d 剔位改到 blank 四個方格中心（原先錯落第 3–4 頁，所以第一頁剔唔到、框對唔準）。搬正之後 §2、§3「不適用」先對得返頁 1 嗰兩個框。唔改 GAS。 */
 /* v0.6.513：SV／PE 搜尋加「更新」掣。撳就唔用手機舊存，再向公司伺服器攞 KV doc「svpe」（同平時搜尋一樣嘅來源），成功／失敗都有提示。搜尋條件留低。唔改 GAS。 */
 /* v0.6.512：待處理工作唔顯示相片（FAN：App 入面待處理工作唔使顯示相片）。清單同詳情唔出 WhatsApp 縮圖、圖庫、載入提示。配對／photo_search 留底，畫面唔出。尋找相片同確認完成影相唔郁。唔改 GAS。 */
@@ -1220,6 +1221,18 @@ function qHardGt0(r, hs) {
   }
   if (!anyHas) return '';
   return maxPos > 0 ? 'yes' : 'no';
+}
+/* v0.6.515：花灑系統數量 SPR_MULTI_SYS → 4.g。空白／非數字 → ''；>1 → yes；≤1（0 同 1 都係）→ no。負數當 ≤1。 */
+function qHardGt1(r, hs) {
+  const cells = (hs && hs.cells) || (hs && hs.cell ? [hs.cell] : []);
+  if (!cells.length) return '';
+  const raw = qA(r, cells[0]);
+  if (!has(raw)) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  const n = Number(s);
+  if (!isFinite(n)) return '';
+  return n > 1 ? 'yes' : 'no';
 }
 /* v0.6.410：多格 yn——任一「有」→yes；冇「有」但有「冇」→no；都未答→''（defaultNa 時未答亦 no） */
 function qHardYnAny(r, hs) {
@@ -3834,11 +3847,13 @@ const fsdVisible = (r, c) => fsdGateOn(r, c) && !isHalf(r); // v0.4.8：年檢�
 /* v0.6.356：prefs.qTeachMap 教過嘅 Q→item 優先於硬編碼 q_def；有教清單嘅 cell|答 會抑止該 cell 嘅硬編碼 q_def */
 /* v0.6.412：窄硬碼 Q_HARD_FSD（唔恢復 0.6.359 取消嘅全部 q_def）
    fds|1.d ← FD_BATT_QTY／FA_BATT_QTY gt0 →「是」；＝0／未答空白（唔剔；tickmap 1.d 只有 yes 框）
-   v0.6.421：fds|5.l／5.m（偵測 PDF 第七頁 l／m 電池）gt0→Y；＝0→NA；未答空白 */
+   v0.6.421：fds|5.l／5.m（偵測 PDF 第七頁 l／m 電池）gt0→Y；＝0→NA；未答空白
+   v0.6.515：spr|4.g ← SPR_MULTI_SYS「有幾多個花灑系統？」gt1 →「是」；≤1（0／1）→「不適用」；空白／非數字唔剔 */
 const Q_HARD_FSD = {
   'fds|1.d': { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0', yes: 'Y' },
   'fds|5.l': { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0', yes: 'Y', no: 'NA' },
   'fds|5.m': { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0', yes: 'Y', no: 'NA' },
+  'spr|4.g': { cell: 'SPR_MULTI_SYS', mode: 'gt1', yes: 'Y', no: 'NA' },
 };
 function qHardFsdSpec(c, it) {
   if (!c || !it || !it.k) return null;
@@ -3852,11 +3867,13 @@ const fsdDefault = (r, c, s, it, M) => {
   const taught = qTeachForItem(r, c.key, it.k);
   if (taught) return { v: taught, by: 'default' };
   const hs = qHardFsdSpec(c, it);
-  if (hs && hs.mode === 'gt0' && typeof qHardGt0 === 'function') {
-    const g = qHardGt0(r, hs);
+  if (hs && (hs.mode === 'gt0' || hs.mode === 'gt1')) {
+    const g = hs.mode === 'gt1'
+      ? (typeof qHardGt1 === 'function' ? qHardGt1(r, hs) : '')
+      : (typeof qHardGt0 === 'function' ? qHardGt0(r, hs) : '');
     if (g === 'yes') return { v: hs.yes || 'Y', by: 'default' };
-    if (g === 'no' && hs.no) return { v: hs.no, by: 'default' }; /* v0.6.421：5.l／m ＝0→NA */
-    return { v: '', by: '' }; /* ＝0 無 no／未答：唔剔（1.d） */
+    if (g === 'no' && hs.no) return { v: hs.no, by: 'default' }; /* v0.6.421：5.l／m ＝0→NA；v0.6.515：4.g ≤1→NA */
+    return { v: '', by: '' }; /* ＝0 無 no／未答／非數字：唔剔 */
   }
   return { v: '', by: '' };
 };
