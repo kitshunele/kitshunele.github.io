@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.515';
+const APP_VERSION = '0.6.516';
+/* v0.6.516：花灑年檢核對表逐格對齊印刷括號框。A2.4.e 起跟返印出行（e／i／A2.9.a／p 改回是／否／不適用三格；A2.9.y 改剔附錄末「附加檢查」單格）。8.f、9.h、AIX.a、AXI.a 搬入「須附加檢查」單格。AXV.a、AXV.c、A2.1.c 中心拉返框內。補上「如不適用，跳往」段框。第1頁 1.a–d、§2、§3、第3頁 §5 減壓閥同 4.g 自動剔邏輯唔郁。唔改 GAS。 */
 /* v0.6.515：問卷 SPR_MULTI_SYS「有幾多個花灑系統？」有數字且 >1 → 花灑年檢 4.g「是」；≤1（包括 0 同 1）→「不適用」；空白／非數字留空唔剔。PDF 第3頁 §5「減壓閥（如有）」不適用框補上 tickmap（page 2，對準印刷 [ ]）。唔改 GAS。 */
 /* v0.6.514：花灑年檢核對表第一頁「供水種類」1.a–d 剔位改到 blank 四個方格中心（原先錯落第 3–4 頁，所以第一頁剔唔到、框對唔準）。搬正之後 §2、§3「不適用」先對得返頁 1 嗰兩個框。唔改 GAS。 */
 /* v0.6.513：SV／PE 搜尋加「更新」掣。撳就唔用手機舊存，再向公司伺服器攞 KV doc「svpe」（同平時搜尋一樣嘅來源），成功／失敗都有提示。搜尋條件留低。唔改 GAS。 */
