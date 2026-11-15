@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.520';
+const APP_VERSION = '0.6.521';
+/* v0.6.521：花灑年檢 8.a「是」剔放大，仍然坐喺印刷括號入面。0.6.520 fit 正確（高行唔好把右臂畫到括號上面嘅空白），但筆畫偏細，睇落細過 8.b–e。fit 加闊，線粗同右臂都留喺「是」括號內緣，唔溢出「否」、上一行、行線。右欄 fsdLiveRefresh 重開或者刷新舊草稿，都用而家嘅 tickmaps 同 Q_HARD_FSD 再畫 8.a：AA30「總數有幾多個流水掣？」>0 剔是；恰好 0 只剔 §8「如不適用，跳往 9」。唔把舊疊圖像素寫入草稿。師傅覆寫 8.a 仍然優先。唔改 8.b–e、AA31／9.a–g、4.g、8.f。唔改 GAS。 */
 /* v0.6.520：花灑年檢右欄 PDF 8.a「是」睇落空白。Q_HARD 同 live viewer 都有寫 spr|8.a＝是，錨點亦喺印刷括號中心（同 8.b–e）。fsdDrawTickOv 再把筆畫放大 1.45–2 倍，右臂向上衝出括號。8.a 嗰行特別高，衝出嚟嘅臂落喺括號上面嘅空白，括號本身睇落係空 [ ]；8.b–e 行矮，同一支筆仍然睇得出係「是」。8.a 是／否／不適用改為 fit：筆畫收喺印刷括號入面，唔再放大。唔改 8.b–e、AA31／9.a–g、4.g 錨點。唔改 GAS。 */
 /* v0.6.519：花灑年檢 8.a「是」有跟 AA30 自動剔（k＝8.a，同 8.b–e），但 0.6.518 把筆畫收到 s=3.7（約 1.2px），影相睇落括號係空。s=9.5 又會跨過上一條行線同右邊「否」欄（括號貼住行線）。8.a 是／否／不適用改 s=7.2，y 對準印刷括號中心，剔坐在括號入面。AA30／AA31／4.g 邏輯唔改。唔改 GAS。 */
 /* v0.6.518：花灑年檢 8.a「是」手寫剔太大，跨過上一行同右邊「否」欄，所以看起來 8.a 未剔到。8.a 是／否／不適用收細並稍為下移，剔坐在印刷括號入面。AA30 自動剔 8.a–e、§8「如不適用，跳往 9」、AA31／9.a–g、4.g 同 0.6.516 其他剔位唔改。唔改 GAS。 */
@@ -3960,6 +3961,8 @@ const fsdEff = (r, c, s, it, M) => {
      v0.6.434：by=technician 即使無 v＝刻意清空，蓋過教／硬碼預設（再撳同值可取消） */
   if (a.by === 'technician') return { v: a.v || '', by: 'technician' };
   if (def.by === 'lock') return def; /* 未覆寫先跟問卷禁剔建議 */
+  /* v0.6.521：舊草稿 8.a 若存住 by=default（教／舊預設），刷新跟而家 Q_HARD／教，唔好黏住舊剔。師傅 by=technician 上面已返回。8.b–e 唔用呢條。 */
+  if (a.by === 'default' && c && c.key === 'spr' && it && it.k === '8.a') return def;
   /* bulk／legacy（無 by）若同 def_v／q_def 預設唔同 → 跟預設（例如 NA 蓋過舊「是」） */
   if (a.v && (a.by === 'bulk' || !a.by) && def.v && def.v !== a.v) return def;
   if (a.v) return { v: a.v, by: a.by === 'bulk' ? 'bulk' : 'technician' };
@@ -6225,16 +6228,24 @@ function liveSplitInit() {
     }
   }
 }
-let haLiveSnap = { step: '', html: '' }, fsdLiveSnap = { key: '', html: '' };
+let haLiveSnap = { step: '', html: '' }, fsdLiveSnap = { key: '', html: '', ver: '', recId: '' };
 function haLiveRemember() {
   const box = $('#haLive'); if (!box) return;
   const step = box.dataset.haStep || '';
   if (step && box.querySelector('.halive-pg')) haLiveSnap = { step, html: box.innerHTML };
 }
+function fsdLiveSnapOk(key) {
+  /* v0.6.521：唔好用另一份草稿或者舊版本畫好嘅 JPEG。重開要等 fsdLiveRefresh 用而家 tickmaps 再畫。 */
+  if (!fsdLiveSnap || fsdLiveSnap.key !== key || !fsdLiveSnap.html) return false;
+  if (fsdLiveSnap.ver !== APP_VERSION) return false;
+  const id = (typeof cur !== 'undefined' && cur && cur.id) ? cur.id : '';
+  if (fsdLiveSnap.recId && id && fsdLiveSnap.recId !== id) return false;
+  return true;
+}
 function fsdLiveRemember() {
   const box = $('#fsdLive'); if (!box) return;
   const key = box.dataset.fsdKey || '';
-  if (key && box.querySelector('.halive-pg')) fsdLiveSnap = { key, html: box.innerHTML };
+  if (key && box.querySelector('.halive-pg')) fsdLiveSnap = { key, html: box.innerHTML, ver: APP_VERSION, recId: (typeof cur !== 'undefined' && cur && cur.id) ? cur.id : '' };
 }
 function haLiveMountHtml(step) {
   if (!haLiveStepOk(step)) return '';
@@ -6948,7 +6959,7 @@ function qTeachPaintMarkers() {
   /* v0.6.374：paint 後寫入 snap，之後 refresh／還原 innerHTML 都帶 ghost 標記 */
   try {
     const k0 = box.dataset.fsdKey || '';
-    if (k0 && box.querySelector('.halive-pg')) fsdLiveSnap = { key: k0, html: box.innerHTML };
+    if (k0 && box.querySelector('.halive-pg')) fsdLiveSnap = { key: k0, html: box.innerHTML, ver: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''), recId: (typeof cur !== 'undefined' && cur && cur.id) ? cur.id : '' };
   } catch (eSnap) {}
 }
 /* v0.6.374：等 PDF img decode／有 naturalWidth 再畫 ghost（唔好喺 0×0 時畫完即冇） */
@@ -7118,7 +7129,7 @@ function fsdLivePickApply(k) {
   fsdLiveFollowForceUntil = 0;
   fsdLiveFollowPendingPi = null;
   fsdLivePaneKeepAfterRefresh = true;
-  fsdLiveSnap = { key: '', html: '' };
+  fsdLiveSnap = { key: '', html: '', ver: '', recId: '' };
   const paneKey = fsdLivePaneKey(cur.step);
   const box = (typeof $ === 'function') ? $('#fsdLive') : null;
   if (box && paneKey) box.dataset.fsdKey = paneKey;
@@ -7635,7 +7646,7 @@ function fsdLiveFollowGo(el, soft) {
     const box = $('#fsdLive');
     if (box && box.dataset.fsdKey !== hit.key) {
       box.dataset.fsdKey = hit.key;
-      fsdLiveSnap = { key: '', html: '' };
+      fsdLiveSnap = { key: '', html: '', ver: '', recId: '' };
       fsdLiveFollowPendingPi = hit.pi | 0;
       fsdLiveFollowForceUntil = Date.now() + FSD_LIVE_FOLLOW_FORCE_MS;
       fsdLivePaneKeepAfterRefresh = false; /* 換系統 PDF：去跟頁，唔留舊 scroll */
@@ -7843,7 +7854,7 @@ function fsdLiveMountHtml(step) {
   const key = (typeof fsdLivePaneKey === 'function') ? fsdLivePaneKey(step) : ((typeof fsdKeyOf === 'function') ? fsdKeyOf(step) : null);
   if (!fsdLiveOk(key)) return '';
   const c = FSD_BY[key], lab = (c && (c.chip || c.title)) || key;
-  const inner = (fsdLiveSnap.key === key && fsdLiveSnap.html) ? fsdLiveSnap.html : '<div class="halive-msg">準備消防處核對表實時 PDF…</div>';
+  const inner = (typeof fsdLiveSnapOk === 'function' && fsdLiveSnapOk(key)) ? fsdLiveSnap.html : '<div class="halive-msg">準備消防處核對表實時 PDF…</div>';
   return `<section class="halive" id="fsdLive" data-fsd-key="${esc(key)}" aria-label="${esc(lab)} 實時 PDF">${inner}</section>`;
 }
 function fsdLiveSchedule(r) {
@@ -7929,6 +7940,50 @@ function fsdLiveMergeTeach(cExp, r, key) {
   return Object.assign({}, cExp, { items: items, skipped_sections: Array.from(skipped) });
 }
 
+/* v0.6.521：右欄重畫 8.a。舊草稿唔好用上次疊好嘅像素；跟而家 tickmaps 錨點同 Q_HARD_FSD。
+   AA30「總數有幾多個流水掣？」>0 → 8.a「是」（段框唔當跳過，除非師傅自己剔咗 d.skip）。
+   恰好 0 → 8.a 唔剔，段框「如不適用，跳往 9」仍然在。空白唔剔。
+   師傅 by=technician（包括刻意清空）優先。唔寫返 Store。 */
+function fsdLiveReapply8a(cExp, r, key) {
+  if (!cExp || !r || key !== 'spr') return cExp;
+  const items = Object.assign({}, cExp.items || {});
+  const skipped = new Set((cExp.skipped_sections || []).map(String));
+  const pair = (typeof fsdLookupItem === 'function') ? fsdLookupItem('spr', '8.a') : null;
+  const secId = pair ? String(pair[1].id) : '8';
+  const aStore = ((((r.fsd || {}).spr || {}).a || {})['8.a']) || null;
+  const userSkip = !!((((r.fsd || {}).spr || {}).skip || {})[secId]);
+  const kind = (typeof qHardCountKind === 'function') ? qHardCountKind(r, 'AA30') : '';
+  const hardSkip = (typeof fsdSkipEffective === 'function')
+    ? fsdSkipEffective(r, 'spr', secId)
+    : (userSkip || kind === 'zero');
+  let result = null, setBy = '', sectionSkipped = false;
+  if (hardSkip) {
+    /* 恰好 0 或者師傅剔咗段框：行內 8.a 唔畫。師傅對 8.a 嘅值留喺紀錄，呢度跟段框。 */
+    sectionSkipped = true;
+    result = null;
+    setBy = (aStore && aStore.by === 'technician') ? 'technician' : 'default';
+  } else if (aStore && aStore.by === 'technician') {
+    result = aStore.v ? ((typeof FSD_V !== 'undefined' && FSD_V[aStore.v]) || null) : null;
+    setBy = 'technician';
+  } else if (pair && typeof fsdEff === 'function') {
+    const ef = fsdEff(r, pair[0], pair[1], pair[2]) || {};
+    result = ef.v ? ((typeof FSD_V !== 'undefined' && FSD_V[ef.v]) || null) : null;
+    setBy = ef.by || '';
+  } else if (kind === 'yes') {
+    result = '是';
+    setBy = 'default';
+  }
+  if (hardSkip) skipped.add(secId);
+  else skipped.delete(secId);
+  const prev = items['8.a'] || { section: secId, id: 'a', text: '' };
+  const next = Object.assign({}, prev, { section: secId, result: result });
+  if (setBy) next.set_by = setBy;
+  if (sectionSkipped) next.section_skipped = true;
+  else delete next.section_skipped;
+  items['8.a'] = next;
+  return Object.assign({}, cExp, { items: items, skipped_sections: Array.from(skipped) });
+}
+
 async function fsdLiveRefresh(r) {
   const box = $('#fsdLive'); if (!box) return;
   const key = box.dataset.fsdKey || ((typeof fsdLivePaneKey === 'function') ? fsdLivePaneKey(cur.step) : ((typeof fsdKeyOf === 'function') ? fsdKeyOf(cur.step) : null));
@@ -7976,10 +8031,12 @@ async function fsdLiveRefresh(r) {
     if (cExp && typeof fsdLiveMergeTeach === 'function') cExp = fsdLiveMergeTeach(cExp, r, key);
     /* v0.6.391：問卷位置／覆蓋／備註／主板 → 必寫入 tables.fds（stub／適用都抄；FA p6／FDS p19 疊字） */
     if (cExp && typeof fsdT1EnsureTables === 'function') cExp = fsdT1EnsureTables(cExp, r, key);
+    /* v0.6.521：舊草稿右欄都跟而家 Q_HARD 再畫 8.a。唔讀、唔寫疊圖像素。 */
+    if (cExp && key === 'spr' && typeof fsdLiveReapply8a === 'function') cExp = fsdLiveReapply8a(cExp, r, key);
     if (!cExp || !cExp.applicable) {
       fsdLiveRevoke();
       box.innerHTML = '<div class="halive-msg">呢份消防處核對表而家唔適用（睇下檢查類別／問卷）。</div>';
-      fsdLiveSnap = { key: '', html: '' };
+      fsdLiveSnap = { key: '', html: '', ver: '', recId: '' };
       if (fsdLivePickHoldScroll) fsdLivePickHoldReleaseSoon();
       return;
     }
@@ -8028,7 +8085,7 @@ async function fsdLiveRefresh(r) {
       ? `已畫 ${pages.length} 頁（消防處原 PDF 疊剔 · ${cExp.circular || ''}）`
       : `已畫 ${pages.length} 頁（暫用結構紙本回退 · ${key} 未有疊剔圖；正式匯出規則不變）`;
     box.appendChild(foot);
-    fsdLiveSnap = { key, html: box.innerHTML };
+    fsdLiveSnap = { key, html: box.innerHTML, ver: APP_VERSION, recId: (r && r.id) ? r.id : '' };
     fsdLiveFollowKey = key;
     if (!ovOk && Object.keys(paperBySec).length) {
       fsdLiveFollowMaps = { byIk: {}, bySec: paperBySec, n: pages.length, kind: 'paper', key };
@@ -8574,7 +8631,8 @@ async function fsdLoadBlankPdf(key, rel) {
 }
 function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
   /* v0.6.338 Fan：藍 V 再似手寫；v0.6.360：可傳 inkRgb＝問答答案同色
-     v0.6.520：box.fit＝筆畫收喺印刷括號入面（花灑 8.a）。預設仍然放大 1.45–2 倍，右臂向上；高行會令括號睇落空白。 */
+     v0.6.520：box.fit＝筆畫收喺印刷括號入面（花灑 8.a）。預設仍然放大 1.45–2 倍，右臂向上；高行會令括號睇落空白。
+     v0.6.521：fit 加闊。印刷「是」括號內緣約相對錨點 x −6.2…+5.8 pt、y −3.8…+4.3 pt；最壞抖動加線帽都留約 0.7 pt。 */
   if (!box) return;
   const rnd = (typeof xHwRng === 'function')
     ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ov:' + box.x + ':' + box.y))) : xHwSeed(String(seed || box.x)))
@@ -8582,14 +8640,14 @@ function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
   const u = () => rnd() - 0.5;
   const boxS = (box.s || 9.5) * scale;
   if (box.fit) {
-    /* 括號半寬約 boxS/2。筆畫限喺 ±0.36·boxS，線粗約 0.16·boxS，坐喺括號中心。 */
-    const cx = box.x * scale + u() * boxS * 0.04;
-    const cy = box.y * scale + u() * boxS * 0.04;
-    const s = boxS * 0.70;
-    const A = [cx - s * 0.34 + u() * s * 0.04, cy + s * 0.02 + u() * s * 0.04];
-    const Vpt = [cx - s * 0.04 + u() * s * 0.03, cy + s * 0.34 + u() * s * 0.03];
-    const E = [cx + s * 0.36 + u() * s * 0.03, cy - s * 0.32 + u() * s * 0.03];
-    const wd = Math.max(2.4, s * 0.20);
+    /* 0.6.520 係 0.70×、臂 ±0.36，括號入面但偏細。0.6.521 用 0.90×，左右拉到內緣，上臂仍然低過括號頂。 */
+    const cx = box.x * scale + u() * boxS * 0.012;
+    const cy = box.y * scale + u() * boxS * 0.012;
+    const s = boxS * 0.90;
+    const A = [cx - s * 0.50 + u() * s * 0.018, cy + s * 0.02 + u() * s * 0.018];
+    const Vpt = [cx - s * 0.04 + u() * s * 0.014, cy + s * 0.32 + u() * s * 0.014];
+    const E = [cx + s * 0.48 + u() * s * 0.014, cy - s * 0.255 + u() * s * 0.014];
+    const wd = Math.max(2.7, s * 0.155);
     let rC, gC, bC;
     if (inkRgb && inkRgb.length >= 3) {
       rC = Math.round(Math.min(255, Math.max(0, inkRgb[0])));
@@ -17569,6 +17627,18 @@ function fsddCloneRec(r) {
   delete o.upload;
   delete o._fsdd_ms;
   delete o._fsdd_skip;
+  /* v0.6.521：草稿只存答案，唔存右欄疊圖像素。刷新用 tickmaps 再畫。 */
+  delete o.fsdLiveHtml;
+  delete o.livePdf;
+  if (o.fsd && typeof o.fsd === 'object') {
+    Object.keys(o.fsd).forEach(k => {
+      const d = o.fsd[k];
+      if (!d || typeof d !== 'object') return;
+      delete d.liveHtml;
+      delete d.overlay;
+      delete d.pages;
+    });
+  }
   // photos：只留 meta
   o.photos = (Array.isArray(o.photos) ? o.photos : []).map(p => ({
     id: p.id, item: p.item || '', caption: p.caption || '', ts: p.ts || ''
