@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.516';
+const APP_VERSION = '0.6.517';
+/* v0.6.517：問卷 AA30「總數有幾多個流水掣？」有數字且 >0 → 花灑年檢 8.a–e「是」；恰好 0 → 只剔 §8「如不適用，跳往 9」段框（8.a–e 唔剔是／行內不適用，8.f 唔自動剔）。AA31「總數有幾多個分層掣？」>0 → 9.a–g「是」；恰好 0 → 只剔 §9「如不適用，跳往 10」段框（9.h 唔自動剔）。空白、空白字、非數字留空。師傅覆寫保留。唔改 GAS。 */
 /* v0.6.516：花灑年檢核對表逐格對齊印刷括號框。A2.4.e 起跟返印出行（e／i／A2.9.a／p 改回是／否／不適用三格；A2.9.y 改剔附錄末「附加檢查」單格）。8.f、9.h、AIX.a、AXI.a 搬入「須附加檢查」單格。AXV.a、AXV.c、A2.1.c 中心拉返框內。補上「如不適用，跳往」段框。第1頁 1.a–d、§2、§3、第3頁 §5 減壓閥同 4.g 自動剔邏輯唔郁。唔改 GAS。 */
 /* v0.6.515：問卷 SPR_MULTI_SYS「有幾多個花灑系統？」有數字且 >1 → 花灑年檢 4.g「是」；≤1（包括 0 同 1）→「不適用」；空白／非數字留空唔剔。PDF 第3頁 §5「減壓閥（如有）」不適用框補上 tickmap（page 2，對準印刷 [ ]）。唔改 GAS。 */
 /* v0.6.514：花灑年檢核對表第一頁「供水種類」1.a–d 剔位改到 blank 四個方格中心（原先錯落第 3–4 頁，所以第一頁剔唔到、框對唔準）。搬正之後 §2、§3「不適用」先對得返頁 1 嗰兩個框。唔改 GAS。 */
@@ -1234,6 +1235,23 @@ function qHardGt1(r, hs) {
   const n = Number(s);
   if (!isFinite(n)) return '';
   return n > 1 ? 'yes' : 'no';
+}
+/* v0.6.517：數量題。空白、空白字、非數字 → ''；有限數 >0 → yes；恰好 0 → zero；負數 → ''（唔當 0）。 */
+function qHardCountKind(r, cell) {
+  if (!r || !cell) return '';
+  const raw = qA(r, cell);
+  if (!has(raw)) return '';
+  const s = String(raw).trim();
+  if (!s || !/^[+]?\d+(?:\.\d+)?$/.test(s)) return '';
+  const n = Number(s);
+  if (!isFinite(n)) return '';
+  if (n > 0) return 'yes';
+  if (n === 0) return 'zero';
+  return '';
+}
+function qHardCountYes(r, hs) {
+  const cell = hs && (hs.cell || (hs.cells && hs.cells[0]));
+  return qHardCountKind(r, cell) === 'yes' ? 'yes' : '';
 }
 /* v0.6.410：多格 yn——任一「有」→yes；冇「有」但有「冇」→no；都未答→''（defaultNa 時未答亦 no） */
 function qHardYnAny(r, hs) {
@@ -3849,29 +3867,83 @@ const fsdVisible = (r, c) => fsdGateOn(r, c) && !isHalf(r); // v0.4.8：年檢�
 /* v0.6.412：窄硬碼 Q_HARD_FSD（唔恢復 0.6.359 取消嘅全部 q_def）
    fds|1.d ← FD_BATT_QTY／FA_BATT_QTY gt0 →「是」；＝0／未答空白（唔剔；tickmap 1.d 只有 yes 框）
    v0.6.421：fds|5.l／5.m（偵測 PDF 第七頁 l／m 電池）gt0→Y；＝0→NA；未答空白
-   v0.6.515：spr|4.g ← SPR_MULTI_SYS「有幾多個花灑系統？」gt1 →「是」；≤1（0／1）→「不適用」；空白／非數字唔剔 */
+   v0.6.515：spr|4.g ← SPR_MULTI_SYS「有幾多個花灑系統？」gt1 →「是」；≤1（0／1）→「不適用」；空白／非數字唔剔
+   v0.6.517：spr|8.a–e ← AA30「總數有幾多個流水掣？」countYes →「是」（0／空白唔剔行）；spr|9.a–g ← AA31「總數有幾多個分層掣？」同樣。8.f／9.h 唔入。段框見 Q_HARD_FSD_SKIP */
 const Q_HARD_FSD = {
   'fds|1.d': { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0', yes: 'Y' },
   'fds|5.l': { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0', yes: 'Y', no: 'NA' },
   'fds|5.m': { cells: ['FD_BATT_QTY', 'FA_BATT_QTY'], mode: 'gt0', yes: 'Y', no: 'NA' },
   'spr|4.g': { cell: 'SPR_MULTI_SYS', mode: 'gt1', yes: 'Y', no: 'NA' },
 };
+['a', 'b', 'c', 'd', 'e'].forEach(k => { Q_HARD_FSD['spr|8.' + k] = { cell: 'AA30', mode: 'countYes', yes: 'Y' }; });
+['a', 'b', 'c', 'd', 'e', 'f', 'g'].forEach(k => { Q_HARD_FSD['spr|9.' + k] = { cell: 'AA31', mode: 'countYes', yes: 'Y' }; });
+/* v0.6.517：恰好 0 → 段「如不適用，跳往…」一格（tickmaps.skips 對 §8／§9）。唔寫 d.skip；師傅 force_on 先取消。 */
+const Q_HARD_FSD_SKIP = {
+  'spr|8': { cell: 'AA30' },
+  'spr|9': { cell: 'AA31' },
+};
 function qHardFsdSpec(c, it) {
   if (!c || !it || !it.k) return null;
   return Q_HARD_FSD[c.key + '|' + it.k] || null;
 }
+function qHardFsdSkipOn(r, c, s) {
+  if (!r || !c || !s || !s.id) return false;
+  const spec = Q_HARD_FSD_SKIP[c.key + '|' + s.id];
+  if (!spec) return false;
+  return qHardCountKind(r, spec.cell) === 'zero';
+}
+function fsdSecById(c, sid) {
+  if (!c || sid == null) return null;
+  let found = null;
+  const walk = (ss) => {
+    (ss || []).forEach(s => {
+      if (found) return;
+      if (s && String(s.id) === String(sid)) found = s;
+      else walk(s.subs);
+    });
+  };
+  walk(c.sections);
+  return found;
+}
+/* v0.6.517：段 skip 有效值。d.skip＝師傅剔上；force_on＝師傅取消自動「如不適用」。 */
+function fsdSkipEffective(r, key, sid) {
+  const d = (typeof fsdGet === 'function') ? fsdGet(r, key) : ((r && r.fsd && r.fsd[key]) || {});
+  if (d.skip && d.skip[sid]) return true;
+  if (d.force_on && d.force_on[sid]) return false;
+  const c = (typeof FSD_BY !== 'undefined') ? FSD_BY[key] : null;
+  const sec = fsdSecById(c, sid);
+  return !!(sec && qHardFsdSkipOn(r, c, sec));
+}
+function fsdSkipToggle(r, key, sid) {
+  const d = fsdRec(r, key);
+  const on = fsdSkipEffective(r, key, sid);
+  if (on) {
+    if (d.skip[sid]) delete d.skip[sid];
+    const c = FSD_BY[key];
+    const sec = fsdSecById(c, sid);
+    if (sec && qHardFsdSkipOn(r, c, sec)) d.force_on[sid] = true;
+    else if (d.force_on && d.force_on[sid]) delete d.force_on[sid];
+  } else {
+    if (d.force_on && d.force_on[sid]) delete d.force_on[sid];
+    d.skip[sid] = true;
+  }
+  return fsdSkipEffective(r, key, sid);
+}
 const fsdDefault = (r, c, s, it, M) => {
   /* v0.6.359：取消全部硬編碼預設（q_def*／def_v／ynn→Y）；只跟教對應 qTeachMap；空白直至師傅揀／教
-     v0.6.412：窄硬碼 Q_HARD_FSD（gt0→Y）喺教之後／空白之前 */
+     v0.6.412：窄硬碼 Q_HARD_FSD（gt0→Y）喺教之後／空白之前
+     v0.6.517：countYes 只在 >0 寫「是」；0／空白唔寫行內不適用 */
   if (it.q_untick && r.q[it.q_untick[0]] === it.q_untick[1])
     return { v: '', by: 'lock' };
   const taught = qTeachForItem(r, c.key, it.k);
   if (taught) return { v: taught, by: 'default' };
   const hs = qHardFsdSpec(c, it);
-  if (hs && (hs.mode === 'gt0' || hs.mode === 'gt1')) {
+  if (hs && (hs.mode === 'gt0' || hs.mode === 'gt1' || hs.mode === 'countYes')) {
     const g = hs.mode === 'gt1'
       ? (typeof qHardGt1 === 'function' ? qHardGt1(r, hs) : '')
-      : (typeof qHardGt0 === 'function' ? qHardGt0(r, hs) : '');
+      : hs.mode === 'countYes'
+        ? (typeof qHardCountYes === 'function' ? qHardCountYes(r, hs) : '')
+        : (typeof qHardGt0 === 'function' ? qHardGt0(r, hs) : '');
     if (g === 'yes') return { v: hs.yes || 'Y', by: 'default' };
     if (g === 'no' && hs.no) return { v: hs.no, by: 'default' }; /* v0.6.421：5.l／m ＝0→NA；v0.6.515：4.g ≤1→NA */
     return { v: '', by: '' }; /* ＝0 無 no／未答／非數字：唔剔 */
@@ -3964,8 +4036,13 @@ const fsdOffAllowed = (r, c) => c.key === 'fa' && r.q.F9 === '有';
 const fsdIsOff = (r, c) => !!(fsdGet(r, c.key).off && fsdOffAllowed(r, c));
 function fsdWalk(c, d, fn, off, hide, r) { // fn(sec, depth, skipped, why) — why: '' | 'own' | 'q' | 'def' | 'link' | 'parent' | 'off' | 'notank'
   const byId = {}; const idx = s => { byId[s.id] = s; (s.subs || []).forEach(idx); }; c.sections.forEach(idx);
-  /* v0.6.359：取消 q_skip／def_skip 自動不適用；只認用戶自己剔嘅 d.skip（own） */
-  const autoWhy = s => { if ((d.skip || {})[s.id]) return 'own'; return ''; };
+  /* v0.6.359：取消 q_skip／def_skip 自動不適用；只認用戶自己剔嘅 d.skip（own）
+     v0.6.517：AA30＝0／AA31＝0 → §8／§9「如不適用」段框（q）。師傅 force_on 取消。唔寫入 d.skip。 */
+  const autoWhy = s => {
+    if ((d.skip || {})[s.id]) return 'own';
+    if (r && !(d.force_on && d.force_on[s.id]) && typeof qHardFsdSkipOn === 'function' && qHardFsdSkipOn(r, c, s)) return 'q';
+    return '';
+  };
   const linkedSkip = s => { if (!s.link) return false; const p = byId[s.link]; if (!p) return !!(d.skip || {})[s.link]; return !!autoWhy(p) || linkedSkip(p); };
   const rec = (s, depth, pwhy) => {
     const aw = autoWhy(s);
@@ -4713,12 +4790,13 @@ function stepFsd(r, key) {
   fsdWalk(c, d, (s, dep, sk, why) => {
     if (why === 'parent' || why === 'off' || why === 'notank') return;
     const H = dep === 0 ? 'h3' : 'h4';
-    const skipOn = why === 'own';
+    const skipOn = why === 'own' || why === 'q';
     /* v0.6.359：可跳過＝紙本 skip／舊 def_skip／q_skip 位（畀用戶手動剔）；唔再自動不適用 */
     const showSkip = !!(s.skip || s.def_skip || s.q_skip || (d.skip || {})[s.id]);
     const skipBtn = showSkip ? `<button class="fskip ${skipOn ? 'on' : ''}" data-act="fsdskip" data-c="${key}" data-s="${esc(s.id)}">${skipOn ? '☑' : '☐'} 不適用${s.skip_label ? '（' + esc(s.skip_label) + '）' : ''}</button>` : '';
     /* v0.6.363：不適用／跳往… 路徑仍顯示左欄是／否／不適用（可揀）；略過只影響匯出／PDF 段 skip 剔 */
     const skipNote = why === 'own' ? '<div class="skipnote">已揀「不適用」（跳過此段匯出）；左欄框仍可揀／改。</div>'
+      : why === 'q' ? '<div class="skipnote">問卷數量＝0 → 已剔「如不適用」。再撳呢格可取消（記住）。</div>'
       : why === 'link' ? `<div class="skipnote">第 ${esc(s.link)} 部分已揀「不適用」；左欄框仍可揀／改。</div>`
       : '';
     /* v0.6.148：表一／表二 → 表格欄位放喺長註之前（避免淨見註唔見欄）；T1/T2 id 後備 table；items 防空 */
@@ -4748,10 +4826,9 @@ async function fsdAct(act, el, r) {
     else { a.v = tap; a.by = 'technician'; d.a[k] = a; }
     Store.touch(r); render(); if (tap === 'N' && (d.a[k] || {}).v === 'N') setTimeout(() => { const t = $(`#${fsdDom(key, k)} textarea`); if (t) t.focus(); }, 50); return; }
   if (act === 'fsdskip') {
-    /* v0.6.359：只記用戶自己跳過（d.skip）；清走舊 force_on */
-    const d = fsdRec(r, key), sid = el.dataset.s;
-    if (d.force_on && d.force_on[sid]) delete d.force_on[sid];
-    if (d.skip[sid]) delete d.skip[sid]; else d.skip[sid] = true;
+    /* v0.6.359：只記用戶自己跳過（d.skip）
+       v0.6.517：跟有效值轉。自動「如不適用」再撳＝force_on 取消；再撳＝d.skip 剔返。 */
+    fsdSkipToggle(r, key, el.dataset.s);
     Store.touch(r); return render();
   }
   if (act === 'fsdoff') { const d = fsdRec(r, key); d.off = !d.off; if (!d.off) delete d.off; Store.touch(r); return render(); }
@@ -7225,9 +7302,10 @@ function fsdPdfApplyHit(hit) {
   fsdPdfApplyTook = { sig: sig, t: now };
   fsdPdfPtrConsumed = { t: now };
   if (sid != null) {
-    /* v0.6.363：右欄撳段「如不適用，跳往…」＝ toggling d.skip */
-    if (d.skip[sid]) { delete d.skip[sid]; if (typeof toast === 'function') toast('已清跳過 §' + sid, 1800); }
-    else { d.skip[sid] = true; if (typeof toast === 'function') toast('已剔不適用／跳過 §' + sid, 1800); }
+    /* v0.6.363：右欄撳段「如不適用，跳往…」＝ toggling d.skip
+       v0.6.517：同左欄，跟有效值（自動 0 → 如不適用；再撳取消並記住） */
+    const nowOn = fsdSkipToggle(r, hit.key, sid);
+    if (typeof toast === 'function') toast(nowOn ? ('已剔不適用／跳過 §' + sid) : ('已清跳過 §' + sid), 1800);
     Store.touch(r);
     if (typeof render === 'function') render();
     else if (typeof fsdLiveRefresh === 'function') fsdLiveRefresh(r);
@@ -7825,6 +7903,9 @@ function fsdLiveMergeTeach(cExp, r, key) {
       if (!e || e.key !== key || !e.v) return;
       const sid = (typeof qTeachParseSkipIk === 'function') ? qTeachParseSkipIk(e.ik) : null;
       if (sid != null) {
+        /* v0.6.517：師傅已取消自動「如不適用」（force_on）唔再被教對應剔返 */
+        const fo = r.fsd && r.fsd[key] && r.fsd[key].force_on;
+        if (fo && fo[sid]) return;
         skipped.add(String(sid));
         filled++;
         return;
