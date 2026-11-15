@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.519';
+const APP_VERSION = '0.6.520';
+/* v0.6.520：花灑年檢右欄 PDF 8.a「是」睇落空白。Q_HARD 同 live viewer 都有寫 spr|8.a＝是，錨點亦喺印刷括號中心（同 8.b–e）。fsdDrawTickOv 再把筆畫放大 1.45–2 倍，右臂向上衝出括號。8.a 嗰行特別高，衝出嚟嘅臂落喺括號上面嘅空白，括號本身睇落係空 [ ]；8.b–e 行矮，同一支筆仍然睇得出係「是」。8.a 是／否／不適用改為 fit：筆畫收喺印刷括號入面，唔再放大。唔改 8.b–e、AA31／9.a–g、4.g 錨點。唔改 GAS。 */
 /* v0.6.519：花灑年檢 8.a「是」有跟 AA30 自動剔（k＝8.a，同 8.b–e），但 0.6.518 把筆畫收到 s=3.7（約 1.2px），影相睇落括號係空。s=9.5 又會跨過上一條行線同右邊「否」欄（括號貼住行線）。8.a 是／否／不適用改 s=7.2，y 對準印刷括號中心，剔坐在括號入面。AA30／AA31／4.g 邏輯唔改。唔改 GAS。 */
 /* v0.6.518：花灑年檢 8.a「是」手寫剔太大，跨過上一行同右邊「否」欄，所以看起來 8.a 未剔到。8.a 是／否／不適用收細並稍為下移，剔坐在印刷括號入面。AA30 自動剔 8.a–e、§8「如不適用，跳往 9」、AA31／9.a–g、4.g 同 0.6.516 其他剔位唔改。唔改 GAS。 */
 /* v0.6.517：問卷 AA30「總數有幾多個流水掣？」有數字且 >0 → 花灑年檢 8.a–e「是」；恰好 0 → 只剔 §8「如不適用，跳往 9」段框（8.a–e 唔剔是／行內不適用，8.f 唔自動剔）。AA31「總數有幾多個分層掣？」>0 → 9.a–g「是」；恰好 0 → 只剔 §9「如不適用，跳往 10」段框（9.h 唔自動剔）。空白、空白字、非數字留空。師傅覆寫保留。唔改 GAS。 */
@@ -8572,13 +8573,43 @@ async function fsdLoadBlankPdf(key, rel) {
   return pdf;
 }
 function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
-  /* v0.6.338 Fan：藍 V 再似手寫；v0.6.360：可傳 inkRgb＝問答答案同色 */
+  /* v0.6.338 Fan：藍 V 再似手寫；v0.6.360：可傳 inkRgb＝問答答案同色
+     v0.6.520：box.fit＝筆畫收喺印刷括號入面（花灑 8.a）。預設仍然放大 1.45–2 倍，右臂向上；高行會令括號睇落空白。 */
   if (!box) return;
   const rnd = (typeof xHwRng === 'function')
     ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ov:' + box.x + ':' + box.y))) : xHwSeed(String(seed || box.x)))
     : (() => { let n = 0; return () => { n = (n * 1103515245 + 12345) >>> 0; return (n >>> 8) / 16777216; }; })();
   const u = () => rnd() - 0.5;
   const boxS = (box.s || 9.5) * scale;
+  if (box.fit) {
+    /* 括號半寬約 boxS/2。筆畫限喺 ±0.36·boxS，線粗約 0.16·boxS，坐喺括號中心。 */
+    const cx = box.x * scale + u() * boxS * 0.04;
+    const cy = box.y * scale + u() * boxS * 0.04;
+    const s = boxS * 0.70;
+    const A = [cx - s * 0.34 + u() * s * 0.04, cy + s * 0.02 + u() * s * 0.04];
+    const Vpt = [cx - s * 0.04 + u() * s * 0.03, cy + s * 0.34 + u() * s * 0.03];
+    const E = [cx + s * 0.36 + u() * s * 0.03, cy - s * 0.32 + u() * s * 0.03];
+    const wd = Math.max(2.4, s * 0.20);
+    let rC, gC, bC;
+    if (inkRgb && inkRgb.length >= 3) {
+      rC = Math.round(Math.min(255, Math.max(0, inkRgb[0])));
+      gC = Math.round(Math.min(255, Math.max(0, inkRgb[1])));
+      bC = Math.round(Math.min(255, Math.max(0, inkRgb[2])));
+    } else {
+      rC = 21; gC = 101; bC = 192;
+    }
+    ctx.save();
+    ctx.strokeStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
+    ctx.lineWidth = wd;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(A[0], A[1]);
+    ctx.lineTo(Vpt[0], Vpt[1]);
+    ctx.lineTo(E[0], E[1]);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   const s = boxS * (1.45 + rnd() * 0.55); /* 大細差明顯啲 */
   const cx = box.x * scale + u() * boxS * 0.38;
   const cy = box.y * scale + u() * boxS * 0.32;
