@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.521';
+const APP_VERSION = '0.6.522';
+/* v0.6.522：花灑年檢「是／否／不適用」剔坐入印刷括號中間。錨點本來已經喺括號中心（附錄 III 頁 A3.2.b 燃油測試、A3.3 油缸量度偏差約 1pt 以內）。預設 fsdDrawTickOv 把筆畫放大 1.45–2 倍，右臂向上：高行（A3.2.b）臂衝到括號上面嘅空白，睇落係殘筆；A3.2.c 主筆畫落喺括號外，格入面好似空白；矮行（A3.3）剔偏上偏右。花灑年檢三格同「如不適用，跳往」段框改走 8.a 同一套 fit（0.90×），右欄同匯出都用。8.a 原盒已有 fit，大小同位置唔變，舊草稿仍然 fsdLiveReapply8a。mode=y 單格（包括 8.f）唔改。唔改 AA30 流水掣、AA31 分層掣、4.g、段跳過規則，亦唔改錨點。唔改 GAS。 */
 /* v0.6.521：花灑年檢 8.a「是」剔放大，仍然坐喺印刷括號入面。0.6.520 fit 正確（高行唔好把右臂畫到括號上面嘅空白），但筆畫偏細，睇落細過 8.b–e。fit 加闊，線粗同右臂都留喺「是」括號內緣，唔溢出「否」、上一行、行線。右欄 fsdLiveRefresh 重開或者刷新舊草稿，都用而家嘅 tickmaps 同 Q_HARD_FSD 再畫 8.a：AA30「總數有幾多個流水掣？」>0 剔是；恰好 0 只剔 §8「如不適用，跳往 9」。唔把舊疊圖像素寫入草稿。師傅覆寫 8.a 仍然優先。唔改 8.b–e、AA31／9.a–g、4.g、8.f。唔改 GAS。 */
 /* v0.6.520：花灑年檢右欄 PDF 8.a「是」睇落空白。Q_HARD 同 live viewer 都有寫 spr|8.a＝是，錨點亦喺印刷括號中心（同 8.b–e）。fsdDrawTickOv 再把筆畫放大 1.45–2 倍，右臂向上衝出括號。8.a 嗰行特別高，衝出嚟嘅臂落喺括號上面嘅空白，括號本身睇落係空 [ ]；8.b–e 行矮，同一支筆仍然睇得出係「是」。8.a 是／否／不適用改為 fit：筆畫收喺印刷括號入面，唔再放大。唔改 8.b–e、AA31／9.a–g、4.g 錨點。唔改 GAS。 */
 /* v0.6.519：花灑年檢 8.a「是」有跟 AA30 自動剔（k＝8.a，同 8.b–e），但 0.6.518 把筆畫收到 s=3.7（約 1.2px），影相睇落括號係空。s=9.5 又會跨過上一條行線同右邊「否」欄（括號貼住行線）。8.a 是／否／不適用改 s=7.2，y 對準印刷括號中心，剔坐在括號入面。AA30／AA31／4.g 邏輯唔改。唔改 GAS。 */
@@ -8629,6 +8630,12 @@ async function fsdLoadBlankPdf(key, rel) {
   FSD_BLANK_PDF[key] = pdf;
   return pdf;
 }
+function fsdSprBracketBox(key, box) {
+  /* v0.6.522：花灑年檢印刷「是／否／不適用」括號。錨點已在中心；預設筆畫放大後右臂向上，高行會衝出括號。
+     跟 8.a 交 fit（0.90×）收喺括號中間。8.a 原盒已有 fit，原物件照交，筆畫唔變。mode=y 單格唔經呢度。 */
+  if (!box || key !== 'spr' || box.fit) return box;
+  return { x: box.x, y: box.y, s: box.s, fit: true };
+}
 function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
   /* v0.6.338 Fan：藍 V 再似手寫；v0.6.360：可傳 inkRgb＝問答答案同色
      v0.6.520：box.fit＝筆畫收喺印刷括號入面（花灑 8.a）。預設仍然放大 1.45–2 倍，右臂向上；高行會令括號睇落空白。
@@ -9200,7 +9207,7 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
     if (pi === 0) fsdOvFillHeader(ctx, key, cExp, o, scale, vp1.width);
     if ((FSD_T1_OV.page || {})[key] === pi) fsdOvFillT1(ctx, key, cExp, o, scale);
     (skipsByPage[pi] || []).forEach(({ sid, sk }) => {
-      fsdDrawTickOv(ctx, sk.na, scale, key + ':secskip:' + sid);
+      fsdDrawTickOv(ctx, fsdSprBracketBox(key, sk.na), scale, key + ':secskip:' + sid);
     });
     (byPage[pi] || []).forEach(({ ik, m, r, a }) => {
       const onY = r === '是' || r === '✓';
@@ -9225,9 +9232,9 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
         else if (onNa) fsdDrawNaOv(ctx, m.yes, scale, key + ':' + ik + ':na', ink);
         else if (onN) fsdDrawXOv(ctx, m.yes, scale, key + ':' + ik + ':n', ink);
       } else {
-        if (onY) fsdDrawTickOv(ctx, m.yes, scale, key + ':' + ik + ':y', ink);
-        if (onN) fsdDrawTickOv(ctx, m.no, scale, key + ':' + ik + ':n', ink);
-        if (onNa) fsdDrawTickOv(ctx, m.na, scale, key + ':' + ik + ':na', ink);
+        if (onY) fsdDrawTickOv(ctx, fsdSprBracketBox(key, m.yes), scale, key + ':' + ik + ':y', ink);
+        if (onN) fsdDrawTickOv(ctx, fsdSprBracketBox(key, m.no), scale, key + ':' + ik + ':n', ink);
+        if (onNa) fsdDrawTickOv(ctx, fsdSprBracketBox(key, m.na), scale, key + ':' + ik + ':na', ink);
       }
       const rem = (a && (a.remark || a.optional)) || '';
       if (rem && m.na) {
