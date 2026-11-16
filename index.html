@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.521';
+const APP_VERSION = '0.6.523';
+/* v0.6.523：花灑年檢只改四格剔，坐入印刷括號。A3.2.b、A3.2.c 是／否／不適用沿用 8.a 嘅 fit（0.90×），錨點唔郁。附錄 V 印出行 l 之前冇 tickmap（兄弟鍵係 AV.a–AV.k）→ 補 AV.l 三格並 fit。附錄 VIII 印出行 k 係單格「須附加檢查」，之前冇 tickmap（兄弟鍵係 AVIII.a–AVIII.j）→ 補 AVIII.k 並 fit；不適用斜線同否叉都跟 fit，先至留喺括號入面。唔再整張表套 fit。唔改 8.a、8.b–e、9.a–g、4.g、A3.3、其他 mode=y 單格。唔改 GAS。 */
 /* v0.6.521：花灑年檢 8.a「是」剔放大，仍然坐喺印刷括號入面。0.6.520 fit 正確（高行唔好把右臂畫到括號上面嘅空白），但筆畫偏細，睇落細過 8.b–e。fit 加闊，線粗同右臂都留喺「是」括號內緣，唔溢出「否」、上一行、行線。右欄 fsdLiveRefresh 重開或者刷新舊草稿，都用而家嘅 tickmaps 同 Q_HARD_FSD 再畫 8.a：AA30「總數有幾多個流水掣？」>0 剔是；恰好 0 只剔 §8「如不適用，跳往 9」。唔把舊疊圖像素寫入草稿。師傅覆寫 8.a 仍然優先。唔改 8.b–e、AA31／9.a–g、4.g、8.f。唔改 GAS。 */
 /* v0.6.520：花灑年檢右欄 PDF 8.a「是」睇落空白。Q_HARD 同 live viewer 都有寫 spr|8.a＝是，錨點亦喺印刷括號中心（同 8.b–e）。fsdDrawTickOv 再把筆畫放大 1.45–2 倍，右臂向上衝出括號。8.a 嗰行特別高，衝出嚟嘅臂落喺括號上面嘅空白，括號本身睇落係空 [ ]；8.b–e 行矮，同一支筆仍然睇得出係「是」。8.a 是／否／不適用改為 fit：筆畫收喺印刷括號入面，唔再放大。唔改 8.b–e、AA31／9.a–g、4.g 錨點。唔改 GAS。 */
 /* v0.6.519：花灑年檢 8.a「是」有跟 AA30 自動剔（k＝8.a，同 8.b–e），但 0.6.518 把筆畫收到 s=3.7（約 1.2px），影相睇落括號係空。s=9.5 又會跨過上一條行線同右邊「否」欄（括號貼住行線）。8.a 是／否／不適用改 s=7.2，y 對準印刷括號中心，剔坐在括號入面。AA30／AA31／4.g 邏輯唔改。唔改 GAS。 */
@@ -8727,13 +8728,36 @@ function fsdDrawTickOv(ctx, box, scale, seed, inkRgb) {
   ctx.restore();
 }
 function fsdDrawNaOv(ctx, box, scale, seed, inkRgb) {
-  /* v0.6.414：mode=y 只有 yes 框時，不適用畫斜線（紙本無獨立 NA 格） */
+  /* v0.6.414：mode=y 只有 yes 框時，不適用畫斜線（紙本無獨立 NA 格）
+     v0.6.523：box.fit＝斜線收喺印刷括號入面（花灑 AVIII.k）。其他單格冇 fit，筆畫唔變。 */
   if (!box) return;
   const rnd = (typeof xHwRng === 'function')
     ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ovna:' + box.x + ':' + box.y))) : 1)
     : (() => { let n = 1; return () => { n = (n * 1103515245 + 12345) >>> 0; return (n >>> 8) / 16777216; }; })();
   const u = () => rnd() - 0.5;
   const boxS = (box.s || 9.5) * scale;
+  if (box.fit) {
+    const cx = box.x * scale + u() * boxS * 0.012;
+    const cy = box.y * scale + u() * boxS * 0.012;
+    const s = boxS * 0.90;
+    const wd = Math.max(2.2, s * 0.12);
+    let rC = 71, gC = 85, bC = 105;
+    if (inkRgb && inkRgb.length >= 3) {
+      rC = Math.round(Math.min(255, Math.max(0, inkRgb[0])));
+      gC = Math.round(Math.min(255, Math.max(0, inkRgb[1])));
+      bC = Math.round(Math.min(255, Math.max(0, inkRgb[2])));
+    }
+    ctx.save();
+    ctx.strokeStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
+    ctx.lineWidth = wd;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.42, cy + s * 0.16);
+    ctx.lineTo(cx + s * 0.42, cy - s * 0.30);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   const s = boxS * (1.15 + rnd() * 0.35);
   const cx = box.x * scale + u() * boxS * 0.25;
   const cy = box.y * scale + u() * boxS * 0.22;
@@ -8756,13 +8780,37 @@ function fsdDrawNaOv(ctx, box, scale, seed, inkRgb) {
   ctx.restore();
 }
 function fsdDrawXOv(ctx, box, scale, seed, inkRgb) {
-  /* v0.6.414：mode=y 紙本無 no 框時，「否」畫 X 喺 yes 框 */
+  /* v0.6.414：mode=y 紙本無 no 框時，「否」畫 X 喺 yes 框
+     v0.6.523：box.fit＝叉收喺印刷括號入面（花灑 AVIII.k）。其他單格冇 fit，筆畫唔變。 */
   if (!box) return;
   const rnd = (typeof xHwRng === 'function')
     ? xHwRng(typeof xHwSeed === 'function' ? xHwSeed(String(seed || ('ovx:' + box.x + ':' + box.y))) : 2)
     : (() => { let n = 2; return () => { n = (n * 1103515245 + 12345) >>> 0; return (n >>> 8) / 16777216; }; })();
   const u = () => rnd() - 0.5;
   const boxS = (box.s || 9.5) * scale;
+  if (box.fit) {
+    const cx = box.x * scale + u() * boxS * 0.012;
+    const cy = box.y * scale + u() * boxS * 0.012;
+    const s = boxS * 0.90;
+    const r = s * 0.36;
+    const wd = Math.max(2.2, s * 0.12);
+    let rC = 185, gC = 28, bC = 28;
+    if (inkRgb && inkRgb.length >= 3) {
+      rC = Math.round(Math.min(255, Math.max(0, inkRgb[0])));
+      gC = Math.round(Math.min(255, Math.max(0, inkRgb[1])));
+      bC = Math.round(Math.min(255, Math.max(0, inkRgb[2])));
+    }
+    ctx.save();
+    ctx.strokeStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
+    ctx.lineWidth = wd;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
+    ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   const s = boxS * (1.05 + rnd() * 0.3);
   const cx = box.x * scale + u() * boxS * 0.2;
   const cy = box.y * scale + u() * boxS * 0.2;
