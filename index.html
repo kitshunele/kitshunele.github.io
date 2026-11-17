@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.525';
+const APP_VERSION = '0.6.526';
+/* v0.6.526：花灑問卷 AA38「有冇花灑panel？」＝有 → 下面加「是否用防火線」（AA_FIRE_CABLE，是／否，答案唔跟 FA_FIRE_CABLE）、「有冇repeater」（AA_REPEATER，有／冇，答案唔跟 FA_REPEATER／FD_REP）、同埋原題 F23「有冇消防直線？」（同 F15／F9 下 FD_FIRELINK 同一個答案）。AA38＝冇就收埋。AA39 唔郁。唔改 GAS、唔加新剔。 */
 /* v0.6.525：花灑年檢附錄 XIII。A13.5.a–d 對準印刷第 38 頁括號中心（tickmap page 37，0-based）。e–k 同 A13.6 補喺印刷第 39 頁（tickmap page 38）。A13.6 單格 mode=y。A13.5「如不適用，跳過此項」段框原本已在 skips，拉準印刷 [ ] 並 fit。是／否／不適用用 fit（0.90×），剔坐入括號。唔改 A13.4、8.a、A3.2、AV.l、AVIII.k、AX、A14、GAS。 */
 /* v0.6.524：花灑年檢附錄 X（印刷 A10 水柱分隔裝置）AX.a–AX.j 是／否／不適用沿用 8.a 嘅 fit（0.90×），錨點唔郁，剔坐入印刷括號。預設 fsdDrawTickOv 放大 1.45–2 倍，右臂向上衝出括號，[ ] 睇落空白。g–j 鍵本來就有（AX.g–AX.j），錨點都喺印刷括號中心，同一支筆；預設不適用撳不適用格會寫 NA。唔改 AX.k、AX.l、8.a、A3.2.b、A3.2.c、AV.l、AVIII.k、其他框。唔改 GAS。 */
 /* v0.6.523：花灑年檢只改四格剔，坐入印刷括號。A3.2.b、A3.2.c 是／否／不適用沿用 8.a 嘅 fit（0.90×），錨點唔郁。附錄 V 印出行 l 之前冇 tickmap（兄弟鍵係 AV.a–AV.k）→ 補 AV.l 三格並 fit。附錄 VIII 印出行 k 係單格「須附加檢查」，之前冇 tickmap（兄弟鍵係 AVIII.a–AVIII.j）→ 補 AVIII.k 並 fit；不適用斜線同否叉都跟 fit，先至留喺括號入面。唔再整張表套 fit。唔改 8.a、8.b–e、9.a–g、4.g、A3.3、其他 mode=y 單格。唔改 GAS。 */
@@ -1010,7 +1011,7 @@ function coreFormsFix() { /* v0.6.15：下載資料之後再行 */
 coreFormsFix();
 /* v0.4.7：C1 消防泵 i（低電流 relay）、m（消音掣）長期 NA → 唔顯示俾師傅、唔計未填；importer 寫 NA（上水泵 C1U 不變） */
 const ALWAYS_NA = '消防泵呢項長期 NA（App 唔顯示）';
-const QBY = {}; function coreQby() { Object.keys(QBY).forEach(k => delete QBY[k]); QS.forEach(s => s.items.forEach(it => { QBY[it.cell] = Object.assign({ sec: s.key }, it); })); } coreQby();
+const QBY = {}; function coreQby() { Object.keys(QBY).forEach(k => delete QBY[k]); QS.forEach(s => s.items.forEach(it => { if (it && it.aliasOf && QBY[it.cell]) return; QBY[it.cell] = Object.assign({ sec: s.key }, it); })); } coreQby();
 const FORM_KEYS = ['C1U', 'C1', 'C1S', 'BU', 'B', 'BS', 'CL-D', 'CL-E', 'CL-F', 'H1', 'G1', 'CL-I', 'CL-J', 'CL-K', 'CL-L', 'CL-M', 'CL-N', 'CL-O', 'CL-P']; /* v0.6.242：CL-F/I/L/M/N/O/P；v0.6.240：CL-D（F9） */ /* v0.5.0：C1S／BS 花灑泵（年檢／半年檢） */ /* v0.4.9：CL-J 花灑（半年檢）、CL-K 花灑（年檢） */ // v0.4.8：BU／B（CL-B 半年檢）、G1（半年檢） // v0.4.2：C1 分開 上水泵（C1U，範本 Upfeed Pump）同 消防泵（C1，範本 FS Pump） // v0.3.4：CL-A 總表唔問師傅（提交時由問卷自動，見 buildExport）
 
 /* ---------- helpers ---------- */
@@ -1115,8 +1116,63 @@ async function thumbOf(id) { if (thumbs.has(id)) return thumbs.get(id); const p 
 /* ---------- record model ---------- */
 function presetEstate(e) { return { zh: e.zh, en: e.en, code: e.code, district: e.district || '', preset: true }; }
 let DEFAULT_ESTATE = DATA.estates.find(e => e.code === 'ChingHo') || DATA.estates[0];
+/* v0.6.526：AA38＝有 先喺花灑卷下面顯示三條。新題答案獨立；F23 只係同一條再顯示（aliasOf），唔另開答案。唔改 GAS 問卷檔。 */
+function qAa38Ensure() {
+  const spr = (QS || []).find(s => (s.items || []).some(it => it && it.cell === 'AA38' && !it.aliasOf));
+  if (!spr || !Array.isArray(spr.items)) return;
+  const items = spr.items;
+  const canon = cell => {
+    for (let si = 0; si < QS.length; si++) {
+      const arr = QS[si].items || [];
+      for (let i = 0; i < arr.length; i++) {
+        const it = arr[i];
+        if (it && it.cell === cell && !it.aliasOf) return it;
+      }
+    }
+    return null;
+  };
+  const cable = canon('FA_FIRE_CABLE');
+  const rep = canon('FA_REPEATER');
+  const f23 = canon('F23');
+  const want = [];
+  if (!items.some(it => it && it.cell === 'AA_FIRE_CABLE')) {
+    const row = {
+      cell: 'AA_FIRE_CABLE',
+      label: '是否用防火線',
+      type: (cable && cable.type) || 'sf',
+      dep: ['AA38', '有'],
+      app_only: true,
+      note: 'App 自己問。有花灑panel先顯示（dep AA38＝有；v0.6.526）。是／否同 FA_FIRE_CABLE「是否用防火線」一樣，答案分開，唔會跟住剔火警鐘 4.b／4.d，亦唔剔花灑年檢表或附錄 XIII。'
+    };
+    if (cable && Array.isArray(cable.opts)) row.opts = cable.opts.slice();
+    want.push(row);
+  }
+  if (!items.some(it => it && it.cell === 'AA_REPEATER')) {
+    want.push({
+      cell: 'AA_REPEATER',
+      label: '有冇repeater',
+      type: (rep && rep.type) || 'yn',
+      dep: ['AA38', '有'],
+      app_only: true,
+      note: 'App 自己問。有花灑panel先顯示（dep AA38＝有；v0.6.526）。有／冇同 FA_REPEATER「有冇repeater」一樣，答案分開：唔會改 FD_REP，唔會改半年檢 J-1 H26，亦唔剔花灑年檢表或附錄 XIII。'
+    });
+  }
+  if (f23 && !items.some(it => it && it.aliasOf === 'F23')) {
+    const copy = {};
+    Object.keys(f23).forEach(k => { if (k !== 'dep') copy[k] = f23[k]; });
+    copy.dep = ['AA38', '有'];
+    copy.aliasOf = 'F23';
+    delete copy.app_only;
+    copy.note = '同一條 F23「' + (f23.label || '有冇消防直線？') + '」。花灑panel有（AA38＝有）先喺呢度顯示；警鐘㩒手下（F15＝有）同 F9 下 FD_FIRELINK 都係同一個答案。原有直線剔（包括花灑 A13.1.i）照跟 F23。';
+    want.push(copy);
+  }
+  if (!want.length) return;
+  const at = items.findIndex(it => it && it.cell === 'AA38' && !it.aliasOf);
+  if (at < 0) return;
+  items.splice(at + 1, 0, ...want);
+}
 function coreDataApply() { /* v0.6.15：appDataApply 叫 */
-  QS = DATA.questionnaire || []; FORMS = DATA.forms || {}; coreFormsFix(); coreQby();
+  QS = DATA.questionnaire || []; FORMS = DATA.forms || {}; coreFormsFix(); qAa38Ensure(); coreQby();
   DEFAULT_ESTATE = DATA.estates.find(e => e.code === 'ChingHo') || DATA.estates[0]; FLOOR_Q = null;
 }
 const hasCJK = t => /[\u3400-\u9fff\uf900-\ufaff]/.test(t || '');
@@ -1330,6 +1386,7 @@ function itemVal(r, k, it) { // → { v, note, by: 'technician' | 'default' | ''
 }
 
 /* ---------- visibility ---------- */
+function qElId(it) { return (it && it.aliasOf) ? (it.cell + '-aa38') : (it && it.cell); } /* v0.6.526：F23 喺 AA38 下再顯示，DOM id 分開，答案仍係 F23 */
 function qVisible(r, it, sec) {
   if (sec.gate && it.cell !== sec.gate && r.q[sec.gate] !== '有') return false;
   /* v0.6.143：dep 支援 [cell, ans] 全等，或 [cell, 'gt', n]（已答且 Number(答) > n 先顯示；未答／≤n 隱藏） */
@@ -1930,7 +1987,7 @@ function stepList(r) {
 function prog(r, k) {
   if (k === 'basic') return { done: (has(r.block.zh) || has(r.block.en) ? 1 : 0) + (has(r.date) ? 1 : 0) + (ITYPE[r.itype] ? 1 : 0), total: 3 };
   if (k === 'CL-A') return null; /* v0.6.239：唯讀總表，唔計師傅填寫進度 */
-  if (k === 'q') { let d = 0, t = 0; const M = optMap(r); QS.forEach(s => s.items.forEach(it => { if (qVisible(r, it, s)) { if (!has(r.q[it.cell]) && M.has('q.' + it.cell)) return; t++; if (has(r.q[it.cell])) d++; } })); return { done: d, total: t }; }
+  if (k === 'q') { let d = 0, t = 0; const M = optMap(r), seen = new Set(); QS.forEach(s => s.items.forEach(it => { if (qVisible(r, it, s)) { if (seen.has(it.cell)) return; seen.add(it.cell); if (!has(r.q[it.cell]) && M.has('q.' + it.cell)) return; t++; if (has(r.q[it.cell])) d++; } })); return { done: d, total: t }; } /* v0.6.526：F23 喺 F15 同 AA38 各顯示一次，進度只計一條 */
   if (FORMS[k]) { let d = 0, t = 0, err = 0; FORMS[k].items.forEach(it => { const m = itemMode(r, it); if (m === 'input') { if (!it.optional) { t++; if (has(inVal(r, k, it))) d++; } return; } if (m !== 'ask' && !(m === 'autona' && itemAutoEditable(it, r))) return; t++; const a = itemVal(r, k, it); if (a.v) { d++; if (a.v === 'X' && !has((a.note || '').trim())) err++; } }); return { done: d, total: t, err }; }
   if (isC2(k)) { const rows = c2Set(k)(r); return { done: rows.filter(x => c2RowDone(r, x)).length, total: rows.length }; }
   if (k === 'TR-H2') return h2Need(r);
@@ -1947,7 +2004,7 @@ function pageMissing(r, k) { // → [{code, sel}]
     if (!has(r.date)) out.push({ code: '檢查日期', sel: '[data-bind="date"]' });
     if (!ITYPE[r.itype]) out.push({ code: '年檢／半年檢', sel: '#itype' });
   } else if (k === 'q') {
-    const M = optMap(r); QS.forEach(s => s.items.forEach(it => { if (qVisible(r, it, s) && !has(r.q[it.cell]) && !M.has('q.' + it.cell)) out.push({ code: it.cell, sel: '#q-' + it.cell }); }));
+    const M = optMap(r), seenQ = new Set(); QS.forEach(s => s.items.forEach(it => { if (qVisible(r, it, s) && !has(r.q[it.cell]) && !M.has('q.' + it.cell)) { if (seenQ.has(it.cell)) return; seenQ.add(it.cell); out.push({ code: it.cell, sel: '#q-' + qElId(it) }); } })); /* v0.6.526：同一條 F23 唔當兩條未填 */
   } else if (FORMS[k]) {
     FORMS[k].items.forEach(it => { const m = itemMode(r, it); if (m === 'input') { if (!it.optional && !has(inVal(r, k, it))) out.push({ code: it.id, sel: '#it-' + (k + '.' + it.id).replace(/\./g, '-') }); return; }
       if (m !== 'ask' && !(m === 'autona' && itemAutoEditable(it, r))) return; const key = k + '.' + it.id, a = itemVal(r, k, it);
@@ -2782,7 +2839,11 @@ function qGlueUnder(items, parentCell, extraCells) {
   if (!items || !items.length || !parentCell) return items;
   const extra = new Set(extraCells || []);
   const isKid = it => !!(it && ((it.dep && it.dep[0] === parentCell) || extra.has(it.cell)));
-  const kids = items.filter(isKid);
+  let kids = items.filter(isKid);
+  if (parentCell === 'AA38') { /* v0.6.526：防火線、repeater、F23 固定呢個次序 */
+    const rank = { AA_FIRE_CABLE: 0, AA_REPEATER: 1, F23: 2 };
+    kids = kids.slice().sort((a, b) => (rank[a.cell] != null ? rank[a.cell] : 9) - (rank[b.cell] != null ? rank[b.cell] : 9));
+  }
   if (!kids.length) return items;
   const parent = items.find(it => it && it.cell === parentCell);
   if (!parent) return items;
@@ -2813,6 +2874,7 @@ function qSortItems(items) {
   list = qGlueUnder(list, 'F15');
   list = qGlueUnder(list, 'T6'); /* v0.6.467：T6 下 FS_HYDRANT「有冇龍頭」膠喺 T6 下 */
   list = qGlueUnder(list, 'F6'); /* v0.6.476：F6 下 H2_PB_FROM／TO 膠喺 F6 下 */
+  list = qGlueUnder(list, 'AA38'); /* v0.6.526：AA38 下 AA_FIRE_CABLE／AA_REPEATER／F23 膠住 */
   return qGlueUnder(list, 'F9', ['F10']); /* v0.6.408／409／420：F9 子題（FD_*／F10／FD_FIRELINK／FD_FLASH／FA_CUT_LIFT_VAC 等）膠喺 F9 下；F10 sticky */
 }
 
@@ -2990,7 +3052,7 @@ function stepQ(r) {
     const ynNa = (s.key === 'general' && typeof qYnNaToolbarHtml === 'function') ? qYnNaToolbarHtml() : '';
     return `<div class="card" id="sec-${s.key}"><h3>${esc(s.title)} <span class="mut">${p}/${need}</span></h3>
       ${ynNa}
-      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${it.cell}" data-qcell="${esc(it.cell)}"${qLiveAttrs(it.cell)}><div class="qhead"><button type="button" class="qdrag" data-qdrag="${esc(it.cell)}" aria-label="拉上拉下調次序" title="撳住拉上拉下調次序">≡</button><div class="ql" data-qlong="1">${esc(it.label)}<span class="c">${it.cell}</span></div></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY' || it.cell === 'FA_FACP_QTY' || it.cell === 'FA_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell === 'FA_FACP_QTY' ? 'FD_FACP_QTY' : it.cell === 'FA_BATT_QTY' ? 'FD_BATT_QTY' : it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
+      ${items.map(it => `<div class="q ${has(r.q[it.cell]) || OM.has('q.' + it.cell) ? '' : 'unans'}" id="q-${qElId(it)}" data-qcell="${esc(it.cell)}"${qLiveAttrs(it.cell)}><div class="qhead"><button type="button" class="qdrag" data-qdrag="${esc(it.cell)}" aria-label="拉上拉下調次序" title="撳住拉上拉下調次序">≡</button><div class="ql" data-qlong="1">${esc(it.label)}<span class="c">${it.cell}</span></div></div>${qFsdHintHtml(it.cell)}${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}${/^AA1[1-6]$/.test(it.cell) ? `<div class="opth" data-optfor="q.${it.cell}"></div>` : ''}${qInput(r, it)}${it.cell === 'SPR_MULTI_SYS' && typeof sprSysFloorHtml === 'function' ? sprSysFloorHtml(r) : ''}${(it.cell === 'FD_FACP_QTY' || it.cell === 'FD_REP_QTY' || it.cell === 'FD_BATT_QTY' || it.cell === 'FA_FACP_QTY' || it.cell === 'FA_BATT_QTY') && typeof fdsPanelQtyHtml === 'function' ? fdsPanelQtyHtml(r, it.cell === 'FA_FACP_QTY' ? 'FD_FACP_QTY' : it.cell === 'FA_BATT_QTY' ? 'FD_BATT_QTY' : it.cell) : ''}${it.cell === 'SPR_TANK' && noSprTank(r) ? `<div class="notank" id="notank-q">冇花灑水缸 → 已隱藏 ${NOTANK_Q.length} 條花灑泵／中途泵題目（${NOTANK_Q.join('、')}），消防處·花灑嘅泵部分同表二泵來源都隱藏；提交記 NA。改返「有」會見返之前填嘅答案。</div>` : ''}</div>${it.cell === 'F18' && r.q.F18 === '有' ? `<div class="q" id="q-fe"><div class="ql">滅火筒數量（唔使填）<span class="c">F19</span></div>${feCard(r, true)}</div>` : ''}`).join('')}
       ${gateNo ? `<div class="skipnote">已答「冇」，呢部分其餘 ${s.items.length - 1} 條問題略過。</div>` : ''}</div>`;
   }).join('');
 }
@@ -18194,7 +18256,7 @@ const revInfo = r => r.rev ? { revision: r.rev.revision, revises: r.rev.of, revi
 async function buildExport(r, when) {
   floorSync(r);
   const qOut = {};
-  QS.forEach(s => s.items.forEach(it => { if (has(r.q[it.cell]) && qVisible(r, it, s)) qOut[it.cell] = Object.assign({ q: it.label, a: r.q[it.cell], type: it.type }, it.app_only ? { app_only: true } : {});
+  QS.forEach(s => s.items.forEach(it => { if (has(r.q[it.cell]) && qVisible(r, it, s)) { if (!(it.aliasOf && qOut[it.cell])) qOut[it.cell] = Object.assign({ q: it.label, a: r.q[it.cell], type: it.type }, it.app_only ? { app_only: true } : {}); } /* v0.6.526：F23 複本唔蓋過原題（原題先寫、冇 app_only） */
     else if (noSprTank(r) && it.cell in NOTANK_IMP) qOut[it.cell] = { q: it.label, a: NOTANK_IMP[it.cell], type: it.type, implied: true, why: NOTANK_HINT }; // v0.5.2：當「冇／否」→ importer 寫入，範本公式出 NA
     else if (noSprTank(r) && NOTANK_Q.includes(it.cell)) qOut[it.cell] = { q: it.label, a: 'NA', type: it.type, na: true, why: NOTANK_HINT }; })); // v0.4.1：冇花灑水缸 → 隱藏題目記 NA
   const OM = optMap(r), optional_blanks = []; // 互斥讀數／冇花灑水缸：留空都唔算未填
