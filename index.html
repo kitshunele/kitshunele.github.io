@@ -692,7 +692,7 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
 const APP_VERSION = '0.6.528';
-/* v0.6.528：花灑年檢附錄 XIII。印刷第 38 頁（tickmap page 37）A13.4.i／j／k 拉到印刷 i／j／k 行 [ ] 中心；補 A13.4.l、A13.4.m（mode=ynn）。A13.4.i–m、A13.5.a–k、A13.5「如不適用，跳過此項」、A13.6 用 box.hw：同前面手寫剔（二次曲線、左短右長、右臂再掃），筆畫收喺印刷括號入面。唔改 A13.4 a–h、8.a、A3.2、AV.l、AVIII.k、AX、A14、AA40、GAS。 */
+/* v0.6.528：花灑年檢附錄 XIII。印刷第 37 頁（tickmap page 36）A13.4.a–h 拉到印刷 a–h 行 [ ] 中心；印刷第 38 頁（tickmap page 37）A13.4.i–m 對準 i–m。A13.4.a–m、A13.5.a–k、A13.5「如不適用，跳過此項」、A13.6 用 box.hw：同前面手寫剔（二次曲線、左短右長、右臂再掃），筆畫收喺印刷括號入面。唔改 8.a、A3.2、AV.l、AVIII.k、AX、A14、AA40、GAS。 */
 /* v0.6.527：問卷 AA40「是否水電？」改返是／否（type sf，兩個掣）。公司資料如果仲係水／電／泵，下載之後改返 sf 並拆走 opts。AA40＝泵 唔再預設消防處花灑 附錄 XV AXV.j／k／l（非封閉式電池）「不適用」：下載時拆走呢三格指向 AA40 嘅 q_def／q_def_and／q_def_or／q_def_all。唔加新自動剔。舊草稿 AA40 如果仲係「水」「電」或「泵」，唔改寫成「是」或「否」；畫面、進度、未填同提交當未答，草稿原值留住等師傅再揀。唔改 SPR_PUMP_ROOF、AA38、AA39、GAS。 */
 /* v0.6.526：花灑問卷 AA38「有冇花灑panel？」＝有 → 下面加「是否用防火線」（AA_FIRE_CABLE，是／否，答案唔跟 FA_FIRE_CABLE）、「有冇repeater」（AA_REPEATER，有／冇，答案唔跟 FA_REPEATER／FD_REP）、同埋原題 F23「有冇消防直線？」（同 F15／F9 下 FD_FIRELINK 同一個答案）。AA38＝冇就收埋。AA39 唔郁。唔改 GAS、唔加新剔。 */
 /* v0.6.525：花灑年檢附錄 XIII。A13.5.a–d 對準印刷第 38 頁括號中心（tickmap page 37，0-based）。e–k 同 A13.6 補喺印刷第 39 頁（tickmap page 38）。A13.6 單格 mode=y。A13.5「如不適用，跳過此項」段框原本已在 skips，拉準印刷 [ ] 並 fit。是／否／不適用用 fit（0.90×），剔坐入括號。唔改 A13.4、8.a、A3.2、AV.l、AVIII.k、AX、A14、GAS。 */
