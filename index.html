@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.529';
+const APP_VERSION = '0.6.530';
+/* v0.6.530：花灑年檢附錄 XIII。A13.3.a–f、A13.4.a–m、A13.5.a–k、A13.5「如不適用，跳過此項」、A13.6 唔再用 box.hw，改返同 A13.1／A13.2 一樣用預設 fsdDrawTickOv 手寫剔（二次曲線、左短右長、右臂再掃）。錨點、頁、鍵唔郁。唔改 8.a、A3.2.b、A3.2.c、AV.l、AVIII.k、AX.a–j（仍然 box.fit）、GAS。 */
 /* v0.6.529：花灑年檢附錄 XIII。印刷第 36 頁（tickmap page 35）A13.3.a–c 拉到印刷 a–c 行 [ ] 中心，並補 A13.3.d、A13.3.e、A13.3.f（ynn 三格）。A13.2.b／A13.2.c 原本坐喺印刷 A13.3.a／b，會搶 hit，所以拆走；印刷 A13.2 只有一行，A13.2.a 唔郁。A13.3.a–f 用 box.hw，筆畫收喺印刷括號入面。唔改 8.a、A3.2、A10、AV.l、AVIII.k、AX、A13.1、A13.4、A13.5、A13.6、A14、AA40、AA38、Q_HARD、GAS。 */
 /* v0.6.528：花灑年檢附錄 XIII。印刷第 37 頁（tickmap page 36）A13.4.a–h 拉到印刷 a–h 行 [ ] 中心；印刷第 38 頁（tickmap page 37）A13.4.i–m 對準 i–m。A13.4.a–m、A13.5.a–k、A13.5「如不適用，跳過此項」、A13.6 用 box.hw：同前面手寫剔（二次曲線、左短右長、右臂再掃），筆畫收喺印刷括號入面。唔改 8.a、A3.2、AV.l、AVIII.k、AX、A14、AA40、GAS。 */
 /* v0.6.527：問卷 AA40「是否水電？」改返是／否（type sf，兩個掣）。公司資料如果仲係水／電／泵，下載之後改返 sf 並拆走 opts。AA40＝泵 唔再預設消防處花灑 附錄 XV AXV.j／k／l（非封閉式電池）「不適用」：下載時拆走呢三格指向 AA40 嘅 q_def／q_def_and／q_def_or／q_def_all。唔加新自動剔。舊草稿 AA40 如果仲係「水」「電」或「泵」，唔改寫成「是」或「否」；畫面、進度、未填同提交當未答，草稿原值留住等師傅再揀。唔改 SPR_PUMP_ROOF、AA38、AA39、GAS。 */
