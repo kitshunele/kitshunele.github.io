@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.531';
+const APP_VERSION = '0.6.532';
+/* v0.6.532：花灑年檢附錄 XIV A14.5。印刷第 42 頁（tickmap page 41）a–f 都有是／否／不適用 [ ]。A14.5.a 坐喺上一節溢出嚟嘅 l 行，A14.5.b 坐喺印刷 a，A14.5.c 坐喺印刷 b；印刷 c／d／e／f 冇鍵，撳印刷格唔中。a–c 拉去自己嗰行印刷 [ ] 中心，補 d／e／f。沿用 A14.1 預設手寫剔（唔加 fit／hw）。唔改 A14.4、A14.6+、AXV、8.a、A3.2、AV.l、AVIII.k、AX、自動剔、GAS。 */
 /* v0.6.531：花灑年檢附錄 XIV／XV。A14.6.a–c、A14.7.a–f、A14.8.a／b 原本坐喺上一頁嘅印刷括號（A14.6.a 喺 tickmap page 41，印刷 A14.6.a 喺 page 42），撳印刷格唔中；A14.6.d–j、A14.7.g–n、A14.8.c–k、A14.9、AXV.t 冇 tickmap。拉去印刷 [ ] 中心，沿用 A14.1 預設手寫剔（唔加 fit／hw）。A14.9 印刷行只有不適用一格。唔改 A14.4、A14.5、AXV.a–s、8.a、A3.2、AV.l、AVIII.k、AX、GAS。 */
 /* v0.6.530：花灑年檢附錄 XIII。A13.3.a–f、A13.4.a–m、A13.5.a–k、A13.5「如不適用，跳過此項」、A13.6 唔再用 box.hw，改返同 A13.1／A13.2 一樣用預設 fsdDrawTickOv 手寫剔（二次曲線、左短右長、右臂再掃）。錨點、頁、鍵唔郁。唔改 8.a、A3.2.b、A3.2.c、AV.l、AVIII.k、AX.a–j（仍然 box.fit）、GAS。 */
 /* v0.6.529：花灑年檢附錄 XIII。印刷第 36 頁（tickmap page 35）A13.3.a–c 拉到印刷 a–c 行 [ ] 中心，並補 A13.3.d、A13.3.e、A13.3.f（ynn 三格）。A13.2.b／A13.2.c 原本坐喺印刷 A13.3.a／b，會搶 hit，所以拆走；印刷 A13.2 只有一行，A13.2.a 唔郁。A13.3.a–f 用 box.hw，筆畫收喺印刷括號入面。唔改 8.a、A3.2、A10、AV.l、AVIII.k、AX、A13.1、A13.4、A13.5、A13.6、A14、AA40、AA38、Q_HARD、GAS。 */
