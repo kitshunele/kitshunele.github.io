@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.536';
+const APP_VERSION = '0.6.537';
+/* v0.6.537：花灑表二供水來源。AA20＝有（有花灑泵）→ 穩壓泵剔、花灑泵編號 1／2 寫喺點線上面、兩邊框都剔。AA20 唔係有：唔剔穩壓泵、唔寫 1／2；SPR_STREET_MAIN＝是 → 剔由街喉直接供水；SPR_TANK＝有 → 剔花灑水缸重力供水。有泵時街喉／天台缸仍跟舊規則。on 已係空字（師傅剔走）唔蓋。中途泵唔自動剔。表二左欄：項目編號 1；所覆蓋樓層跟表一控制閥 cover；高度＝最高樓層 N×3+3 米（冇數字樓層就留空）。師傅填咗嘅高度唔蓋。表一、剔位圖、8.a／AA30／4.g、GAS 唔郁。 */
 /* v0.6.536：花灑表一第一行對齊同設備總數量。資料格頁首橫線係 y≈182（表頭底），第一行底 y≈200.5；0.6.535 baseline 214.9 坐喺第二行。baseline 改 196.5（行底 −4），編號 1 返第一行。設備總數量：流水掣←表一 totals.flow，冇先用 AA30；分區／層開關閥←totals.zone，冇先用 AA31；水柱分隔裝置只喺有非 0 先寫（隱藏欄預設 0 唔當答過）。空白唔寫 0。表一字（連地址／大廈名）1.35→1.55，仍喺格入面。編號／種類規則、地址內容、剔位、GAS 唔郁。 */
 /* v0.6.535：花灑官方 blank 表一控制閥編號。問卷 SPR_MULTI_SYS 有幾個花灑系統就順住寫 1、2、…；有水簾（SPR_WATER_CURTAIN／F30＝有）編號接住排，種類 Del；冇花灑系統只得水簾就係 1。空白／0 唔當一個花灑。種類：花灑系統空先填 W，師傅改過唔蓋。表一地址／大廈名、剔位、8.a／AA30／4.g、GAS 唔郁。 */
 /* v0.6.534：花灑官方 blank 頭欄參考編號同表一／表二地址。註冊消防裝置承辦商參考編號點線量度 x476→554.5（可寫 78pt）；預設改「RC1/0044 RC2/0037」（空格、唔用頓號）。1.35 倍成句約 101pt，會喺點線截斷；頭欄改 1.0 倍（約 75pt，尾約 x550）先至成句坐喺點線上。表一（PDF 第9頁＝maps page 8）同表二（第10頁＝page 9）「建築物／處所地址」「建築物／大廈名稱」跟其他核對表，用屋邨／座自動疊。唔改剔位、8.a／AA30、其他表頭欄、GAS。 */
@@ -4373,7 +4374,8 @@ function sprHazardFlows(r) {
 function sprT2SrcFromQ(r, z) {
   /* v0.6.152：AA20＝有 → 剔穩壓泵＋花灑泵1／2（編號 1、2）
      v0.6.153：SPR_STREET_MAIN＝是 → 剔「由街喉直接供水」（main）
-     v0.6.154：AA36＝是 且 SPR_STREET_MAIN＝否 → 剔「花灑水缸重力供水」（tank）；街喉＝是 唔剔重力
+     v0.6.154：有泵時 AA36＝是 且 SPR_STREET_MAIN＝否 → 剔「花灑水缸重力供水」（tank）
+     v0.6.537：冇泵（AA20 唔係有）唔剔穩壓泵、唔寫 1／2；街喉＝是 → 剔街喉；有花灑水缸 → 剔重力（街喉＝是 都剔）
      v0.6.229／230：三個供水模式（已剔先填；空先填，唔蓋師傅改過）—
        冇泵 tank／main：壓力1／2←AA11／AA12；流量1／2←AA8 額定表
        1泵 pump1：壓力1／2←AA14／AA13（Low／High）；流量同上
@@ -4387,7 +4389,9 @@ function sprT2SrcFromQ(r, z) {
     if (o.on === undefined || o.on === null) o.on = '1';
     if (extras) Object.keys(extras).forEach(f => { if (!has(o[f])) o[f] = extras[f]; });
   };
-  if (r.q.AA20 === '有') {
+  /* v0.6.537：AA20＝有 先算有花灑泵。冇泵唔剔穩壓泵、唔寫花灑泵 1／2。 */
+  const hasPumps = r.q.AA20 === '有';
+  if (hasPumps) {
     touch('jockey');
     if (!noSprTank(r)) {
       touch('pump1', { no: '1' });
@@ -4395,7 +4399,8 @@ function sprT2SrcFromQ(r, z) {
     }
   }
   if (r.q.SPR_STREET_MAIN === '是') touch('main');
-  else if (r.q.SPR_STREET_MAIN === '否' && r.q.AA36 === '是' && r.q.SPR_TANK === '有') touch('tank');
+  if (!hasPumps && r.q.SPR_TANK === '有') touch('tank'); /* 冇泵、有花灑水缸 → 重力 */
+  else if (hasPumps && r.q.SPR_STREET_MAIN === '否' && r.q.AA36 === '是' && r.q.SPR_TANK === '有') touch('tank');
   /* 壓力＝該模式 Low／High bar；流量＝AA8 OH／LH 額定 L/min（問卷 bar 格本身冇升／分鐘） */
   const fl = sprHazardFlows(r);
   const fillFp = (k, lowCell, highCell) => {
@@ -4410,6 +4415,33 @@ function sprT2SrcFromQ(r, z) {
   fillFp('main', 'AA11', 'AA12');
   fillFp('pump1', 'AA14', 'AA13');  /* 1泵：AA14 Low、AA13 High */
   fillFp('pump2', 'AA16', 'AA15');  /* 2泵：AA16 Low、AA15 High */
+}
+function sprHighestStorey(text) {
+  /* 由「G/F–3/F」「1/F-12/F」「12樓」抽出最高數字樓層。G/F、天台、R/F 冇數字就唔估。 */
+  if (!has(text)) return null;
+  const re = /(\d+)\s*(?:\/|／)?\s*(?:F|f|樓)/g;
+  let m, best = null;
+  while ((m = re.exec(String(text)))) {
+    const n = Number(m[1]);
+    if (isFinite(n) && (best == null || n > best)) best = n;
+  }
+  return best;
+}
+function sprHeadMetres(text) {
+  const n = sprHighestStorey(text);
+  return n == null ? null : n * 3 + 3;
+}
+function sprMarkT2Height(r, bind, raw) {
+  const m = /^fsd\.spr\.t\.sitems\.(\d+)\.height$/.exec(bind || '');
+  if (!m || !r) return;
+  const z = ((((r.fsd || {}).spr || {}).t || {}).sitems || [])[+m[1]];
+  if (!z) return;
+  const s = raw == null ? '' : String(raw).trim();
+  if (!s) { delete z.heightHand; z.heightAuto = false; return; }
+  const n = Number(s.replace(/,/g, '.'));
+  if (!isFinite(n)) return;
+  z.heightHand = true;
+  z.heightAuto = false;
 }
 function sprT2Sync(r) {
   /* v0.6.147：表二 sitems 長度＝N（同表一）；floors 跟 systems[i].valves[0].cover
@@ -4428,6 +4460,12 @@ function sprT2Sync(r) {
   items.forEach((z, i) => {
     const cover = (((systems[i] || {}).valves || [])[0] || {}).cover;
     if (has(cover)) z.floors = cover;
+    /* v0.6.537：高度空先按所覆蓋樓層最高 N×3+3。師傅改過（heightHand）唔蓋。冇數字樓層就唔發明。 */
+    if (!z.heightHand && (z.heightAuto || !has(z.height))) {
+      const m = sprHeadMetres(has(z.floors) ? z.floors : '');
+      if (m != null) { z.height = m; z.heightAuto = true; }
+      else if (z.heightAuto) { delete z.height; delete z.heightAuto; }
+    }
     sprT2SrcFromQ(r, z);
   });
   t.sitems = items;
@@ -9636,6 +9674,58 @@ function sprOvTotals(cExp, o) {
     zone: pick('zone', 'AA31', false)
   };
 }
+/* v0.6.537：表二供水來源（PDF 第10頁＝maps page 9）。[ ] 中心 x456；括號高約 8pt，用 fit 收喺框內。
+   花灑泵編號點線 x310.5–336.5，y≈263.2／290.1；baseline＝線 −4。中途泵唔自動寫編號。 */
+/* 表二左欄係一整格：頂 y≈218、底 y≈406，字放格中。欄界 67／102／174／251。 */
+const FSD_SPR_T2_ITEM = {
+  no: { x: 76, y: 316, maxW: 22 },
+  floors: { x: 108, y: 316, maxW: 60 },
+  height: { x: 186, y: 316, maxW: 58 }
+};
+const FSD_SPR_T2_SRC = {
+  x: 456, s: 8.5,
+  rows: {
+    jockey: { y: 233.3 },
+    pump1: { y: 259.7, no: { x: 312, y: 259.2, maxW: 22 } },
+    pump2: { y: 286.5, no: { x: 312, y: 286.1, maxW: 22 } },
+    bst1: { y: 314.2 },
+    bst2: { y: 341.2 },
+    tank: { y: 368.0 },
+    main: { y: 395.0 }
+  }
+};
+function sprOvFillT2Src(ctx, cExp, scale, put) {
+  const src = ((((cExp || {}).tables || {}).sitems || [])[0] || {}).src || {};
+  const G = FSD_SPR_T2_SRC;
+  Object.keys(G.rows).forEach(k => {
+    const row = G.rows[k];
+    const o = src[k];
+    if (!o || o.na) return;
+    const on = o.on === '1' || o.on === 1 || o.on === true;
+    if (on && typeof fsdDrawTickOv === 'function') {
+      fsdDrawTickOv(ctx, { x: G.x, y: row.y, s: G.s, fit: true }, scale, 'spr:t2:' + k);
+    }
+    if (row.no && has(o.no) && on) put(String(o.no).trim(), row.no, 't2no' + k);
+  });
+  /* 左三欄係一整格（唔係多行）。項目編號寫 1。樓層跟表一 cover。高度有師傅數用師傅數，否則 N×3+3。 */
+  const tables = (cExp && cExp.tables) || {};
+  const z = (tables.sitems || [])[0] || {};
+  const cover = ((((tables.systems || [])[0] || {}).valves || [])[0] || {}).cover;
+  const floors = has(z.floors) ? String(z.floors).trim() : (has(cover) ? String(cover).trim() : '');
+  let height = '';
+  if (has(z.height)) {
+    const n = Number(z.height);
+    height = isFinite(n) ? (Math.abs(n - Math.round(n)) < 1e-6 ? String(Math.round(n)) : String(Math.round(n * 10) / 10)) : String(z.height).trim();
+  } else if (typeof sprHeadMetres === 'function') {
+    const m = sprHeadMetres(floors);
+    if (m != null) height = String(m);
+  }
+  const itemNo = has(z.itemNo) ? String(z.itemNo).trim() : '1';
+  const I = FSD_SPR_T2_ITEM;
+  if (itemNo) put(itemNo, I.no, 't2item');
+  if (floors) put(floors, I.floors, 't2floors');
+  if (height) put(height, I.height, 't2ht');
+}
 function fsdOvFillSprSched(ctx, cExp, o, scale, pi) {
   const box = FSD_SPR_SCHED[pi];
   if (!box) return;
@@ -9664,6 +9754,7 @@ function fsdOvFillSprSched(ctx, cExp, o, scale, pi) {
   };
   put(addr, box.addr, 'addr');
   put(bldg, box.bldg, 'bldg');
+  if (pi === 9) sprOvFillT2Src(ctx, cExp, scale, put);
   if (pi !== 8) return;
   const G = FSD_SPR_T1_ROWS;
   sprOvValveRows(cExp, o).forEach((row, i) => {
@@ -19223,6 +19314,7 @@ document.addEventListener('input', e => {
   if (document.querySelector('.opth')) { paintOpt(r); if (missFlag[r.id + '|' + cur.step]) markMiss(r); } // 互斥讀數：即時更新灰色提示同標紅
   if (el.dataset.pref) Store.prefs[el.dataset.pref] = el.value;
   if (typeof sprMarkValveEdit === 'function') sprMarkValveEdit(r, el.dataset.bind, el.value);
+  if (typeof sprMarkT2Height === 'function') sprMarkT2Height(r, el.dataset.bind, el.value);
   Store.touch(r);
   /* v0.6.446：數目／讀數 input 唔 render → 以前 haLive 唔刷新（CL-L j／CL-J k 入 24 PDF 冇反應） */
   if (cur.view === 'rec' && typeof haLiveSchedule === 'function' && typeof haLiveStepOk === 'function' && haLiveStepOk(cur.step)) haLiveSchedule(r);
