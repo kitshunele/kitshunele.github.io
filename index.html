@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.533';
+const APP_VERSION = '0.6.534';
+/* v0.6.534：花灑官方 blank 頭欄參考編號同表一／表二地址。註冊消防裝置承辦商參考編號點線量度 x476→554.5（可寫 78pt）；預設改「RC1/0044 RC2/0037」（空格、唔用頓號）。1.35 倍成句約 101pt，會喺點線截斷；頭欄改 1.0 倍（約 75pt，尾約 x550）先至成句坐喺點線上。表一（PDF 第9頁＝maps page 8）同表二（第10頁＝page 9）「建築物／處所地址」「建築物／大廈名稱」跟其他核對表，用屋邨／座自動疊。唔改剔位、8.a／AA30、其他表頭欄、GAS。 */
 /* v0.6.533：花灑年檢 A14.3／A14.4／A3.2.b–c。印刷附錄 XIV 第 2/7 頁（tickmap page 40）A14.3 只有一行是／否／不適用；A14.4 a–k 都有三格，l 溢去第 3/7 頁（tickmap page 41）。A14.4.a／b 嘅鍵坐喺印刷 e／f，左欄揀咗 a／b 剔畫喺另一行，印刷 a／b 睇落空白。A14.3.a 坐喺印刷 A14.4.c。i／j／k／l 冇鍵；h 係 mode=y 鬼位，坐喺 k 行下半。A14.2.a／b／c、A14.3.b、A14.1.k 霸住呢幾行（印刷 A14.2 只有一行、A14.1 印到 j）。A14.2.a 拉返自己嗰行，拆走冇印刷行嘅鍵，A14.3.a 同 A14.4.a–l 拉到印刷 [ ] 中心。沿用 A14.5 預設手寫剔（唔加 fit／hw）。附錄 III 第 19 頁（tickmap page 18）A3.2.b／c 嘅 fit 錨坐喺 A3.3.a／b，撳印刷 b／c 遠過 hit 28.5pt；拉返 b／c，fit 留低。A3.3.a–f 同被順移兩行，補印刷 g／h。唔改 A14.5、A14.6+、8.a、A3.2.a、AV.l、AVIII.k、AX、自動剔、GAS。 */
 /* v0.6.532：花灑年檢附錄 XIV A14.5。印刷第 42 頁（tickmap page 41）a–f 都有是／否／不適用 [ ]。A14.5.a 坐喺上一節溢出嚟嘅 l 行，A14.5.b 坐喺印刷 a，A14.5.c 坐喺印刷 b；印刷 c／d／e／f 冇鍵，撳印刷格唔中。a–c 拉去自己嗰行印刷 [ ] 中心，補 d／e／f。沿用 A14.1 預設手寫剔（唔加 fit／hw）。唔改 A14.4、A14.6+、AXV、8.a、A3.2、AV.l、AVIII.k、AX、自動剔、GAS。 */
 /* v0.6.531：花灑年檢附錄 XIV／XV。A14.6.a–c、A14.7.a–f、A14.8.a／b 原本坐喺上一頁嘅印刷括號（A14.6.a 喺 tickmap page 41，印刷 A14.6.a 喺 page 42），撳印刷格唔中；A14.6.d–j、A14.7.g–n、A14.8.c–k、A14.9、AXV.t 冇 tickmap。拉去印刷 [ ] 中心，沿用 A14.1 預設手寫剔（唔加 fit／hw）。A14.9 印刷行只有不適用一格。唔改 A14.4、A14.5、AXV.a–s、8.a、A3.2、AV.l、AVIII.k、AX、GAS。 */
@@ -945,7 +946,7 @@ const APP_VERSION = '0.6.533';
 /* v0.6.225：SPR_TANK有＋AA36否 → 花灑 §1.b 剔適用（T） */
 /* v0.6.224：AA36「花灑缸是否在天台」重用，放 SPR_TANK 正下方 */
 /* v0.6.223：SPR_STREET_MAIN＝是 → 花灑 §1.a 剔適用（T） */
-/* v0.6.222：FSD 承辦商參考編號全部預填 RC1/0044、RC2/0037 */
+/* v0.6.222：FSD 承辦商參考編號全部預填 RC1/0044、RC2/0037（v0.6.534 改為 RC1/0044 RC2/0037） */
 /* v0.6.221：FA_MCP_PANEL＝冇 → §1.e 剔適用（T），兼 1.a–d 清／禁剔 */
 /* v0.6.220：F15＝有 → §1.a 剔適用（T）；1.b／1.d 已接 */
 /* v0.6.219：F20＝有 → §1.d 剔適用（T）；1.b 已接 FA_REPEATER */
@@ -3872,12 +3873,14 @@ function qTeachApplyAll(r) {
   });
 }
 const FSD_V = { Y: '是', N: '否', NA: '不適用', T: '✓' };
-/* v0.6.222：消防處核對表「註冊消防裝置承辦商參考編號」全部預填 */
-const FSD_REF_DEFAULT = 'RC1/0044、RC2/0037';
+/* v0.6.222：消防處核對表「註冊消防裝置承辦商參考編號」全部預填
+   v0.6.534：FAN 要「RC1/0044 RC2/0037」（空格）。舊預設用頓號；只改返未改過嘅預設。 */
+const FSD_REF_DEFAULT = 'RC1/0044 RC2/0037';
+const FSD_REF_LEGACY = 'RC1/0044、RC2/0037';
 function fsdEnsureRef(r, key) {
   if (!r || !key) return;
   const d = fsdRec(r, key);
-  if (!has(d.h.ref)) { d.h.ref = FSD_REF_DEFAULT; Store.touch(r); }
+  if (!has(d.h.ref) || d.h.ref === FSD_REF_LEGACY) { d.h.ref = FSD_REF_DEFAULT; Store.touch(r); }
 }
 function fsdEnsureAllRefs(r) {
   if (!r) return;
@@ -6546,7 +6549,8 @@ const FSD_SPR_SEC_PAGE = {
   '1': 0, '2': 0, '3': 0, '4': 0, '5': 2,
   '6': 2, '6.1': 2, '6.2': 2, '6.3': 3, '6.4': 3, '6.5': 3, '6.6': 3,
   '7': 3, '8': 3, '9': 4, '10': 4, '10.1': 4, '10.2': 5, '10.3': 5, '11': 6,
-  'T1': 7, 'T2': 7,
+  /* v0.6.534：官方 blank 表一＝PDF 第9頁（0-based 8）、表二＝第10頁（9）。舊 7 係簽署頁，冇地址橫線。 */
+  'T1': 8, 'T2': 9,
   'AI': 8, 'A1': 8,
   'AII': 9, 'A2': 9, 'A2.1': 9, 'A2.2': 9, 'A2.3': 9, 'A2.4': 9, 'A2.5': 10, 'A2.6': 10, 'A2.7': 12, 'A2.8': 12, 'A2.9': 13,
   /* Excel 印區缺 III–VIII／X／XI → 跟正文提述頁 */
@@ -7632,6 +7636,12 @@ function fsdLiveFollowMapsOf(key) {
     });
   };
   if (c) walk(c.sections);
+  /* v0.6.534：花灑表一／表二冇 tickmap 子項（page 8／9），跟頁用 FSD_SPR_SEC_PAGE，唔好跌返第 1 頁 */
+  if (key === 'spr' && typeof FSD_SPR_SEC_PAGE === 'object') {
+    ['T1', 'T2'].forEach(id => {
+      if (bySec[id] == null && FSD_SPR_SEC_PAGE[id] != null) bySec[id] = FSD_SPR_SEC_PAGE[id];
+    });
+  }
   /* 紙本回退時 refresh 會 merge _liveSecs 入 bySec */
   if (fsdLiveFollowMaps && fsdLiveFollowMaps.key === key && fsdLiveFollowMaps.kind === 'paper') {
     Object.keys(fsdLiveFollowMaps.bySec || {}).forEach(sid => {
@@ -9098,8 +9108,9 @@ function fsdOvFillHeader(ctx, key, cExp, o, scale, Wpt) {
     } else put(t, xPt, yPt);
   };
   if (key === 'spr') {
-    /* 花灑 blank 第1頁量度（baseline = 點線 −4.5）。參考編號點線喺右上 y≈85；日期線 y≈140；地址線 y≈158；FS251 線 y≈122。 */
-    putHw(href, 476, 80.7, 78, 1.35, 0.5);
+    /* 花灑 blank 第1頁量度（baseline = 點線 −4.5）。參考編號點線喺右上 y≈85.2、x476→554.5（可寫 78pt）；日期線 y≈140；地址線 y≈158；FS251 線 y≈122。
+       v0.6.534：「RC1/0044 RC2/0037」喺 1.35 倍約 101pt，會截成 RC1/0044 RC2/。改 1.0 倍約 75pt（尾約 x550），成句坐喺點線上，唔衝出右邊空白或其他頭欄。x／y／maxW 唔郁。 */
+    putHw(href, 476, 80.7, 78, 1.0, 0.5);
     put(fs251, 100, 117.5);
     putHw(dateStr, 198, 135.7, 340, 1.35, 0.5);
     putHw(addr, 156, 153.3, 385, 1.35, 0.5);
@@ -9445,6 +9456,42 @@ function fsdOvFillT1(ctx, key, cExp, o, scale) {
   }
 }
 
+/* v0.6.534：花灑表一／表二頭兩行。官方 blank 冇加入 FSD_T1_OV（只得 fa／fds／fhhr），所以地址／大廈名一直空白。
+   同 fsdOvFillT1：地址←屋邨、大廈名←座。唔畫控制閥行（表一欄同 FA 唔同）。baseline＝橫線 −2（同 FA 表一 98→96）。
+   表一 PDF 第9頁＝maps page 8：地址線 y≈122.9、大廈名線 y≈140.6。表二第10頁＝page 9：y≈122.9／141.3。
+   標籤止約 x145；字由 x152 起。橫線去到約 x770，maxW 600 留喺線上。 */
+const FSD_SPR_SCHED = {
+  8: { addr: { x: 152, y: 120.7, maxW: 600 }, bldg: { x: 152, y: 138.4, maxW: 600 } },
+  9: { addr: { x: 152, y: 120.7, maxW: 600 }, bldg: { x: 152, y: 139.0, maxW: 600 } }
+};
+function fsdOvFillSprSched(ctx, o, scale, pi) {
+  const box = FSD_SPR_SCHED[pi];
+  if (!box) return;
+  const est = (o && o.estate) || {}, blk = (o && o.block) || {};
+  const addr = (est.zh || est.en || '').trim();
+  const bldg = (blk.zh || blk.en || '').trim();
+  const sz = 9 * scale;
+  const put = (t, spec, tag) => {
+    if (!t || !spec) return;
+    const s = String(t);
+    if (typeof XHW_OK !== 'undefined' && XHW_OK) {
+      xHwText(ctx, s, spec.x * scale, spec.y * scale, sz * 1.35, xHwSeed('sprsched:' + pi + ':' + tag), (spec.maxW || 600) * scale, 0.55);
+    } else {
+      ctx.save();
+      ctx.fillStyle = '#0f172a';
+      ctx.font = `${sz * 1.3}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
+      ctx.textBaseline = 'alphabetic';
+      let u = s;
+      const maxW = (spec.maxW || 600) * scale;
+      while (u && ctx.measureText(u).width > maxW) u = u.slice(0, -1);
+      if (u) ctx.fillText(u, spec.x * scale, spec.y * scale);
+      ctx.restore();
+    }
+  };
+  put(addr, box.addr, 'addr');
+  put(bldg, box.bldg, 'bldg');
+}
+
 async function xFsdOverlayPages(key, cExp, o, sink) {
   const maps = await fsdLoadTickmaps();
   const tm = maps[key];
@@ -9489,6 +9536,7 @@ async function xFsdOverlayPages(key, cExp, o, sink) {
     await page.render({ canvasContext: ctx, viewport: vp, intent: 'display' }).promise;
     if (pi === 0) fsdOvFillHeader(ctx, key, cExp, o, scale, vp1.width);
     if ((FSD_T1_OV.page || {})[key] === pi) fsdOvFillT1(ctx, key, cExp, o, scale);
+    if (key === 'spr' && FSD_SPR_SCHED[pi]) fsdOvFillSprSched(ctx, o, scale, pi);
     (skipsByPage[pi] || []).forEach(({ sid, sk }) => {
       fsdDrawTickOv(ctx, sk.na, scale, key + ':secskip:' + sid);
     });
