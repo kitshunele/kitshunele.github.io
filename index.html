@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.535';
+const APP_VERSION = '0.6.536';
+/* v0.6.536：花灑表一第一行對齊同設備總數量。資料格頁首橫線係 y≈182（表頭底），第一行底 y≈200.5；0.6.535 baseline 214.9 坐喺第二行。baseline 改 196.5（行底 −4），編號 1 返第一行。設備總數量：流水掣←表一 totals.flow，冇先用 AA30；分區／層開關閥←totals.zone，冇先用 AA31；水柱分隔裝置只喺有非 0 先寫（隱藏欄預設 0 唔當答過）。空白唔寫 0。表一字 1.35→1.55，仍喺格入面。編號／種類、地址、剔位、GAS 唔郁。 */
 /* v0.6.535：花灑官方 blank 表一控制閥編號。問卷 SPR_MULTI_SYS 有幾個花灑系統就順住寫 1、2、…；有水簾（SPR_WATER_CURTAIN／F30＝有）編號接住排，種類 Del；冇花灑系統只得水簾就係 1。空白／0 唔當一個花灑。種類：花灑系統空先填 W，師傅改過唔蓋。表一地址／大廈名、剔位、8.a／AA30／4.g、GAS 唔郁。 */
 /* v0.6.534：花灑官方 blank 頭欄參考編號同表一／表二地址。註冊消防裝置承辦商參考編號點線量度 x476→554.5（可寫 78pt）；預設改「RC1/0044 RC2/0037」（空格、唔用頓號）。1.35 倍成句約 101pt，會喺點線截斷；頭欄改 1.0 倍（約 75pt，尾約 x550）先至成句坐喺點線上。表一（PDF 第9頁＝maps page 8）同表二（第10頁＝page 9）「建築物／處所地址」「建築物／大廈名稱」跟其他核對表，用屋邨／座自動疊。唔改剔位、8.a／AA30、其他表頭欄、GAS。 */
 /* v0.6.533：花灑年檢 A14.3／A14.4／A3.2.b–c。印刷附錄 XIV 第 2/7 頁（tickmap page 40）A14.3 只有一行是／否／不適用；A14.4 a–k 都有三格，l 溢去第 3/7 頁（tickmap page 41）。A14.4.a／b 嘅鍵坐喺印刷 e／f，左欄揀咗 a／b 剔畫喺另一行，印刷 a／b 睇落空白。A14.3.a 坐喺印刷 A14.4.c。i／j／k／l 冇鍵；h 係 mode=y 鬼位，坐喺 k 行下半。A14.2.a／b／c、A14.3.b、A14.1.k 霸住呢幾行（印刷 A14.2 只有一行、A14.1 印到 j）。A14.2.a 拉返自己嗰行，拆走冇印刷行嘅鍵，A14.3.a 同 A14.4.a–l 拉到印刷 [ ] 中心。沿用 A14.5 預設手寫剔（唔加 fit／hw）。附錄 III 第 19 頁（tickmap page 18）A3.2.b／c 嘅 fit 錨坐喺 A3.3.a／b，撳印刷 b／c 遠過 hit 28.5pt；拉返 b／c，fit 留低。A3.3.a–f 同被順移兩行，補印刷 g／h。唔改 A14.5、A14.6+、8.a、A3.2.a、AV.l、AVIII.k、AX、自動剔、GAS。 */
@@ -9545,15 +9546,23 @@ const FSD_SPR_SCHED = {
   8: { addr: { x: 152, y: 120.7, maxW: 600 }, bldg: { x: 152, y: 138.4, maxW: 600 } },
   9: { addr: { x: 152, y: 120.7, maxW: 600 }, bldg: { x: 152, y: 139.0, maxW: 600 } }
 };
-/* v0.6.535：表一資料格（PDF 第9頁）。頁首橫線 y≈200.5，行距 18.4，12 行；baseline＝行底 −4。
-   欄界 65／193／241／389.5／779。編號、種類寫入格內；樓層／覆蓋有資料先疊。 */
+/* v0.6.536：表頭底橫線 y≈182，第一資料行底 y≈200.5（0.6.535 當咗 200.5 係表頭、字坐第二行）。
+   baseline＝行底 −4 → 196.5。行距 18.4。由 182 到最後橫線 421.8 共 13 行。
+   欄界 65／193／241／389.5／779。樓層／覆蓋有資料先疊。 */
 const FSD_SPR_T1_ROWS = {
-  base: 214.9, dy: 18.4, n: 12,
+  base: 196.5, dy: 18.4, n: 13,
   no: { x: 76, maxW: 108 },
   type: { x: 200, maxW: 36 },
   floor: { x: 250, maxW: 130 },
   cover: { x: 398, maxW: 370 }
 };
+/* 設備總數量：欄界 x≈240／388。三行底 477／495.4／513.8，baseline＝行底 −4。 */
+const FSD_SPR_T1_TOT = {
+  x: 252, maxW: 120,
+  y: { wcpd: 473.0, flow: 491.4, zone: 509.8 }
+};
+/* 表一格高約 18.4pt。1.55 比 1.35 大少少，仍然坐喺行入面、唔蓋住表頭。表二地址維持 1.35。 */
+const FSD_SPR_T1_MUL = 1.55;
 function sprQOfExport(o) {
   const q = {}, src = (o && o.questionnaire) || {};
   Object.keys(src).forEach(k => {
@@ -9588,6 +9597,45 @@ function sprOvValveRows(cExp, o) {
   }
   return rows;
 }
+function sprOvTotNum(v) {
+  if (!has(v)) return null;
+  const s = String(v).trim();
+  if (!/^[+]?\d+(?:\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  return isFinite(n) ? n : null;
+}
+function sprOvSumTot(systems, key, skipZero) {
+  /* 多個花灑系統各自有總數 → 印成一份表一就加總。skipZero：水柱分隔隱藏欄個個預設 0，唔當答過。 */
+  let any = false, sum = 0;
+  (systems || []).forEach(sys => {
+    const n = sprOvTotNum(sys && sys.totals ? sys.totals[key] : null);
+    if (n == null) return;
+    if (skipZero && n === 0) return;
+    any = true;
+    sum += n;
+  });
+  return any ? sum : null;
+}
+function sprOvTotText(n) {
+  if (n == null) return '';
+  if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
+  return String(n);
+}
+function sprOvTotals(cExp, o) {
+  /* 師傅喺表一填咗嘅總數優先（包括明確 0）。空白先用問卷：流水掣 AA30、分層掣 AA31。水柱冇問卷，預設 0 留空。 */
+  const q = sprQOfExport(o);
+  const systems = (((cExp || {}).tables || {}).systems) || [];
+  const pick = (key, cell, skipZero) => {
+    const typed = sprOvSumTot(systems, key, skipZero);
+    if (typed != null) return typed;
+    return cell ? sprOvTotNum(q[cell]) : null;
+  };
+  return {
+    wcpd: pick('wcpd', '', true),
+    flow: pick('flow', 'AA30', false),
+    zone: pick('zone', 'AA31', false)
+  };
+}
 function fsdOvFillSprSched(ctx, cExp, o, scale, pi) {
   const box = FSD_SPR_SCHED[pi];
   if (!box) return;
@@ -9595,15 +9643,17 @@ function fsdOvFillSprSched(ctx, cExp, o, scale, pi) {
   const addr = (est.zh || est.en || '').trim();
   const bldg = (blk.zh || blk.en || '').trim();
   const sz = 9 * scale;
-  const put = (t, spec, tag) => {
+  const pageMul = pi === 8 ? FSD_SPR_T1_MUL : 1.35;
+  const put = (t, spec, tag, mul) => {
     if (!t || !spec) return;
+    const m = mul == null ? pageMul : mul;
     const s = String(t);
     if (typeof XHW_OK !== 'undefined' && XHW_OK) {
-      xHwText(ctx, s, spec.x * scale, spec.y * scale, sz * 1.35, xHwSeed('sprsched:' + pi + ':' + tag), (spec.maxW || 600) * scale, 0.55);
+      xHwText(ctx, s, spec.x * scale, spec.y * scale, sz * m, xHwSeed('sprsched:' + pi + ':' + tag), (spec.maxW || 600) * scale, 0.55);
     } else {
       ctx.save();
       ctx.fillStyle = '#0f172a';
-      ctx.font = `${sz * 1.3}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
+      ctx.font = `${sz * m}px ${typeof XF_FSD_SERIF !== 'undefined' ? XF_FSD_SERIF : 'serif'}`;
       ctx.textBaseline = 'alphabetic';
       let u = s;
       const maxW = (spec.maxW || 600) * scale;
@@ -9623,6 +9673,13 @@ function fsdOvFillSprSched(ctx, cExp, o, scale, pi) {
     put(row.type, { x: G.type.x, y: y, maxW: G.type.maxW }, 'ty' + i);
     if (row.floor) put(row.floor, { x: G.floor.x, y: y, maxW: G.floor.maxW }, 'fl' + i);
     if (row.cover) put(row.cover, { x: G.cover.x, y: y, maxW: G.cover.maxW }, 'cv' + i);
+  });
+  const tot = sprOvTotals(cExp, o);
+  const T = FSD_SPR_T1_TOT;
+  ['wcpd', 'flow', 'zone'].forEach(k => {
+    const text = sprOvTotText(tot[k]);
+    if (!text || !T.y[k]) return;
+    put(text, { x: T.x, y: T.y[k], maxW: T.maxW }, 'tot' + k);
   });
 }
 
