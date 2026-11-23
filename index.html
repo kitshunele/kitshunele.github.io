@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.536';
+const APP_VERSION = '0.6.537';
+/* v0.6.537：花灑表二供水來源。AA20＝有（有花灑泵）→ 穩壓泵剔、花灑泵編號 1／2 寫喺點線上面、兩邊框都剔。AA20 唔係有：唔剔穩壓泵、唔寫 1／2；SPR_STREET_MAIN＝是 → 剔由街喉直接供水；SPR_TANK＝有 → 剔花灑水缸重力供水。有泵時街喉／天台缸仍跟舊規則。on 已係空字（師傅剔走）唔蓋。中途泵唔自動剔。表一、剔位圖、8.a／AA30／4.g、GAS 唔郁。 */
 /* v0.6.536：花灑表一第一行對齊同設備總數量。資料格頁首橫線係 y≈182（表頭底），第一行底 y≈200.5；0.6.535 baseline 214.9 坐喺第二行。baseline 改 196.5（行底 −4），編號 1 返第一行。設備總數量：流水掣←表一 totals.flow，冇先用 AA30；分區／層開關閥←totals.zone，冇先用 AA31；水柱分隔裝置只喺有非 0 先寫（隱藏欄預設 0 唔當答過）。空白唔寫 0。表一字（連地址／大廈名）1.35→1.55，仍喺格入面。編號／種類規則、地址內容、剔位、GAS 唔郁。 */
 /* v0.6.535：花灑官方 blank 表一控制閥編號。問卷 SPR_MULTI_SYS 有幾個花灑系統就順住寫 1、2、…；有水簾（SPR_WATER_CURTAIN／F30＝有）編號接住排，種類 Del；冇花灑系統只得水簾就係 1。空白／0 唔當一個花灑。種類：花灑系統空先填 W，師傅改過唔蓋。表一地址／大廈名、剔位、8.a／AA30／4.g、GAS 唔郁。 */
 /* v0.6.534：花灑官方 blank 頭欄參考編號同表一／表二地址。註冊消防裝置承辦商參考編號點線量度 x476→554.5（可寫 78pt）；預設改「RC1/0044 RC2/0037」（空格、唔用頓號）。1.35 倍成句約 101pt，會喺點線截斷；頭欄改 1.0 倍（約 75pt，尾約 x550）先至成句坐喺點線上。表一（PDF 第9頁＝maps page 8）同表二（第10頁＝page 9）「建築物／處所地址」「建築物／大廈名稱」跟其他核對表，用屋邨／座自動疊。唔改剔位、8.a／AA30、其他表頭欄、GAS。 */
@@ -4387,7 +4388,9 @@ function sprT2SrcFromQ(r, z) {
     if (o.on === undefined || o.on === null) o.on = '1';
     if (extras) Object.keys(extras).forEach(f => { if (!has(o[f])) o[f] = extras[f]; });
   };
-  if (r.q.AA20 === '有') {
+  /* v0.6.537：AA20＝有 先算有花灑泵。冇泵唔剔穩壓泵、唔寫花灑泵 1／2。 */
+  const hasPumps = r.q.AA20 === '有';
+  if (hasPumps) {
     touch('jockey');
     if (!noSprTank(r)) {
       touch('pump1', { no: '1' });
@@ -4395,7 +4398,8 @@ function sprT2SrcFromQ(r, z) {
     }
   }
   if (r.q.SPR_STREET_MAIN === '是') touch('main');
-  else if (r.q.SPR_STREET_MAIN === '否' && r.q.AA36 === '是' && r.q.SPR_TANK === '有') touch('tank');
+  if (!hasPumps && r.q.SPR_TANK === '有') touch('tank'); /* 冇泵、有花灑水缸 → 重力 */
+  else if (hasPumps && r.q.SPR_STREET_MAIN === '否' && r.q.AA36 === '是' && r.q.SPR_TANK === '有') touch('tank');
   /* 壓力＝該模式 Low／High bar；流量＝AA8 OH／LH 額定 L/min（問卷 bar 格本身冇升／分鐘） */
   const fl = sprHazardFlows(r);
   const fillFp = (k, lowCell, highCell) => {
@@ -9636,6 +9640,34 @@ function sprOvTotals(cExp, o) {
     zone: pick('zone', 'AA31', false)
   };
 }
+/* v0.6.537：表二供水來源（PDF 第10頁＝maps page 9）。[ ] 中心 x456；括號高約 8pt，用 fit 收喺框內。
+   花灑泵編號點線 x310.5–336.5，y≈263.2／290.1；baseline＝線 −4。中途泵唔自動寫編號。 */
+const FSD_SPR_T2_SRC = {
+  x: 456, s: 8.5,
+  rows: {
+    jockey: { y: 233.3 },
+    pump1: { y: 259.7, no: { x: 312, y: 259.2, maxW: 22 } },
+    pump2: { y: 286.5, no: { x: 312, y: 286.1, maxW: 22 } },
+    bst1: { y: 314.2 },
+    bst2: { y: 341.2 },
+    tank: { y: 368.0 },
+    main: { y: 395.0 }
+  }
+};
+function sprOvFillT2Src(ctx, cExp, scale, put) {
+  const src = ((((cExp || {}).tables || {}).sitems || [])[0] || {}).src || {};
+  const G = FSD_SPR_T2_SRC;
+  Object.keys(G.rows).forEach(k => {
+    const row = G.rows[k];
+    const o = src[k];
+    if (!o || o.na) return;
+    const on = o.on === '1' || o.on === 1 || o.on === true;
+    if (on && typeof fsdDrawTickOv === 'function') {
+      fsdDrawTickOv(ctx, { x: G.x, y: row.y, s: G.s, fit: true }, scale, 'spr:t2:' + k);
+    }
+    if (row.no && has(o.no) && on) put(String(o.no).trim(), row.no, 't2no' + k);
+  });
+}
 function fsdOvFillSprSched(ctx, cExp, o, scale, pi) {
   const box = FSD_SPR_SCHED[pi];
   if (!box) return;
@@ -9664,6 +9696,7 @@ function fsdOvFillSprSched(ctx, cExp, o, scale, pi) {
   };
   put(addr, box.addr, 'addr');
   put(bldg, box.bldg, 'bldg');
+  if (pi === 9) sprOvFillT2Src(ctx, cExp, scale, put);
   if (pi !== 8) return;
   const G = FSD_SPR_T1_ROWS;
   sprOvValveRows(cExp, o).forEach((row, i) => {
