@@ -691,7 +691,8 @@ main.liveopen .livepane .halive{margin-top:0;border-top:0;padding-top:0}
    草稿存喺手機（localStorage + IndexedDB）；提交 = 直接上傳去公司自己部署嘅 Google Apps Script（v0.4.0），App 入面冇任何 token。
    讀數由師傅輸入；數目欄可設 ndef 預設（例如 CL-J k＝24），其餘唔自動產生數值。 */
 let DATA = { contract: '', questionnaire: [], forms: {}, estates: [], fsd: [], extinguishers: null, source: '' }; /* v0.6.15「鎖」：App 資料唔再內置喺網頁；已批准手機由伺服器下載（app_19data.js → appDataApply） */
-const APP_VERSION = '0.6.538';
+const APP_VERSION = '0.6.539';
+/* v0.6.539：由街喉直接供水嘅剔對齊最後一行印刷 [ ]（內緣中心 x≈455.5、y≈394.8；上面各行仍然共用 x456）。有花灑泵（AA20＝有）唔再自動剔街喉，亦唔再自動剔花灑水缸重力（連舊嘅有泵＋街喉否＋AA36＋有缸都取消）。街喉只喺冇泵而且 SPR_STREET_MAIN＝是先剔；重力只喺冇泵而且 SPR_TANK＝有先剔。舊自動 on＝1 喺條件唔再成立時收回，師傅 onHand 留低。冇泵收回穩壓泵／花灑泵 1／2、表一、字大細、8.a／AA30、4.g、GAS 唔郁。 */
 /* v0.6.538：冇花灑泵（AA20 唔係有）清走舊自動剔。0.6.537 只係 on 未設先填，舊草稿 on＝1 同泵編號 1／2 會留低。而家冇泵就收回穩壓泵同花灑泵 1／2 嘅自動剔同自動編號；師傅自己剔過（onHand）或改過編號（noHand）唔郁。表二手寫字 1.35→1.55（項目、樓層、高度、泵編號、地址），表一唔郁。街喉／水缸、左欄、8.a／AA30、4.g、GAS 唔郁。 */
 /* v0.6.537：花灑表二供水來源。AA20＝有（有花灑泵）→ 穩壓泵剔、花灑泵編號 1／2 寫喺點線上面、兩邊框都剔。AA20 唔係有：唔剔穩壓泵、唔寫 1／2；SPR_STREET_MAIN＝是 → 剔由街喉直接供水；SPR_TANK＝有 → 剔花灑水缸重力供水。有泵時街喉／天台缸仍跟舊規則。on 已係空字（師傅剔走）唔蓋。中途泵唔自動剔。表二左欄：項目編號 1；所覆蓋樓層跟表一控制閥 cover；高度＝最高樓層 N×3+3 米（冇數字樓層就留空）。師傅填咗嘅高度唔蓋。表一、剔位圖、8.a／AA30／4.g、GAS 唔郁。 */
 /* v0.6.536：花灑表一第一行對齊同設備總數量。資料格頁首橫線係 y≈182（表頭底），第一行底 y≈200.5；0.6.535 baseline 214.9 坐喺第二行。baseline 改 196.5（行底 −4），編號 1 返第一行。設備總數量：流水掣←表一 totals.flow，冇先用 AA30；分區／層開關閥←totals.zone，冇先用 AA31；水柱分隔裝置只喺有非 0 先寫（隱藏欄預設 0 唔當答過）。空白唔寫 0。表一字（連地址／大廈名）1.35→1.55，仍喺格入面。編號／種類規則、地址內容、剔位、GAS 唔郁。 */
@@ -4374,9 +4375,10 @@ function sprHazardFlows(r) {
 }
 function sprT2SrcFromQ(r, z) {
   /* v0.6.152：AA20＝有 → 剔穩壓泵＋花灑泵1／2（編號 1、2）
-     v0.6.153：SPR_STREET_MAIN＝是 → 剔「由街喉直接供水」（main）
-     v0.6.154：有泵時 AA36＝是 且 SPR_STREET_MAIN＝否 → 剔「花灑水缸重力供水」（tank）
-     v0.6.537：冇泵（AA20 唔係有）唔剔穩壓泵、唔寫 1／2；街喉＝是 → 剔街喉；有花灑水缸 → 剔重力（街喉＝是 都剔）
+     v0.6.537：冇泵（AA20 唔係有）唔剔穩壓泵、唔寫 1／2
+     v0.6.539：街喉只喺冇泵而且 SPR_STREET_MAIN＝是先剔；重力只喺冇泵而且 SPR_TANK＝有先剔。
+       有泵唔再自動剔街喉，亦唔再跟 v0.6.154（有泵＋街喉否＋AA36＋有缸）剔重力。
+       條件唔成立就收回舊自動 on＝1；師傅 onHand 留低。
      v0.6.229／230：三個供水模式（已剔先填；空先填，唔蓋師傅改過）—
        冇泵 tank／main：壓力1／2←AA11／AA12；流量1／2←AA8 額定表
        1泵 pump1：壓力1／2←AA14／AA13（Low／High）；流量同上
@@ -4411,9 +4413,16 @@ function sprT2SrcFromQ(r, z) {
       touch('pump2', { no: '2' });
     }
   }
-  if (r.q.SPR_STREET_MAIN === '是') touch('main');
-  if (!hasPumps && r.q.SPR_TANK === '有') touch('tank'); /* 冇泵、有花灑水缸 → 重力 */
-  else if (hasPumps && r.q.SPR_STREET_MAIN === '否' && r.q.AA36 === '是' && r.q.SPR_TANK === '有') touch('tank');
+  /* v0.6.539：街喉／重力只喺冇泵先自動剔。有泵或條件唔成立，收回舊自動 on＝1（師傅 onHand 唔郁）。 */
+  const dropAutoOn = (k) => {
+    const o = src[k];
+    if (!o || o.na || o.onHand) return;
+    if (o.on === '1' || o.on === 1 || o.on === true) delete o.on;
+  };
+  if (!hasPumps && r.q.SPR_STREET_MAIN === '是') touch('main');
+  else dropAutoOn('main');
+  if (!hasPumps && r.q.SPR_TANK === '有') touch('tank');
+  else dropAutoOn('tank');
   /* 壓力＝該模式 Low／High bar；流量＝AA8 OH／LH 額定 L/min（問卷 bar 格本身冇升／分鐘） */
   const fl = sprHazardFlows(r);
   const fillFp = (k, lowCell, highCell) => {
@@ -4445,8 +4454,8 @@ function sprHeadMetres(text) {
   return n == null ? null : n * 3 + 3;
 }
 function sprMarkT2SrcEdit(r, bind, v) {
-  /* 師傅自己撳穩壓泵／花灑泵框，或改編號 → 冇泵時都唔清。 */
-  const m = /^fsd\.spr\.t\.sitems\.(\d+)\.src\.(jockey|pump1|pump2)\.(on|no)$/.exec(bind || '');
+  /* 師傅自己撳框或改編號 → 自動規則唔清。街喉／水缸都要記 onHand，有泵先唔會收回師傅嘅剔。 */
+  const m = /^fsd\.spr\.t\.sitems\.(\d+)\.src\.(jockey|pump1|pump2|tank|main)\.(on|no)$/.exec(bind || '');
   if (!m || !r) return;
   const z = ((((r.fsd || {}).spr || {}).t || {}).sitems || [])[+m[1]];
   const o = z && z.src && z.src[m[2]];
@@ -9717,7 +9726,8 @@ const FSD_SPR_T2_SRC = {
     bst1: { y: 314.2 },
     bst2: { y: 341.2 },
     tank: { y: 368.0 },
-    main: { y: 395.0 }
+    /* 最後一行 [ ] 內緣中心 x455.5、y394.8，唔跟上面各行嘅 x456 */
+    main: { x: 455.5, y: 394.8 }
   }
 };
 function sprOvFillT2Src(ctx, cExp, scale, put) {
@@ -9729,7 +9739,7 @@ function sprOvFillT2Src(ctx, cExp, scale, put) {
     if (!o || o.na) return;
     const on = o.on === '1' || o.on === 1 || o.on === true;
     if (on && typeof fsdDrawTickOv === 'function') {
-      fsdDrawTickOv(ctx, { x: G.x, y: row.y, s: G.s, fit: true }, scale, 'spr:t2:' + k);
+      fsdDrawTickOv(ctx, { x: row.x != null ? row.x : G.x, y: row.y, s: G.s, fit: true }, scale, 'spr:t2:' + k);
     }
     if (row.no && has(o.no) && (on || o.noHand)) put(String(o.no).trim(), row.no, 't2no' + k);
   });
