@@ -4374,7 +4374,8 @@ function sprHazardFlows(r) {
 function sprT2SrcFromQ(r, z) {
   /* v0.6.152：AA20＝有 → 剔穩壓泵＋花灑泵1／2（編號 1、2）
      v0.6.153：SPR_STREET_MAIN＝是 → 剔「由街喉直接供水」（main）
-     v0.6.154：AA36＝是 且 SPR_STREET_MAIN＝否 → 剔「花灑水缸重力供水」（tank）；街喉＝是 唔剔重力
+     v0.6.154：有泵時 AA36＝是 且 SPR_STREET_MAIN＝否 → 剔「花灑水缸重力供水」（tank）
+     v0.6.537：冇泵（AA20 唔係有）唔剔穩壓泵、唔寫 1／2；街喉＝是 → 剔街喉；有花灑水缸 → 剔重力（街喉＝是 都剔）
      v0.6.229／230：三個供水模式（已剔先填；空先填，唔蓋師傅改過）—
        冇泵 tank／main：壓力1／2←AA11／AA12；流量1／2←AA8 額定表
        1泵 pump1：壓力1／2←AA14／AA13（Low／High）；流量同上
